@@ -1,0 +1,28 @@
+# the next line tells to report only iops, bandwidth or latency.
+# report iops
+[global]
+filesize=2G
+time_based=1
+startdelay=5
+exitall_on_error=1
+create_serialize=0
+filename_format=$filenum/$jobnum
+directory=/mnt/wekatester
+group_reporting=1
+clocksource=gettimeofday
+runtime=30
+ioengine=libaio
+disk_util=0
+direct=1
+numjobs=64
+
+[fio-createfiles-00]
+description='pre-create files'
+create_only=1
+
+[fio-iopsR-00]
+stonewall
+description='Read iops workload'
+bs=4k
+rw=randrw
+rwmixread=70

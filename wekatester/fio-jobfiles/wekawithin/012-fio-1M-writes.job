@@ -1,0 +1,35 @@
+# the next line tells to report only iops, bandwidth or latency.
+[global]
+filesize=4G
+time_based=1
+startdelay=5
+ramp_time=3
+fallocate=none
+exitall_on_error=1
+create_serialize=0
+filename_format=wekawithin/$jobnum
+directory=/mnt/weka
+group_reporting=1
+clocksource=gettimeofday
+runtime=180
+ioengine=libaio
+#ioengine=posixaio
+disk_util=0
+disable_lat=1
+disable_clat=1
+disable_slat=1
+direct=1
+numjobs=32
+invalidate=1
+
+[fio-createfiles-00]
+blocksize=1Mi
+description='pre-create files'
+create_only=1
+
+[fio_1M_writes]
+stonewall
+description='Sequential Write bandwidth workload'
+blocksize=1Mi
+rw=write
+iodepth=16

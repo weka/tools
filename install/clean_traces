@@ -1,0 +1,46 @@
+#!/usr/bin/env python
+import os
+import json
+import argparse
+
+def files(path):
+    for file in os.listdir(path):
+        if os.path.isfile(os.path.join(path, file)):
+            yield file
+parser = argparse.ArgumentParser()
+parser.add_argument("--remove-days", dest='days', default=0, help="number of days of traces to remove")
+args = parser.parse_args()
+
+candidates = {}
+
+for file in files("/opt/weka/traces"):
+    tmp = file.split( "_" )
+    parts = len( tmp )
+    if parts > 1:
+        tmp2 = tmp[parts-1]
+        date = tmp2.split( "." )[0][0:11]
+        if date not in candidates:
+            candidates[date] = []
+        candidates[date].append( file )
+
+print( "There are {} days of traces on this system".format( len( candidates ) ) )
+
+sizes = {}
+for date, filelist in sorted( candidates.items() ):
+    sizes[date] = 0
+    for filename in filelist:
+        stat = os.stat( "/opt/weka/traces/" + filename )
+        sizes[date] += stat.st_size
+
+if args.days == 0:
+    for date, size in sorted(sizes.items()):
+        print( "    {}: size={} GB".format(date,int(size/1024/1024/1024)) )
+else:
+    for index in range(0,int(args.days)):
+        day = list( sorted(sizes.keys()) )[index]
+        files = candidates[day]
+        print( "removing traces from {}".format( day ) )
+        for file in files:
+            os.remove( "/opt/weka/traces/" + file )
+
+

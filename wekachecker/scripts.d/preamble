@@ -1,0 +1,46 @@
+function write_log () {
+	echo -e "$1"
+}
+
+PARAMS=""
+VERBOSE=""
+JSON=""
+FIX="False"
+while (( "$#" )); do
+  case "$1" in
+    -v|--verbose)
+      VERBOSE="true"
+      shift
+      ;;
+    -j|--json)
+      JSON="-j"
+      shift
+      ;;
+    -f|--fix)
+      FIX="True"
+      shift
+      ;;
+    --) # end argument parsing
+      shift
+      break
+      ;;
+    -*|--*=) # unsupported flags
+      echo "Error: Unsupported flag $1" >&2
+      usage
+      exit 1
+      ;;
+    *) # preserve positional arguments
+      PARAMS="$PARAMS $1"
+      shift
+      ;;
+  esac
+done
+which dpkg &> /dev/null
+if [ $? -eq 1 ]; then
+        DIST="redhat"
+else
+	DIST="ubuntu"
+fi
+# set positional arguments in their proper place
+eval set -- "$PARAMS"
+PATH=$PATH:/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/sbin
