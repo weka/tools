@@ -5,20 +5,20 @@ Tools to help with Weka clusters
 ## subdirs
 The sub-directories of this repository contain various tools.
 
-# install
+## install
 General installation tools
 
-# postinstall
+## postinstall
 General post-installation tools
 
-# preinstall
+## preinstall
 General pre-installation tools
 
-# support-utils
+## support-utils
 Utilities for Customer Support
 
-# wekachecker
+## wekachecker
 Check if hosts are ready for Weka
 
-# wekatester
+## wekatester
 Runs fio benchmarks in distributed mode with ease - easy performance testing
