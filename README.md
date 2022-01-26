@@ -1,10 +1,24 @@
-# onprem-installtools
-Tools to help manually install clusters
+# Tools
 
-wekareset.sh - reset the cluster nodes to STEM mode.   Use this in lieu of wekawhacker.sh.   If it does not succeed, try wekawhacker.sh for a rude uninstall. (smile)
+Tools to help with Weka clusters
 
-wekadeploy.sh - deploy weka to a cluster - takes two arguments: the weka tar filename, and a file containing a list of hosts, one per line.  Copies tar file to hosts, unpacks, and installs.
+## subdirs
+The sub-directories of this repository contain various tools.
 
-wekawhacker.sh - removes weka from a failed installation attempt.  Takes one argument: a file containing a list of hosts, one per line.
+# install
+General installation tools
 
-wekaautoconfig - automatically configures a cluster from a list of hostnames/ips with minimal user input.  NOTE: this REQURES that the hosts all be identical (homegeneous cluster), include the same number and type of drives, network interfaces, cpu, ram, etc.).  HA Configurations are automatically detected and configured.
+# postinstall
+General post-installation tools
+
+# preinstall
+General pre-installation tools
+
+# support-utils
+Utilities for Customer Support
+
+# wekachecker
+Check if hosts are ready for Weka
+
+# wekatester
+Runs fio benchmarks in distributed mode with ease - easy performance testing
