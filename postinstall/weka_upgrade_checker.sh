@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-#version=1.0.32
+#version=1.0.33
 
 # Colors
 export NOCOLOR="\033[0m"
@@ -180,8 +180,8 @@ GOOD "Working on CLUSTER: $CLUSTER UUID: $UUID STATUS:${CLUSTERSTATUS}${IOSTATUS
 
 #verify local container status otherwise commands will fail
 NOTICE "VERIFYING WEKA LOCAL CONTAINER STATUS"
-CONSTATUS=$(weka local ps --no-header -o name,running | grep -i default | awk '{print $2}')
-if [ "$CONSTATUS" == "False" ]; then
+CONSTATUS=$(weka local ps --no-header -o name,running | grep -i TRUE)
+if [ -z "$CONSTATUS" ]; then
   BAD "Weka local container is down cannot continue."
   exit
 else
@@ -286,8 +286,6 @@ if [[ "$MAJOR" -eq 3 ]] && [[ "$WEKAMINOR1" -eq 9 ]]; then
     fi
   done
   GOOD "\nBucket L2BLOCK check completed"
-else
-  WARN "\nCheck is designed for Weka systems on 3.9"
 fi
 
 NOTICE "VERIFYING SSD FIRMWARE"
