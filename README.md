@@ -14,6 +14,9 @@ General post-installation tools
 ## preinstall
 General pre-installation tools
 
+## topics
+Miscellaneous tools grouped by topics
+
 ## wekachecker
 Check if hosts are ready for Weka
 
