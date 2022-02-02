@@ -14,9 +14,6 @@ General post-installation tools
 ## preinstall
 General pre-installation tools
 
-## support-utils
-Utilities for Customer Support
-
 ## wekachecker
 Check if hosts are ready for Weka
 
