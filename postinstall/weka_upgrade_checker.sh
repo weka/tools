@@ -188,6 +188,14 @@ else
   GOOD "Weka local container is running."
 fi
 
+if [[ "$MAJOR" -eq 3 ]] && [[ "$WEKAMINOR1" -eq 13 ]]; then
+  if [ $(weka status -J | awk '/"link_layer"/ {print $2}' | tr -d '"') != ETH ]; then
+    WARN "Upgrading to 3.14 not supported. Requires Weka to use Ethernet connectivity"
+  else
+    WARN "Upgrading to 3.14 requires Minimum OFED 4.6"
+  fi
+fi
+
 NOTICE "CHECKING FOR ANY ALERTS"
 WEKAALERTS="$(weka status | awk '/alerts:/ {print $2}')"
 if [ "$WEKAALERTS" != 0 ]; then
