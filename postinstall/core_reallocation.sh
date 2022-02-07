@@ -516,11 +516,11 @@ if [ -s "$CLIENTHOST" ]; then
   if [ "$NC" -ne 0 ]; then
     while dataset=$(numlines $NC); do
 
-      for i in $dataset;do
+      for i in $dataset; do
         nodes+=( $(weka cluster nodes --no-header -o id,role,hostname,ips,status | grep "$i" | awk '{print $1}') )
       done
 
-      for i in "${nodes[@]}";do
+      for i in "${nodes[@]}"; do
         HNAME=$(weka cluster nodes --no-header "$i" -o hostname)
         client_blacklisting "$i" "$HNAME"
       done
@@ -529,17 +529,17 @@ if [ -s "$CLIENTHOST" ]; then
 
       echo -e "\n"
 
-      for i in "${nodes[@]}";do
+      for i in "${nodes[@]}"; do
         HNAME=$(weka cluster nodes --no-header "$i" -o hostname)
         client_remove_blacklisting "$i" "$HNAME"
       done
 
-      for i in "${nodes[@]}";do
+      for i in "${nodes[@]}"; do
         HNAME=$(weka cluster nodes --no-header "$i" -o hostname)
         client_node_status "$i" "$HNAME"
       done
 
-      for i in "${nodes[@]}";do
+      for i in "${nodes[@]}"; do
         nodes=("${nodes[@]/"$i"}")
       done
 
