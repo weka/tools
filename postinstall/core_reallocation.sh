@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-#version=1.6
+#version=1.7
 
 # Colors
 export NOCOLOR="\033[0m"
@@ -335,6 +335,9 @@ TCORES=$(( $NFRONT + $NDRIVES + $NCOMPUTE ))
 NOTICE "VALIDATING SETTING"
 if [[ "$NFRONT" != "$FRONT" || $NDRIVES != "$DRIVE" || "$TCORES" != "$TOTALC" ]]; then
   BAD "Failed applying new core allocations to HOST $1"
+  weka debug manhole -s 0 set_grim_reaper_grace secs=30 > /dev/null
+  weka debug jrpc config_override_key key=clusterInfo.allowChangingActiveHostNodes value=false > /dev/null
+  exit
 else
   GOOD "New core changes applied successfully"
 fi
