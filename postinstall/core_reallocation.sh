@@ -88,7 +88,7 @@ done
 
 shift $((OPTIND -1))
 
-if [ -z "${TOTALC}" ] || [ -z "${DRIVE}" ] || [ -z "${FRONT}" ] || [ -z "${NC}" ]; then
+if [ -z "${TOTALC}" ] || [ -z "${DRIVE}" ] || [ -z "${FRONT}" ] || [ -z "${NC}" ] || [ "${NC}" -eq 1 ]; then
     usage
 fi
 
@@ -347,6 +347,7 @@ fi
 BKHOSTNAME=$(weka cluster host -b --no-header -o hostname,status | awk '/UP/ {print $1}')
 
 function client_blacklisting() {
+
   NOTICE "BLACKLISTING NODES BELONGING TO HOST $2"
     weka debug blacklist add --node "$1" --force
     if [[ -z $(weka debug blacklist --no-header list "$1") ]]; then
@@ -362,7 +363,7 @@ function client_remove_blacklisting() {
     if [[ -z $(weka debug blacklist --no-header list -o id | grep -w  "$1") ]]; then
       GOOD "Node ID $1 belonging to host $2 removed from blacklist successfully"
     else
-      BAD "Unable to remove node $1 to blacklist"
+      BAD "Unable to remove node $1 from blacklist"
     fi
 }
 
@@ -374,7 +375,7 @@ function client_node_status() {
   while [[ $(date -u +%s) -le $endtime ]]; do
       WEKACLNODESSTATUS=$(weka cluster nodes --no-header "$1" -o status)
     if [  "$WEKACLNODESSTATUS" == UP ]; then
-      GOOD "Nodes $1 belonging to $HOST in UP status."
+      GOOD "Nodes $1 belonging to $2 in UP status."
       break
     fi
   done
