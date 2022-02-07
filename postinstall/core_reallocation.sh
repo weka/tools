@@ -337,7 +337,7 @@ if [[ "$NFRONT" != "$FRONT" || $NDRIVES != "$DRIVE" || "$TCORES" != "$TOTALC" ]]
   BAD "Failed applying new core allocations to HOST $1"
   weka debug manhole -s 0 set_grim_reaper_grace secs=30 > /dev/null
   weka debug jrpc config_override_key key=clusterInfo.allowChangingActiveHostNodes value=false > /dev/null
-  exit
+  exit 1
 else
   GOOD "New core changes applied successfully"
 fi
