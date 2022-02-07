@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-#version=1.5
+#version=1.6
 
 # Colors
 export NOCOLOR="\033[0m"
@@ -254,14 +254,22 @@ else
   WARN "\n$WEKANODES\n"
 fi
 
+let SSHERRORS=0
 NOTICE "SSH connectivity between backend hosts"
 for IP in ${BACKENDIP}; do
   $SSH -q -o BatchMode=yes -o ConnectTimeout=5 "$IP" exit
   if [ $? -ne 0 ]; then
     BAD "[SSH PASSWORDLESS CONNECTIVITY CHECK] SSH connectivity test FAILED on Host $IP"
+    let SSHERRORS=$SSHERRORS+1
   fi
 done
-GOOD "[SSH PASSWORDLESS CONNECTIVITY CHECK] SSH connectivity test completed"
+
+if [ $SSHERRORS -gt 0 ]; then 
+  BAD "Please fix SSH connection between hosts"
+  exit 1
+else
+  GOOD "[SSH PASSWORDLESS CONNECTIVITY CHECK] SSH connectivity test completed"
+fi
 
 function _distribute() {
 NOTICE "DOWNLOADING NECESSARY FILES"
@@ -468,6 +476,14 @@ fi
 
 main() {
 
+if [ -z "$BACKEND" ]; then
+  for HOST in ${BACKENDIP}; do
+    _distribute "$HOST"
+  done
+else
+  _distribute "$BACKEND"
+fi
+
 if [[ ! -z "$BACKEND" ]]; then
 NOTICE "VALIDATING BACKEND HOST"
   HTYPE=$(weka cluster host -o ips,mode | grep -w "$BACKEND" | awk '{print $2}')
@@ -561,14 +577,6 @@ if [ $(weka local run /weka/cfgdump | grep allowChangingActiveHostNodes | cut -d
 else
   BAD "Unable to make configuration change"
   exit 1
-fi
-
-if [ -z "$BACKEND" ]; then
-  for HOST in ${BACKENDIP}; do
-    _distribute "$HOST"
-  done
-else
-  _distribute "$BACKEND"
 fi
 
 NOTICE "ENABLING GRIM reaper"
