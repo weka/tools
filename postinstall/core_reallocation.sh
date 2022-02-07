@@ -344,7 +344,6 @@ fi
 BKHOSTNAME=$(weka cluster host -b --no-header -o hostname,status | awk '/UP/ {print $1}')
 
 function client_blacklisting() {
-
   NOTICE "BLACKLISTING NODES BELONGING TO HOST $2"
     weka debug blacklist add --node "$1" --force
     if [[ -z $(weka debug blacklist --no-header list "$1") ]]; then
@@ -401,7 +400,6 @@ function numlines () {
 function backend_blacklisting () {
 
 if [[ "$BKLIST" != 0 ]]; then
-
   WARN "\nBLACKLISTING NODES BELONGING TO HOST $1"
   CURRHOST=$(weka local resources | awk '/Management/ {print $3}')
   WEKABKNODESID=$(weka cluster nodes -b --no-header -o id,role,hostname,ips,status | grep "$1")
