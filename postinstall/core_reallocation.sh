@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-#version=1.7
+#version=1.8
 
 # Colors
 export NOCOLOR="\033[0m"
@@ -88,7 +88,7 @@ done
 
 shift $((OPTIND -1))
 
-if [ -z "${TOTALC}" ] || [ -z "${DRIVE}" ] || [ -z "${FRONT}" ] || [ -z "${NC}" ] || [ "${NC}" -eq 1 ]; then
+if [ -z "${TOTALC}" ] || [ -z "${DRIVE}" ] || [ -z "${FRONT}" ] || [ -z "${NC}" ]; then
     usage
 fi
 
@@ -381,17 +381,15 @@ function client_node_status() {
   done
 }
 
-function numlines () {
+function readlines () {
     local N="$1"
     local line
     local rc="1"
 
-    for i in $(seq 1 $N)
-    do
+    for i in $(seq 1 $N); do
         read line
-        if [ $? -eq 0 ]
-        then
-            echo "$line"
+        if [ $? -eq 0 ]; then
+            echo $line
             rc="0"
         else
             break
@@ -400,6 +398,7 @@ function numlines () {
 
     return $rc
 }
+
 
 function backend_blacklisting () {
 
@@ -488,9 +487,9 @@ fi
 
 if [[ ! -z "$BACKEND" ]]; then
 NOTICE "VALIDATING BACKEND HOST"
-  HTYPE=$(weka cluster host -o ips,mode | grep -w "$BACKEND" | awk '{print $2}')
+  HTYPE=$(weka cluster host -o ips,mode | grep -w "$BACKEND" | grep backend)
   HNAME=$(weka cluster host -o hostname,ips | grep -w "$BACKEND" | awk '{print $1}')
-  if [ "${HTYPE}" != "backend" ] || [ -z "${HTYPE}" ]; then
+  if [ -z "${HTYPE}" ]; then
     BAD "Please provide valid IP of a backend host"
     exit
   else
@@ -514,9 +513,9 @@ fi
 NOTICE "WORKING ON CLIENT HOSTS"
 if [ -s "$CLIENTHOST" ]; then
   if [ "$NC" -ne 0 ]; then
-    while dataset=$(numlines $NC); do
+    while dataset=$(readlines $NC); do
 
-      for i in $dataset; do
+      for i in "$dataset"; do
         nodes+=( $(weka cluster nodes --no-header -o id,role,hostname,ips,status | grep "$i" | awk '{print $1}') )
       done
 
@@ -539,9 +538,7 @@ if [ -s "$CLIENTHOST" ]; then
         client_node_status "$i" "$HNAME"
       done
 
-      for i in "${nodes[@]}"; do
-        nodes=("${nodes[@]/"$i"}")
-      done
+      unset nodes
 
       _sleep "$CSLEEP"
 
