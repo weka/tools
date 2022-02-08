@@ -358,7 +358,7 @@ function client_blacklisting() {
 }
 
 function client_remove_blacklisting() {
-  echo "REMOVING NODES FROM BLACKLIST FOR HOST 2"
+  echo "REMOVING NODES FROM BLACKLIST FOR HOST $2"
     weka debug blacklist remove --node "$1"
     if [[ -z $(weka debug blacklist --no-header list -o id | grep -w  "$1") ]]; then
       GOOD "Node ID $1 belonging to host $2 removed from blacklist successfully"
