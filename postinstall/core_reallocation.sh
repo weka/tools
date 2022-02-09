@@ -537,7 +537,7 @@ if [ -s "$CLIENTHOST" ]; then
         nodes+=( $(weka cluster nodes --no-header -o id,role,hostname,ips,status | grep "$i" | awk '{print $1}') )
       done
 
-      NOTICE "BLACKLISTING NODES BELONGING TO CLIENT HOST $i"
+      NOTICE "BLACKLISTING NODES BELONGING TO CLIENT HOST"
       for i in "${nodes[@]}"; do
         HNAME=$(weka cluster nodes --no-header "$i" -o hostname)
         client_blacklisting "$i" "$HNAME"
@@ -547,7 +547,7 @@ if [ -s "$CLIENTHOST" ]; then
 
       echo -e "\n"
 
-      NOTICE "REMOVING NODES FROM BLACKLIST FOR CLIENT HOST $i"
+      NOTICE "REMOVING NODES FROM BLACKLIST FOR CLIENT HOST"
       for i in "${nodes[@]}"; do
         HNAME=$(weka cluster nodes --no-header "$i" -o hostname)
         client_remove_blacklisting "$i" "$HNAME"
