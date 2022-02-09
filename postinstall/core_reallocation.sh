@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-#version=1.8
+#version=1.9
 
 # Colors
 export NOCOLOR="\033[0m"
@@ -477,6 +477,32 @@ fi
 
 main() {
 
+NOTICE "DISABLING GRIM REAPER"
+# need to disable grimreaper
+weka debug manhole -s 0 disable_grim_reaper > /dev/null
+
+sleep 5
+
+if [ $(weka local run /weka/cfgdump | grep grimReaperEnabled | cut -d":" -f2 | tr -d " "',') == false ]; then
+  GOOD "Grim reaper disabled successfully"
+else
+  BAD "Unable to modify grim reaper settings"
+  exit 1
+fi
+
+NOTICE "MODIFYING SYSTEM SETTINGS TO ALLOW CORE ALLOCATION CHANGE"
+# need to enable config to change core allocation
+weka debug jrpc config_override_key key=clusterInfo.allowChangingActiveHostNodes value=true > /dev/null
+
+sleep 5
+
+if [ $(weka local run /weka/cfgdump | grep allowChangingActiveHostNodes | cut -d":" -f2 | tr -d " "',') == true ]; then
+  GOOD "Core allocation settings applied successfully"
+else
+  BAD "Unable to make configuration change"
+  exit 1
+fi
+
 if [ -z "$BACKEND" ]; then
   for HOST in ${BACKENDIP}; do
     _distribute "$HOST"
@@ -550,32 +576,6 @@ if [ -s "$CLIENTHOST" ]; then
   fi
 else
   WARN "No online clients found"
-fi
-
-NOTICE "DISABLING GRIM REAPER"
-# need to disable grimreaper
-weka debug manhole -s 0 disable_grim_reaper > /dev/null
-
-sleep 5
-
-if [ $(weka local run /weka/cfgdump | grep grimReaperEnabled | cut -d":" -f2 | tr -d " "',') == false ]; then
-  GOOD "Grim reaper disabled successfully"
-else
-  BAD "Unable to modify grim reaper settings"
-  exit 1
-fi
-
-NOTICE "MODIFYING SYSTEM SETTINGS TO ALLOW CORE ALLOCATION CHANGE"
-# need to enable config to change core allocation
-weka debug jrpc config_override_key key=clusterInfo.allowChangingActiveHostNodes value=true > /dev/null
-
-sleep 5
-
-if [ $(weka local run /weka/cfgdump | grep allowChangingActiveHostNodes | cut -d":" -f2 | tr -d " "',') == true ]; then
-  GOOD "Core allocation settings applied successfully"
-else
-  BAD "Unable to make configuration change"
-  exit 1
 fi
 
 NOTICE "ENABLING GRIM reaper"
