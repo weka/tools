@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-#version=1.9
+#version=1.10
 
 # Colors
 export NOCOLOR="\033[0m"
@@ -346,29 +346,24 @@ fi
 BKHOSTNAME=$(weka cluster host -b --no-header -o hostname,status | awk '/UP/ {print $1}')
 
 function client_blacklisting() {
-
-  NOTICE "BLACKLISTING NODES BELONGING TO HOST $2"
-    weka debug blacklist add --node "$1" --force
-    if [[ -z $(weka debug blacklist --no-header list "$1") ]]; then
-      BAD "Unable to add node $1 from blacklist"
-    else
-      GOOD "Node ID $1 belonging host $2 black listed successfully"
-    fi
+  weka debug blacklist add --node "$1" --force
+  if [[ -z $(weka debug blacklist --no-header list "$1") ]]; then
+    BAD "Unable to add node $1 from blacklist"
+  else
+    GOOD "Node ID $1 belonging host $2 black listed successfully"
+  fi
 }
 
 function client_remove_blacklisting() {
-  echo "REMOVING NODES FROM BLACKLIST FOR HOST $2"
-    weka debug blacklist remove --node "$1"
-    if [[ -z $(weka debug blacklist --no-header list -o id | grep -w  "$1") ]]; then
-      GOOD "Node ID $1 belonging to host $2 removed from blacklist successfully"
-    else
-      BAD "Unable to remove node $1 from blacklist"
-    fi
+  weka debug blacklist remove --node "$1"
+  if [[ -z $(weka debug blacklist --no-header list -o id | grep -w  "$1") ]]; then
+     GOOD "Node ID $1 belonging to host $2 removed from blacklist successfully"
+  else
+    BAD "Unable to remove node $1 from blacklist"
+  fi
 }
 
 function client_node_status() {
-  NOTICE "VERIFYING NODE STATUS"
-  WARN "Waiting for nodes belonging to HOST $2 to rejoin cluster"
   runtime="5 minute"
   endtime=$(date -ud "$runtime" +%s)
   while [[ $(date -u +%s) -le $endtime ]]; do
@@ -542,6 +537,7 @@ if [ -s "$CLIENTHOST" ]; then
         nodes+=( $(weka cluster nodes --no-header -o id,role,hostname,ips,status | grep "$i" | awk '{print $1}') )
       done
 
+      NOTICE "BLACKLISTING NODES BELONGING TO CLIENT HOST $i"
       for i in "${nodes[@]}"; do
         HNAME=$(weka cluster nodes --no-header "$i" -o hostname)
         client_blacklisting "$i" "$HNAME"
@@ -551,11 +547,13 @@ if [ -s "$CLIENTHOST" ]; then
 
       echo -e "\n"
 
+      NOTICE "REMOVING NODES FROM BLACKLIST FOR CLIENT HOST $i"
       for i in "${nodes[@]}"; do
         HNAME=$(weka cluster nodes --no-header "$i" -o hostname)
         client_remove_blacklisting "$i" "$HNAME"
       done
 
+      NOTICE "VERIFYING NODE STATUS"
       for i in "${nodes[@]}"; do
         HNAME=$(weka cluster nodes --no-header "$i" -o hostname)
         client_node_status "$i" "$HNAME"
