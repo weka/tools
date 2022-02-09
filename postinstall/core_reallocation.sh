@@ -341,7 +341,6 @@ if [[ "$NFRONT" != "$FRONT" || $NDRIVES != "$DRIVE" || "$TCORES" != "$TOTALC" ]]
 else
   GOOD "New core changes applied successfully"
 fi
-
 }
 
 BKHOSTNAME=$(weka cluster host -b --no-header -o hostname,status | awk '/UP/ {print $1}')
@@ -398,7 +397,6 @@ function readlines () {
 
     return $rc
 }
-
 
 function backend_blacklisting () {
 
@@ -471,7 +469,6 @@ if [[ "$BKLIST" != 0 ]]; then
   _sleep "$BSLEEP"
 
 fi
-
 }
 
 
@@ -591,7 +588,6 @@ else
   BAD "Unable to modify grim reaper settings"
   WARN "Manually issue command weka debug manhole -s 0 set_grim_reaper_grace secs=30"
 fi
-
 
 NOTICE "DISABLING CORE ALLOCATION CHANGE"
 # need to disable config to change core allocation
