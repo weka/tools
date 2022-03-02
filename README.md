@@ -2,7 +2,7 @@
 
 Tools to help with Weka clusters
 
-## How-to install a weka cluster using these tools
+## How-to install a weka cluster using these tools, aka Configuration Guide
 
 o log in as 'root' on one of the servers that will be a Weka Server
 
