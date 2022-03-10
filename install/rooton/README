@@ -1,0 +1,44 @@
+RootOn script version 0.2 - written by Daniel Slabodar for Weka.IO (bugz to: daniel@i-clef.com, dslabodar@gmail.com) on 1/5/2022
+
+What it does?:
+==============
+It connects to itself, performs few nice ssh things, then connect to other ssh servers as provided in command line arguments and sets SSHless connectivity for the running user
+I tested only for non root user - in general, it is a bad idea to allow root user to perform root sshless connectivity between hosts :) and also bad idea to give complete sudo for root :|
+
+Usage:
+======
+./rooton.sh 172.16.1.2 172.16.1.3 , ... , 172.16.1.15 etc'
+Enter both passwords for root and user
+
+Requirements:
+=============
+sshpass package should be installed, we will try install locally compiled version (included with this bundle)
+expect package is nice to have to update local issues, but not a requirement
+passwords for user and root should be the same on every system as in following example below:
+
+10.0.0.1 - username: root password: root_password
+10.0.0.1 - username: daniel password: user_password
+
+10.0.0.11 - username: root password: root_password
+10.0.0.11 - username: daniel password: user_password
+
+Known Issues:
+=============
+Currently unknown
+
+Debugging:
+==========
+Inside rooton.sh you might be able to set hide_output to false, if you want to debug
+hide_output="true" if set to false, you will see lots of output
+
+Thingies!:
+==========
+root_password="" if set, the script would run in batch mode automatically
+user_password="" same as above
+ip_range=( "first_ip" "second_ip" "third_ip" .. ".." ) is array, or can accept args in command line and script will run automatically
+
+Changelog:
+==========
+Added support for asking for username, would install on localhost only if specified in command line
+
+
