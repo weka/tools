@@ -15,10 +15,10 @@ if [ $# -lt 2 ]; then
 	exit
 fi
 
-echo -n "Have you run the preinstall check script? (yn): "
+echo -n "Have you run the wekachecker script? (yn): "
 read ANS
 if [ "$ANS" != "y" ]; then
-	echo "Please run the preinstall script before attempting to run this script."
+	echo "Please run wekachecker before attempting to run this script."
 	exit
 fi
 
