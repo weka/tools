@@ -37,7 +37,7 @@ Usage: [-l Skip blacklist of backend hosts.]
 This script allow the reallocation of cores designated to Weka. Prior to core re-allocation all backend hosts and client hosts must go through a blacklist process this ensures that there are no partially connected nodes.
 OPTIONS:
   -t  Assign number of Total cores.
-  -d  Assign number of Dive cores.
+  -d  Assign number of Drive cores.
   -f  Assign number of Frontend cores.
   -c  Number for client hosts to blacklist at a time.
   -b  perform actions on a single host
