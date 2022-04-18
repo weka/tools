@@ -25,16 +25,20 @@ def display_data(raw_data: RawDataContainerType, verbose: bool, json: bool) -> N
 
 def _print_data_nicely(data: Data, verbose: bool) -> None:
     guids = [layer.guid for layer in data.snap_layers]
+    guids.append(str(data.guid))
     unique_guids = set(guids)
 
-    print(f"Number of snaplayers: {data.num_layers}")
+    print(f"Filesystem name: {data.fs_name}")
+    print(f"Snapshot name: {data.snapshot_name}")
+    print(f"Original filesystem id: {data.orig_fq_fs_id}")
+    print(f"Number of snap layers: {data.num_layers}")
 
     if verbose:
         print("\nSnap layers:")
         print(_snaplayers_table(data.snap_layers))
         print(f"\nUnique GUIDs: {unique_guids}")
     else:
-        print(f"Uploader cluster GUID: {guids[-1]}", end="")
+        print(f"Uploader cluster GUID: {data.guid}", end="")
         if len(unique_guids) > 1:
             print(f". With {len(unique_guids)-1} other unique cluster GUIDs, use --verbose for more info")
         else:
@@ -48,8 +52,9 @@ def _snaplayers_table(snap_layers: List[SnapLayer]) -> str:
     headers = [
         "ID",
         "GUID",
+        "Original ID",
         "No. Buckets",
-        "UTC Upload Date",
+        "UTC Freeze Date",
         "Capacity: metadata",
         "Capacity: data",
         "Uploading Cluster Version",
@@ -58,8 +63,9 @@ def _snaplayers_table(snap_layers: List[SnapLayer]) -> str:
         [
             layer.id,
             layer.guid,
+            layer.orig_fq_snap_layer_id,
             layer.buckets_num,
-            datetime.utcfromtimestamp(layer.unix_time),
+            datetime.utcfromtimestamp(layer.freeze_timestamp),
             layer.capacity.metadata(),
             layer.capacity.data(),
             layer.weka_upload_range,

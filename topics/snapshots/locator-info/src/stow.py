@@ -25,6 +25,7 @@ STOW_WEKA_COMP = {
     6: _WekaCompatabilityRange("v3.12.0"),
     7: _WekaCompatabilityRange("v3.13.0"),
     8: _WekaCompatabilityRange("v3.14.0"),
+    9: _WekaCompatabilityRange("v3.15.0"),
 }
 
 

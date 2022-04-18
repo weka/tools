@@ -34,9 +34,10 @@ class SnapLayer:
     guid: str
     stow_version: StowVersionType
     buckets_num: int
-    unix_time: int
+    freeze_timestamp: int  # unix timestamp
     capacity: Capacity
     weka_upload_range: str
+    orig_fq_snap_layer_id: str
 
 
 @dataclass
@@ -44,6 +45,16 @@ class Data:
     """An organized and relevant view into the raw spec file data"""
 
     stow_version: StowVersionType
+    guid: str
+    fs_id: int
+    snap_view_id: int
+    fs_name: str
+    snapshot_name: str
+    access_point: str
+    fs_ssd_capacity: int
+    fs_total_capacity: int
+    fs_max_files: int
+    orig_fq_fs_id: str
     capacity: Capacity
     num_layers: int
     weka_download_compatability: str
@@ -57,17 +68,19 @@ def construct_data_from_raw(raw_data: RawDataContainerType) -> Data:
             guid=str(layer.guid),
             stow_version=layer.stowVersion,
             buckets_num=layer.bucketsNum,
-            unix_time=layer.timestamp.secs,
+            freeze_timestamp=layer.freezeTimestamp.secs,
             capacity=Capacity(
                 metadata_bytes=layer.capacity.metadata * BLOCK_TO_BYTES,
                 data_bytes=layer.capacity.data * BLOCK_TO_BYTES,
             ),
             weka_upload_range=uploader_version_range(layer.stowVersion),
+            orig_fq_snap_layer_id=fq_snap_layer_id_string(layer.origFqSnapLayerId),
         )
         for layer in raw_data.snapLayers
     ]
 
     stow_versions = [layer.stow_version for layer in snap_layers]
+    stow_versions.append(raw_data.stowVersion)
 
     return Data(
         capacity=Capacity(
@@ -77,5 +90,25 @@ def construct_data_from_raw(raw_data: RawDataContainerType) -> Data:
         weka_download_compatability=download_compatability(min(stow_versions), max(stow_versions)),
         num_layers=raw_data.snapLayersNum,
         stow_version=raw_data.stowVersion,
+        guid=raw_data.guid,
+        fs_id=raw_data.fsId,
+        snap_view_id=raw_data.snapViewId,
+        fs_name=raw_data.fsName,
+        snapshot_name=raw_data.snapshotName,
+        access_point=raw_data.accessPoint,
+        fs_ssd_capacity=raw_data.fsRequestedSSDBudget * BLOCK_TO_BYTES,
+        fs_total_capacity=raw_data.fsTotalBudget * BLOCK_TO_BYTES,
+        fs_max_files=raw_data.fsMaxFiles,
+        orig_fq_fs_id=fq_fs_id_string(raw_data.origFqFSId),
         snap_layers=snap_layers,
     )
+
+
+def fq_snap_layer_id_string(fq_snap_layer_id):
+    return f"{fq_snap_layer_id.guid}:{fq_snap_layer_id.snapLayerId}"
+
+
+def fq_fs_id_string(fq_fs_id):
+    if fq_fs_id is None:
+        return ""
+    return f"{fq_fs_id.guid}:{fq_fs_id.fsId}"
