@@ -13,6 +13,8 @@ class SpecFile:
     EncryptionVersion = c.Int8ul
     GenericWrappedFilesystemKey = c.Bytes(256)  # we don't care about its value or structure
 
+    FSId = c.Int32ul
+    SnapViewId = c.Int32ul
     SnapLayerId = c.Int32ul
     SnapLayerStowGeneration = c.Int32ul
     SnapDepth = c.Int32ul
@@ -22,6 +24,9 @@ class SpecFile:
     Seconds = c.Int64ul
     NanoSecs = c.Int32ul
     Timestamp = c.Struct("secs" / Seconds, "nanosecs" / NanoSecs)
+    FQSnapLayerId = c.Struct("guid" / XUUID, "snapLayerId" / SnapLayerId)
+    FixedString8 = c.PascalString(c.Int8ul, "utf8")
+    FQFSId = c.Struct("guid" / XUUID, "fsId" / FSId)
 
     def __init__(self, spec_file_path: str):
         self.path = spec_file_path
@@ -39,15 +44,27 @@ class SpecFile:
             "guid" / self.XUUID,
             "capacity" / self.StowCapacity,
             "bucketsNum" / c.Int16ul,
-            "timestamp" / self.Timestamp,
+            "mtimeFallback" / self.Timestamp,
             "indexInParent_deprecated" / c.Int8ul,
             "stowVersion" / self.StowVersion,
+            "freezeTimestamp" / _versioned_con(9, self.Timestamp),
+            "origFqSnapLayerId" / _versioned_con(9, self.FQSnapLayerId),
         )
         self.StowSpec = c.Struct(
             "stowVersion" / self.StowVersion,
             "rootInodeId" / self.InodeId,
             "encryptionSchemeVersion" / _versioned_con(1, self.EncryptionVersion),
             _versioned_con(2, self.GenericWrappedFilesystemKey),  # wrappedFilesystemKey
+            "guid" / _versioned_con(9, self.XUUID),
+            "fsId" / _versioned_con(9, self.FSId),
+            "snapViewId" / _versioned_con(9, self.SnapViewId),
+            "fsName" / _versioned_con(9, self.FixedString8),
+            "snapshotName" / _versioned_con(9, self.FixedString8),
+            "accessPoint" / _versioned_con(9, self.FixedString8),
+            "fsRequestedSSDBudget" / _versioned_con(9, self.BlocksCount),
+            "fsTotalBudget" / _versioned_con(9, self.BlocksCount),
+            "fsMaxFiles" / _versioned_con(9, c.Int64ul),
+            "origFqFSId" / _versioned_con(9, self.FQFSId),
             "snapLayersNum" / c.Int64ul,
             "snapLayers" / c.Array(c.this.snapLayersNum, self.StowedSnapLayer),
             "excessiveBytesIndication" / c.GreedyBytes,
@@ -64,4 +81,15 @@ class SpecFile:
 
         if len(res.excessiveBytesIndication) != 0:
             warn_bad_data("Spec file contains extra data that the script does not know how to handle")
+
+        for layer in res.snapLayers:
+            if layer.freezeTimestamp is None:
+                layer.freezeTimestamp = layer.mtimeFallback
+
+            if layer.origFqSnapLayerId is None:
+                layer.origFqSnapLayerId = c.Container(guid=layer.guid, snapLayerId=layer.snapLayerId)
+
+        if res.guid is None:
+            res.guid = res.snapLayers[-1].guid
+
         return res
