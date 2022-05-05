@@ -492,7 +492,7 @@ function smb_check() {
     if [[ ! $XCEPT ]] ; then GOOD " [CHECKING AVAILABLE MEMORY] Sufficient memory found on $2."
     fi
   else
-    WARN "  [CHECKING AVAILABLE MEMORY] Insufficient memory found on Host $2."
+    WARN "  [CHECKING AVAILABLE MEMORY] Insufficient memory found on Host $2 running SMB, minimum required 10GB."
   fi
 fi
 }
