@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-#version=1.0.34
+#version=1.0.35
 
 # Colors
 export NOCOLOR="\033[0m"
@@ -488,7 +488,13 @@ function smb_check() {
     fi
   else
     WARN "  [CHECKING SMB RESOURCES] Found SMB resources on Host $2. Recommend stopping SMB container before upgrade on this backend."
+  if [ "$3" -gt 10000000 ]; then
+    if [[ ! $XCEPT ]] ; then GOOD " [CHECKING AVAILABLE MEMORY] Sufficient memory found on $2."
+    fi
+  else
+    WARN "  [CHECKING AVAILABLE MEMORY] Insufficient memory found on Host $2."
   fi
+fi
 }
 
 function freespace_client() {
@@ -557,7 +563,8 @@ local CURHOST REMOTEDATE WEKACONSTATUS RESULTS1 RESULTS2 UPGRADECONT MOUNTWEKA
   weka_container_status "$WEKACONSTATUS" "$CURHOST" || return
 
   SMBCHECK=$($SSH "$1" "weka local ps | grep samba")
-  smb_check "$SMBCHECK" "$CURHOST"
+  AMEMORY=$($SSH "$1" cat /proc/meminfo | awk '/MemAvailable:/ {print $2}')
+  smb_check "$SMBCHECK" "$CURHOST" "$AMEMORY"
 
   UPGRADECONT=$($SSH "$1" "weka local ps --no-header -o name,running | awk '/upgrade/ {print $2}'")
   upgrade_container "$UPGRADECONT" "$CURHOST"
