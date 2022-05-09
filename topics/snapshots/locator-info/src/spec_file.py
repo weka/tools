@@ -49,6 +49,7 @@ class SpecFile:
             "stowVersion" / self.StowVersion,
             "freezeTimestamp" / _versioned_con(9, self.Timestamp),
             "origFqSnapLayerId" / _versioned_con(9, self.FQSnapLayerId),
+            "origLastMergedParent" / _versioned_con(9, self.FQSnapLayerId),
         )
         self.StowSpec = c.Struct(
             "stowVersion" / self.StowVersion,
