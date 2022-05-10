@@ -418,6 +418,20 @@ function weka_container_status() {
   fi
 }
 
+function weka_container_disabled() {
+  if [ -z "$1" ]; then
+    BAD " [WEKA CONTAINER STATUS] Unable to determine container status on Host $2."
+    return 1
+  fi
+
+  if [ "$1" = "True" ]; then
+    BAD " [WEKA CONTAINER STATUS] Weka local container is disabled on Host $2, please enable using weka local enable."
+  else
+    if [[ ! $XCEPT ]] ; then GOOD " [WEKA CONTAINER STATUS] Weka local container is running Host $2."
+    fi
+  fi
+}
+
 LOGSDIR1='/opt/weka'
 LOGSDIR2='/opt/weka/logs'
 TOTALHOSTS=$(weka cluster host --no-header | wc -l)
@@ -487,7 +501,7 @@ function smb_check() {
     if [[ ! $XCEPT ]] ; then GOOD " [CHECKING SMB RESOURCES] NO SMB containers found on Host $2."
     fi
   else
-    WARN "  [CHECKING SMB RESOURCES] Found SMB resources on Host $2. Recommend stopping SMB container before upgrade on this backend."
+    WARN " [CHECKING SMB RESOURCES] Found SMB resources on Host $2. Recommend stopping SMB container before upgrade on this backend."
   if [ "$3" -gt 10000000 ]; then
     if [[ ! $XCEPT ]] ; then GOOD " [CHECKING AVAILABLE MEMORY] Sufficient memory found on $2."
     fi
@@ -541,7 +555,7 @@ BACKEND=$(weka cluster host -b --no-header -o ips | awk -F, '{print $1}')
 CLIENT=$(weka cluster host -c --no-header -o ips | awk -F, '{print $1}')
 
 function backendloop() {
-local CURHOST REMOTEDATE WEKACONSTATUS RESULTS1 RESULTS2 UPGRADECONT MOUNTWEKA
+local CURHOST REMOTEDATE WEKACONSTATUS RESULTS1 RESULTS2 UPGRADECONT MOUNTWEKA SMBCHECK
   CURHOST=$(weka cluster host --no-header -o hostname,ips | grep -w "$1" | awk '{print $1}')
   NOTICE "VERIFYING SETTINGS ON BACKEND HOST $CURHOST"
   check_ssh_connectivity "$1" "$CURHOST" || return
@@ -561,6 +575,9 @@ local CURHOST REMOTEDATE WEKACONSTATUS RESULTS1 RESULTS2 UPGRADECONT MOUNTWEKA
 
   WEKACONSTATUS=$($SSH "$1" weka local ps --no-header -o name,running | grep -i default | awk '{print $2}')
   weka_container_status "$WEKACONSTATUS" "$CURHOST" || return
+
+  CONDISABLED=$($SSH "$1" weka local ps --no-header -o name,disabled | grep -E 'client|default' | awk '{print $2}')
+  weka_container_disabled "$CONDISABLED" "$CURHOST"
 
   SMBCHECK=$($SSH "$1" "weka local ps | grep samba")
   AMEMORY=$($SSH "$1" cat /proc/meminfo | awk '/MemAvailable:/ {print $2}')
