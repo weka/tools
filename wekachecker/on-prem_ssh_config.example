@@ -1,5 +1,0 @@
-Host *
-  IdentityFile ~/.ssh/id_rsa
-  StrictHostKeyChecking no
-  UserKnownHostsFile=/dev/null
-  LogLevel=quiet

@@ -1,6 +1,0 @@
-Host *
-  User ec2-user
-  IdentityFile ~/.ssh/support_id_rsa
-  StrictHostKeyChecking no
-  UserKnownHostsFile=/dev/null
-  LogLevel=quiet
