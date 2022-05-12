@@ -70,8 +70,8 @@ def construct_data_from_raw(raw_data: RawDataContainerType) -> Data:
             buckets_num=layer.bucketsNum,
             freeze_timestamp=layer.freezeTimestamp.secs,
             capacity=Capacity(
-                metadata_bytes=layer.capacity.metadata * BLOCK_TO_BYTES,
-                data_bytes=layer.capacity.data * BLOCK_TO_BYTES,
+                metadata_bytes=blocks_to_bytes(layer.capacity.metadata),
+                data_bytes=blocks_to_bytes(layer.capacity.data),
             ),
             weka_upload_range=uploader_version_range(layer.stowVersion),
             orig_fq_snap_layer_id=fq_snap_layer_id_string(layer.origFqSnapLayerId),
@@ -84,8 +84,8 @@ def construct_data_from_raw(raw_data: RawDataContainerType) -> Data:
 
     return Data(
         capacity=Capacity(
-            metadata_bytes=sum(layer.capacity.metadata for layer in raw_data.snapLayers) * BLOCK_TO_BYTES,
-            data_bytes=sum(layer.capacity.data for layer in raw_data.snapLayers) * BLOCK_TO_BYTES,
+            metadata_bytes=blocks_to_bytes(sum(layer.capacity.metadata for layer in raw_data.snapLayers)),
+            data_bytes=blocks_to_bytes(sum(layer.capacity.data for layer in raw_data.snapLayers)),
         ),
         weka_download_compatability=download_compatability(min(stow_versions), max(stow_versions)),
         num_layers=raw_data.snapLayersNum,
@@ -96,12 +96,18 @@ def construct_data_from_raw(raw_data: RawDataContainerType) -> Data:
         fs_name=raw_data.fsName,
         snapshot_name=raw_data.snapshotName,
         access_point=raw_data.accessPoint,
-        fs_ssd_capacity=raw_data.fsRequestedSSDBudget * BLOCK_TO_BYTES,
-        fs_total_capacity=raw_data.fsTotalBudget * BLOCK_TO_BYTES,
+        fs_ssd_capacity=blocks_to_bytes(raw_data.fsRequestedSSDBudget),
+        fs_total_capacity=blocks_to_bytes(raw_data.fsTotalBudget),
         fs_max_files=raw_data.fsMaxFiles,
         orig_fq_fs_id=fq_fs_id_string(raw_data.origFqFSId),
         snap_layers=snap_layers,
     )
+
+
+def blocks_to_bytes(blocks):
+    if blocks is None:
+        return None
+    return blocks * BLOCK_TO_BYTES
 
 
 def fq_snap_layer_id_string(fq_snap_layer_id):
