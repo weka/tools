@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-#version=1.10
+#version=1.11
 
 # Colors
 export NOCOLOR="\033[0m"
@@ -272,6 +272,18 @@ else
 fi
 
 function _distribute() {
+
+NFRONT=$(ssh root@"$1" weka local resources | grep FRONTEND | wc -l)
+NDRIVES=$(ssh root@"$1" weka local resources | grep DRIVES | wc -l)
+NCOMPUTE=$(ssh root@"$1" weka local resources | grep COMPUTE | wc -l)
+TCORES=$(( $NFRONT + $NDRIVES + $NCOMPUTE ))
+
+NOTICE "VALIDATING CURRENT CORE VALUES"
+if [[ "$NFRONT" = "$FRONT" || $NDRIVES = "$DRIVE" || "$TCORES" = "$TOTALC" ]]; then
+  GOOD "Skipping host core changes not needed."
+  return
+fi
+
 NOTICE "DOWNLOADING NECESSARY FILES"
 curl -Lo $FILE https://weka-field-scripts.s3.amazonaws.com/update_core_config.py >/dev/null
 
@@ -328,10 +340,6 @@ WARN "Waiting for nodes belonging to $1 to rejoin cluster"
     fi
   done
 
-NFRONT=$(ssh root@"$1" weka local resources | grep FRONTEND | wc -l)
-NDRIVES=$(ssh root@"$1" weka local resources | grep DRIVES | wc -l)
-NCOMPUTE=$(ssh root@"$1" weka local resources | grep COMPUTE | wc -l)
-TCORES=$(( $NFRONT + $NDRIVES + $NCOMPUTE ))
 NOTICE "VALIDATING SETTING"
 if [[ "$NFRONT" != "$FRONT" || $NDRIVES != "$DRIVE" || "$TCORES" != "$TOTALC" ]]; then
   BAD "Failed applying new core allocations to HOST $1"
