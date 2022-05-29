@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-#version=1.11
+#version=1.10
 
 # Colors
 export NOCOLOR="\033[0m"
@@ -279,7 +279,7 @@ NCOMPUTE=$(ssh root@"$1" weka local resources | grep COMPUTE | wc -l)
 TCORES=$(( $NFRONT + $NDRIVES + $NCOMPUTE ))
 
 NOTICE "VALIDATING CURRENT CORE VALUES"
-if [[ "$NFRONT" = "$FRONT" || $NDRIVES = "$DRIVE" || "$TCORES" = "$TOTALC" ]]; then
+if [[ "$NFRONT" = "$FRONT" && $NDRIVES = "$DRIVE" && "$TCORES" = "$TOTALC" ]]; then
   GOOD "Skipping host core changes not needed."
   return
 fi
