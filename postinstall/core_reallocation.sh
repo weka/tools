@@ -257,7 +257,7 @@ fi
 let SSHERRORS=0
 NOTICE "SSH connectivity between backend hosts"
 for IP in ${BACKENDIP}; do
-  $SSH -q -o BatchMode=yes -o ConnectTimeout=5 "$IP" exit
+  $SSH -q -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=no "$IP" exit
   if [ $? -ne 0 ]; then
     BAD "[SSH PASSWORDLESS CONNECTIVITY CHECK] SSH connectivity test FAILED on Host $IP"
     let SSHERRORS=$SSHERRORS+1
