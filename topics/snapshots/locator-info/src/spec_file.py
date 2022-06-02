@@ -18,7 +18,7 @@ class SpecFile:
     SnapLayerId = c.Int32ul
     SnapLayerStowGeneration = c.Int32ul
     SnapDepth = c.Int32ul
-    XUUID = c.ExprSymmetricAdapter(c.Bytes(16), lambda obj, context: UUID(bytes=obj))
+    XUUID = c.ExprSymmetricAdapter(c.Bytes(16), lambda obj, context: UUID(bytes=obj).hex)
     BlocksCount = c.Int64sl
     StowCapacity = c.Struct("metadata" / BlocksCount, "data" / BlocksCount)
     Seconds = c.Int64ul
@@ -26,6 +26,7 @@ class SpecFile:
     Timestamp = c.Struct("secs" / Seconds, "nanosecs" / NanoSecs)
     FQSnapLayerId = c.Struct("guid" / XUUID, "snapLayerId" / SnapLayerId)
     FixedString8 = c.PascalString(c.Int8ul, "utf8")
+    FixedString64 = c.PascalString(c.Int64ul, "utf8")
     FQFSId = c.Struct("guid" / XUUID, "fsId" / FSId)
 
     def __init__(self, spec_file_path: str):
@@ -55,6 +56,8 @@ class SpecFile:
             "stowVersion" / self.StowVersion,
             "rootInodeId" / self.InodeId,
             "encryptionSchemeVersion" / _versioned_con(1, self.EncryptionVersion),
+            c.If(self.file_stow_version == 1, c.Bytes(77)),
+            c.If(self.file_stow_version == 1, self.FixedString64),
             _versioned_con(2, self.GenericWrappedFilesystemKey),  # wrappedFilesystemKey
             "guid" / _versioned_con(9, self.XUUID),
             "fsId" / _versioned_con(9, self.FSId),
