@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-#version=1.10
+#version=1.12
 
 # Colors
 export NOCOLOR="\033[0m"
@@ -257,7 +257,7 @@ fi
 let SSHERRORS=0
 NOTICE "SSH connectivity between backend hosts"
 for IP in ${BACKENDIP}; do
-  $SSH -q -o BatchMode=yes -o ConnectTimeout=5 "$IP" exit
+  $SSH -q -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=no "$IP" exit
   if [ $? -ne 0 ]; then
     BAD "[SSH PASSWORDLESS CONNECTIVITY CHECK] SSH connectivity test FAILED on Host $IP"
     let SSHERRORS=$SSHERRORS+1
@@ -272,6 +272,17 @@ else
 fi
 
 function _distribute() {
+
+NFRONT=$(ssh root@"$1" weka local resources | grep FRONTEND | wc -l)
+NDRIVES=$(ssh root@"$1" weka local resources | grep DRIVES | wc -l)
+NCOMPUTE=$(ssh root@"$1" weka local resources | grep COMPUTE | wc -l)
+TCORES=$(( $NFRONT + $NDRIVES + $NCOMPUTE ))
+NOTICE "VALIDATING CURRENT CORE VALUES"
+if [[ "$NFRONT" = "$FRONT" && $NDRIVES = "$DRIVE" && "$TCORES" = "$TOTALC" ]]; then
+  GOOD "Skipping host core changes not needed."
+  return
+fi
+
 NOTICE "DOWNLOADING NECESSARY FILES"
 curl -Lo $FILE https://weka-field-scripts.s3.amazonaws.com/update_core_config.py >/dev/null
 
