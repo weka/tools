@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-#version=1.0.36
+#version=1.0.38
 
 # Colors
 export NOCOLOR="\033[0m"
@@ -190,9 +190,23 @@ fi
 
 if [[ "$MAJOR" -eq 3 ]] && [[ "$WEKAMINOR1" -eq 13 ]]; then
   if [ $(weka status -J | awk '/"link_layer"/ {print $2}' | tr -d '"') != ETH ]; then
-    WARN "Upgrading to 3.14 not supported. Requires Weka to use Ethernet connectivity"
+    WARN "Upgrading to 3.14 not supported. Requires Weka to use Ethernet connectivity. Please reach out to customer success on an ETA for IB support."
   else
     WARN "Upgrading to 3.14 requires Minimum OFED 4.6"
+  fi
+fi
+
+if [[ "$MAJOR" -eq 3 ]] && [[ "$WEKAMINOR1" -eq 14 ]]; then
+  if [ $(weka status -J | awk '/"link_layer"/ {print $2}' | tr -d '"') = ETH ]; then
+    WARN "Upgrading to 4.0 not supported. Requires Weka to use Ethernet connectivity and minimum Weka version 3.14.1 or greater"
+  fi
+fi
+
+if [[ "$MAJOR" -eq 3 ]] && [[ "$WEKAMINOR1" -eq 14 ]] && [[ "$WEKAMINOR2" -ge 1 ]]; then
+  if [ $(weka status -J | awk '/"link_layer"/ {print $2}' | tr -d '"') != ETH ]; then
+    WARN "Upgrading to 4.0 not supported. Requires Weka to use Ethernet connectivity. Please reach out to customer success on an ETA for IB support."
+  else
+    WARN "Upgrading to 4.0 requires Minimum OFED 5.1"
   fi
 fi
 
