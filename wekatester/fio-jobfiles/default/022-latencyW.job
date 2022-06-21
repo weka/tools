@@ -17,6 +17,7 @@ direct=1
 numjobs=1
 
 [fio-createfiles-00]
+stonewall
 blocksize=1Mi
 description='pre-create files'
 create_only=1
