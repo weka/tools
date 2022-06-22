@@ -10,13 +10,11 @@ o Download the weka code from get.weka.io to root's $HOME
 
 o Git clone this repo into root's $HOME
 
-o Go into `tools/`
+o Go into `tools/install/`
 
 o Start with the `wekachecker` - run it for all dataplane ips (if more than one interface, do them in sets - is ib0 on all hosts, then run again with ib1 of all hosts)
 
 o Fix/investigate any issues that `wekachecker` WARNs or FAILs, re-run until it looks good
-
-o Go to the `install/` subdir
 
 o Use wekadeploy to copy and install the Weka code on all nodes (use dataplane for best performance)
 
