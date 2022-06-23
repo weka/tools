@@ -117,11 +117,17 @@ def _is_mac_address(mac):
         return True
     return False
 
+def _is_pci_address(pci):
+    pci_pattern = r'[0-9a-fA-F]{0,4}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}.[0-9a-fA-F]'
+    if re.fullmatch(pci_pattern, pci):
+        return True
+    return False
 
 class NetDevice:
     def __init__(self, name, **kwargs):
         extract_pci_cmd = "/sbin/ethtool -i {nic} | grep bus-info".format(nic=name)
-        self.device = os.popen(extract_pci_cmd).read().strip().split(": ")[-1]
+        pci_address = os.popen(extract_pci_cmd).read().strip().split(": ")[-1]
+        self.device = pci_address if _is_pci_address(pci_address) else name
         self.gateway = kwargs.get('gateway', "")
         self.identifier = kwargs.get('identifier', self.device)
         self.ips = kwargs.get('ips', [])
