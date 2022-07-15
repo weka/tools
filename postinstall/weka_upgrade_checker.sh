@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-#version=1.0.38
+#version=1.0.39
 
 # Colors
 export NOCOLOR="\033[0m"
@@ -80,7 +80,7 @@ fi
 if [ -z $AWS ]; then
   SSH='/usr/bin/ssh'
 else
-  SSH="/usr/bin/ssh -F /tmp/ssh_config"
+  SSH="/usr/bin/ssh -F /tmp/ssh_config -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
 fi
 
 function logit() {
