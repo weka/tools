@@ -1,0 +1,39 @@
+Dell:
+  AMD: {}
+  Intel:
+    PackageCStates: Enabled
+    ProcC1E: Disabled
+    ProcCStates: Disabled
+    ProcPwrPerf: MaxPerf
+    SecureBoot: Disabled
+    SriovGlobalEnable: Enabled
+    SubNumaCluster: Disabled
+    WorkloadConfiguration: Balance
+    WorkloadProfile: NotConfigured
+Hpe:
+  AMD:
+    ApplicationPowerBoost: Disabled
+    CStateEfficiencyMode: Disabled
+    DataFabricCStateEnable: Disabled
+    DeterminismControl: DeterminismCtrlManual
+    InfinityFabricPstate: P0
+    LastLevelCacheAsNUMANode: Disabled
+    MinProcIdlePower: NoCStates
+    NumaGroupSizeOpt: Clustered
+    NumaMemoryDomainsPerSocket: TwoMemoryDomainsPerSocket
+    PerformanceDeterminism: PerformanceDeterministic
+    PowerRegulator: StaticHighPerf
+    ProcAmdIoVt: Disabled
+    ProcSMT: Disabled
+    Sriov: Disabled
+    ThermalConfig: IncreasedCooling
+    WorkloadProfile: I/OThroughput
+  Intel: {}
+Supermicro:
+  AMD:
+    ACPISRATL3CacheAsNUMADomain: Disabled
+    IOMMU: Disabled
+    NUMANodesPerSocket: Auto
+    SMTControl: Disabled
+    SR-IOVSupport: Disabled
+  Intel: {}
