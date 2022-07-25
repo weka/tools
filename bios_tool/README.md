@@ -76,6 +76,23 @@ Dell:
 With no command-line overrides, bios_tool will scan the hosts in the host_config.yml and note where they differ (if they differ) from the settings in the bios_settings.yml file.
 No changes are made to the servers (read-only mode)
 
+Example output:
+```angular2html
+Fetching BIOS settings of host 172.29.3.1
+Fetching BIOS settings of host 172.29.3.2
+Fetching BIOS settings of host 172.29.3.3
+[...snip...]
+No changes are needed on 172.29.3.1
+No changes are needed on 172.29.3.2
+No changes are needed on 172.29.3.3
+[...snip...]
+172.29.3.4: BIOS setting ApplicationPowerBoost is Enabled, but should be Disabled
+172.29.3.4: BIOS setting CStateEfficiencyMode is Enabled, but should be Disabled
+172.29.3.4: BIOS setting DataFabricCStateEnable is Auto, but should be Disabled
+172.29.3.4: BIOS setting DeterminismControl is DeterminismCtrlAuto, but should be DeterminismCtrlManual
+[...snip...]
+```
+
 ## Optional Behaviors
 ### Fix Mode
 Using the --fix command line option will cause the tool to make the settings to the bios as defined in the bios_settings.yml.   
@@ -87,3 +104,29 @@ Only servers that have been modified are rebooted (this causes them to APPLY the
 Using the --dump command line option will cause the tool to simply print out all the bios settings for each server. (read-only)
 ### Diff option
 Using the --diff option will compare all the settings on 2 servers, and print out which settings differ.
+
+Example output:
+```angular2html
+Fetching BIOS settings of host 172.29.3.1
+Fetching BIOS settings of host 172.29.3.6
+
+Settings that are different between the servers:
+Setting                     172.29.3.1                 172.29.3.6
+--------------------------  -------------------------  ----------------------------
+ApplicationPowerBoost       Disabled                   Enabled
+CStateEfficiencyMode        Disabled                   Enabled
+DataFabricCStateEnable      Disabled                   Auto
+DeterminismControl          DeterminismCtrlManual      DeterminismCtrlAuto
+InfinityFabricPstate        P0                         Auto
+MinProcIdlePower            NoCStates                  C6
+NumaGroupSizeOpt            Clustered                  Flat
+NumaMemoryDomainsPerSocket  TwoMemoryDomainsPerSocket  Auto
+PerformanceDeterminism      PerformanceDeterministic   PowerDeterministic
+PowerRegulator              StaticHighPerf             OsControl
+ProcAmdIoVt                 Disabled                   Enabled
+ProcSMT                     Disabled                   Enabled
+SerialNumber                MXQ2201FNK                 MXQ2201FND
+Sriov                       Disabled                   Enabled
+ThermalConfig               IncreasedCooling           OptimalCooling
+WorkloadProfile             I/OThroughput              GeneralPowerEfficientCompute
+```
