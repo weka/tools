@@ -115,7 +115,7 @@ function _distribute() {
   TCORES=$(( $NFRONT + $NDRIVES + $NCOMPUTE ))
   NOTICE "VALIDATING CURRENT CORE VALUES"
   if [[ "$NFRONT" = "$FRONT" && $NDRIVES = "$DRIVE" && "$TCORES" = "$TOTALC" ]]; then
-    GOOD "Skipping host core changes not needed."
+    GOOD "Skipping host "$1" core changes not needed."
     return
   fi
 
