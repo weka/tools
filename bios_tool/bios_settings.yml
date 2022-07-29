@@ -1,15 +1,27 @@
 Dell:
-  AMD: {}
+  AMD:
   Intel:
-    PackageCStates: Enabled
-    ProcC1E: Disabled
+    WorkloadProfile: LowLatencyOptimizedProfile
+    SysProfile: Custom
+    ControlledTurbo: Enabled
+    LogicalProc: Disabled
+    MadtCoreEnumeration: Linear
+    MemPatrolScrub: Disabled
+    MonitorMwait: Disabled
     ProcCStates: Disabled
+    ProcHwPrefetcher: Enabled
     ProcPwrPerf: MaxPerf
+    ProcTurboMode: Enabled
+    ProcVirtualization: Disabled
+    ProcX2Apic: Disabled
+    #SubNumaCluster: Disabled
+    SubNumaCluster: 2-Way
+    PackageCStates: Disabled
+    ProcC1E: Disabled
     SecureBoot: Disabled
     SriovGlobalEnable: Enabled
-    SubNumaCluster: Disabled
-    WorkloadConfiguration: Balance
-    WorkloadProfile: NotConfigured
+    EnergyPerformanceBias: MaxPower
+    #WorkloadConfiguration: Balance
 Hpe:
   AMD:
     ApplicationPowerBoost: Disabled
@@ -25,15 +37,28 @@ Hpe:
     PowerRegulator: StaticHighPerf
     ProcAmdIoVt: Disabled
     ProcSMT: Disabled
-    Sriov: Disabled
+    Sriov: Enabled
     ThermalConfig: IncreasedCooling
     WorkloadProfile: I/OThroughput
-  Intel: {}
+  Intel:
+    IntelProcVtd: Disabled
+    ThermalConfig: IncreasedCooling
+    WorkloadProfile: I/OThroughput
+    ProcHyperthreading: Disabled
 Supermicro:
   AMD:
     ACPISRATL3CacheAsNUMADomain: Disabled
     IOMMU: Disabled
     NUMANodesPerSocket: Auto
     SMTControl: Disabled
-    SR-IOVSupport: Disabled
-  Intel: {}
+    SR-IOVSupport: Enabled
+    DFCstates: Disabled
+    GlobalC-stateControl: Disabled
+  Intel:
+    EnhancedHaltState(C1E): Disabled
+    HardwareP-States: Disabled
+    Hyper-Threading[ALL]: Disabled
+    PackageCState: Disabled
+    SR-IOVSupport: Enabled
+    SpeedStep(P-States): Disabled
+    Intel\u00aeVTforDirectedI/O(VT-d): Disabled
