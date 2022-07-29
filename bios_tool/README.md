@@ -16,6 +16,7 @@ optional arguments:
   --fix                 Correct any bios settings that do not match the definition
   --reboot              Reboot server if changes have been made
   --dump                Print out BIOS settings only
+  --reset_bios          Reset BIOS to default settings. To also reboot, add the --reboot option
   --diff DIFF DIFF      Compare 2 hosts
 ```
 
