@@ -16,7 +16,7 @@ Dell:
     ProcX2Apic: Disabled
     #SubNumaCluster: Disabled
     SubNumaCluster: 2-Way
-    PackageCStates: Disabled
+    #PackageCStates: Disabled
     ProcC1E: Disabled
     SecureBoot: Disabled
     SriovGlobalEnable: Enabled
