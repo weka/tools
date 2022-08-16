@@ -14,8 +14,5 @@ Completely removes Weka from servers
 ## wekaconfig
 Text UI based configuration tool
 
-## wekaautoconfig
-Deprecated automatic configuration tool
-
 ## clean_traces
 Deprecated tool to clean up excess traces data
