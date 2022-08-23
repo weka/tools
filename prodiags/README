@@ -1,0 +1,57 @@
+WekaIO_ProDiags tool version 1.4
+Written by Daniel Slabodar (October 2020) bugz to daniel@i-clef.com, daniels@weka.io or dslabodar@gmail.com
+
+Tool is written in Python language to supprot multithreaded and multinode runtime of various hardware diagnostic tests allocated in testbank directory for Weka.IO
+==============================================================================
+usage: wekaIO_ProDiags.py or for standalone version ./wekaIO_ProDiags [-h] [-v] [-u] [-l] [-r N [N ...]] [-ra] [-e] [-nj]
+                          [-no] [-f PATH]
+optional arguments:
+    -h, --help            show this help message and exit
+    -v, --version         WekaIO_ProDiags version
+    -u, --update          Software update (update will not work for now)
+    -l, --list            Show all available tests
+    -r N [N ...], --run N [N ...]
+Run specified tests
+    -ra, --runall         Run all available tests
+    -e, --errors_only     Show failed tests only
+    -nj, --nojson         no JSON report
+    -no, --nooutput       no scripts output
+    -f PATH, --file PATH  Output file (default: standard output)
+
+Example: ./wekaIO_ProDiags.py -ra -e -nj (would run all tests in testbank displaying errors only and TEXT output only format)
+         ./wekaIO_ProDiags.py -l (would display list of available tests in testbank directory)
+	     ./wekaIO_ProDiags.py -r 3 2 1 -e -no (would run tests number 3,2 and 1 from testbank displaying errors only and JSON output only format)
+	     ./wekaIO_ProDiags.py -u (would test if there are any new updates - URL configured in config.py section)
+
+Installation & Runtime:
+	 Run as sudo user:
+	 mkdir WekaIO_ProDiags
+	 cd WekaIO_ProDiags
+	 wget http://xxx/WekaIO_ProDiags/latest.tar
+	 tar xvf latest.tar
+	 ./wekaIO_ProDiags.py or ./wekaIO_ProDiags (for standalone version) currently, standalone version 1.3 doesn't work in Python libraries with version below 3.7, for supporting binaries please take version 1.2
+         
+Please use setup.sh to install the required python libraries!
+
+Adding #run_once in test header would run that specific test only once
+Adding #dont_run in test would exclude the test from running
+
+Needed Python 3.x.x libraries if running a standalone version, only python3 is required:
+====================================
+threading Thread
+pathlib
+time sleep
+random randint
+os
+sys
+argparse
+scp SCPClient
+paramiko SSHClient,AutoAddPolicy
+json
+config
+traceback
+requests
+io
+tarfile
+====================================
+

@@ -1,0 +1,71 @@
+Version 0.1 10/12/2020
+Initial upload
+
+Version 0.1 10/25/2020
+Converted few scripts to run under Python environment
+Added -e option to display errors only
+
+Version 0.2 11/01/2020
+Added update option using -u command line option VERSION file used to update
+Added several new tests in testbank
+
+Version 0.3 11/03/2020
+Added support for version 3.9.0 for performing SSD test as weka output is
+changed for weka cluster drive and weka cluster host commands
+
+Version 0.4 11/07/2020
+Added beautifier for output to text and file of reported logs
+Added freespace test for Weka mounted partition to calculated required space
+for Weka installation
+
+Version 0.5 11/09/2020
+Added Free boot device test, Physical installed RAM allocation test
+Added setup.sh to install python packages as needed
+
+Version 0.6 11/14/2020
+Fixed output and errors in some tests with Jacky feedback
+Added hostname and IP addresses return in tests
+Minor typos and fixes
+
+Version 0.7 11/19/2020
+Added ECC RAM test, added logs collection automatically to compatible S3
+bucket. Small fixes and addons
+
+Version 0.8 11/30/2020
+Added ECC CPU, and general critical BMC errors test, minor bugs and fixes
+Beatified test outputs according to David H. request
+
+Version 0.9 12/4/2020
+Fixes in IPMI scripts to support ipmiutil download from 3rd party location for CentOS 8
+Fixed memtest, added support for weka 3.10.x-beta. Small bug fixes
+
+Version 1.0 12/6/2020
+Added support for versions 3.9.3, 3.9.2, 3.9.1. Cosmetics on output, internet
+connection verification, root user verification. Version output. Support for
+#dont_run parameter in test, so test is excluded. Removed white spaces on
+output of tests to look cleaner. If no -e specified everything is spit on the
+screen.
+
+Version 1.0 12/17/2020
+Fixed log file closing when running with verbosity (minor fix)
+
+Version 1.1 12/23/2020
+Added an option for user to agree to upload the logs for analysis.
+Added a standalone version without the .py extension, avoid extra python libraries
+installation. For ipmi tests, added localalized ipmiutil package for RH /
+Centos Linux distros. MC (minio client is not added as we assume there is no
+internet available)
+
+Version 1.2 1/19/2021
+Fixed ssdtest to allow proper NVMe spare defaults handling. Fixed support for
+both IPMItool and IPMIutil packages specifically for Hitachi case. Changed
+default logs upload behaviour to NO
+
+Version 1.3 8/15/2021
+Added support for Weka version 3.12 - updated scripts, binary and tests
+
+Version 1.4 1/21/2022
+Added support for Weka version 3.13 and 3.14 - updated scripts, binary and tests
+
+8/8/2022
+Removed connection to non weka domains, might break functionality of ipmi tests, if some packages are missing from the install
