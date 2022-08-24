@@ -1,7 +1,7 @@
 #!/usr/bin/env bash 
 
 #
-# Remove WekaIO from a group of hosts
+# Remove WekaIO configuration from a group of hosts and baseline to STEM mode (leaving WekaIO software in tact)
 #
 # Written by: Vince Fleming, vince@weka.io
 #
