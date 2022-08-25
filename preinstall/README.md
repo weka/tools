@@ -10,7 +10,7 @@ Helps to set up routing tables for hosts that have 2 ip interfaces in the same s
  Script to upgrade/install Mellanox MFT tools/driver firmware and set preferred PCI settings for max performance
 
  Assumptions:
-       OFED installed
-       Internet access for MFT/driver toolsets
-       Run on first cluster host if range is given
-       MFT and MLX variables at top here set to latest
+       - OFED installed
+       - Internet access for MFT/driver toolsets
+       - Run on first cluster host if range is given
+       - MFT and MLX variables set at top of script
