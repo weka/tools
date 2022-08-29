@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-#version=1.0.39
+#version=1.0.40
 
 # Colors
 export NOCOLOR="\033[0m"
@@ -192,13 +192,13 @@ if [[ "$MAJOR" -eq 3 ]] && [[ "$WEKAMINOR1" -eq 13 ]]; then
   if [ $(weka status -J | awk '/"link_layer"/ {print $2}' | tr -d '"') != ETH ]; then
     WARN "Upgrading to 3.14 not supported. Requires Weka to use Ethernet connectivity. Please reach out to customer success on an ETA for IB support."
   else
-    WARN "Upgrading to 3.14 requires Minimum OFED 4.6"
+    WARN "Upgrading to 3.14 requires Minimum OFED 4.6."
   fi
 fi
 
 if [[ "$MAJOR" -eq 3 ]] && [[ "$WEKAMINOR1" -eq 14 ]]; then
   if [ $(weka status -J | awk '/"link_layer"/ {print $2}' | tr -d '"') = ETH ]; then
-    WARN "Upgrading to 4.0 not supported. Requires Weka to use Ethernet connectivity and minimum Weka version 3.14.1 or greater"
+    WARN "Upgrading to 4.0 not supported. Requires Weka to use Ethernet connectivity and minimum Weka version 3.14.1 or greater."
   fi
 fi
 
@@ -206,7 +206,7 @@ if [[ "$MAJOR" -eq 3 ]] && [[ "$WEKAMINOR1" -eq 14 ]] && [[ "$WEKAMINOR2" -ge 1 
   if [ $(weka status -J | awk '/"link_layer"/ {print $2}' | tr -d '"') != ETH ]; then
     WARN "Upgrading to 4.0 not supported. Requires Weka to use Ethernet connectivity. Please reach out to customer success on an ETA for IB support."
   else
-    WARN "Upgrading to 4.0 requires Minimum OFED 5.1"
+    WARN "Upgrading to 4.0 requires Minimum OFED 5.1."
   fi
 fi
 
@@ -222,7 +222,7 @@ fi
 NOTICE "CHECKING REBUILD STATUS"
 REBUILDSTATUS="$(weka status rebuild -J | awk '/progressPercent/ {print $2}' | tr -d ',')"
 if [ "$REBUILDSTATUS" != 0 ]; then
-  BAD "Rebuilding, CURRENT PROGRESS:$REBUILDSTATUS%"
+  BAD "Rebuilding, CURRENT PROGRESS:$REBUILDSTATUS%."
 else
   GOOD "No rebuild in progress."
 fi
@@ -307,7 +307,7 @@ if [[ "$MAJOR" -eq 3 ]] && [[ "$WEKAMINOR1" -eq 9 ]]; then
       WARN "$(weka cluster nodes $ID -o id,hostname,role)"
     fi
   done
-  GOOD "\nBucket L2BLOCK check completed"
+  GOOD "\nBucket L2BLOCK check completed."
 fi
 
 NOTICE "VERIFYING SSD FIRMWARE"
@@ -339,7 +339,7 @@ if [[ "$WEKATRACE" == "enabled." || "$WEKATRACE" == "RUNNING" ]]; then
   GOOD "Weka traces are enabled."
 else
   BAD "Weka traces are not enabled."
-  WARN "Please enable Weka traces using 'weka debug traces start'"
+  WARN "Please enable Weka traces using 'weka debug traces start'."
 fi
 
 #client version during production can run n-1 however during upgrade they need to be on the same version as cluster otherwise after upgrade they will be n-2.
@@ -359,31 +359,42 @@ if [ -z "$OVERRIDE" ]; then
   GOOD "No manual Weka overrides found."
 else
   OVERRIDE=$(weka debug override list)
-  WARN "Manual Weka overrides found"
-  WARN "\n$OVERRIDE\n"
+  WARN "Manual Weka overrides found."
+  WARN "\n$OVERRIDE"
+fi
+
+if [[ "$MAJOR" -eq 3 ]] && [[ "$WEKAMINOR1" -eq 12 ]]; then
+  if [ $(weka cluster host --no-header | wc -l) -ge "$LARGE_CLUSTER" ]; then
+     NOTICE "VERIFYING TLS SETTINGS"
+     if [ $(echo `weka local run /weka/cfgdump | grep serializedTLSData -n20 | grep state | awk '{gsub("\"",""); print $3 }'`) == NONE ]; then
+      GOOD "TLS is Disabled"
+    else
+      WARN "TLS is Enabled and should be disabled please contact Weka Support."
+    fi
+  fi
 fi
 
 function check_ssh_connectivity() {
   if $SSH -o ConnectTimeout=5 "$1" exit &>/dev/null; then
-    if [[ ! $XCEPT ]] ; then GOOD " [SSH PASSWORDLESS CONNECTIVITY CHECK] SSH connectivity test PASSED on Host $2 $1"
+    if [[ ! $XCEPT ]] ; then GOOD " [SSH PASSWORDLESS CONNECTIVITY CHECK] SSH connectivity test PASSED on Host $2 $1."
     fi
   else
-    BAD " [SSH PASSWORDLESS CONNECTIVITY CHECK] SSH connectivity test FAILED on Host $2 $1"
+    BAD " [SSH PASSWORDLESS CONNECTIVITY CHECK] SSH connectivity test FAILED on Host $2 $1."
     return 1
   fi
 }
 
 function check_jq() {
   if ! $SSH $1 command -v jq &>/dev/null; then
-    BAD " [JQ CHECK ROLLING UPGRADE] 'jq' executable was not found on host $2"
+    BAD " [JQ CHECK ROLLING UPGRADE] 'jq' executable was not found on host $2."
   else
-    GOOD " [JQ CHECK ROLLING UPGRADE] 'jq is installed on host $2'"
+    GOOD " [JQ CHECK ROLLING UPGRADE] 'jq is installed on host $2'."
   fi
 }
 
 function weka_user_login() {
 if [ "$1" == "error: Authentication Failed: " ]; then
-  BAD " [WEKA USER LOGIN TEST ROLLING UPGRADE] Please login using weka user login on host $2"
+  BAD " [WEKA USER LOGIN TEST ROLLING UPGRADE] Please login using weka user login on host $2."
 else
   GOOD " [WEKA USER LOGIN TEST ROLLING UPGRADE] Weka user login successful on host $2."
 fi
@@ -391,10 +402,10 @@ fi
 
 function weka_agent_service() {
   if [ "$1" == "active" ]; then
-    if [[ ! $XCEPT ]] ; then GOOD " [WEKA AGENT SERVICE] Weka Agent Serivce is running on host $2"
+    if [[ ! $XCEPT ]] ; then GOOD " [WEKA AGENT SERVICE] Weka Agent Serivce is running on host $2."
     fi
   else
-    BAD " [WEKA AGENT SERVICE] Weka Agent Serivce is NOT running on host $2"
+    BAD " [WEKA AGENT SERVICE] Weka Agent Serivce is NOT running on host $2."
   fi
 }
 
@@ -457,15 +468,15 @@ function freespace_backend() {
 
   if [ "$1" -lt "$HOSTSPACE1" ]; then
     BAD " [FREE SPACE CHECK] Host $3 has less than recommended free space of ~$(($1 / 1000))GB in $LOGSDIR1."
-    WARN "  [REDUCE TRACES CAPACITY & INCREASE DIRECTORY SIZE] https://stackoverflow.com/c/weka/questions/1785/1786#1786"
+    WARN "  [REDUCE TRACES CAPACITY & INCREASE DIRECTORY SIZE] https://stackoverflow.com/c/weka/questions/1785/1786#1786."
   else
     if [[ ! $XCEPT ]] ; then GOOD " [FREE SPACE CHECK] Host $3 has recommended free space of ~$(($1 / 1000))GB in $LOGSDIR1."
       fi
   fi
 
   if [[ "$TOTALHOSTS" -ge "$LARGE_CLUSTER" && "$2" -lt "$HOSTSPACE2" ]]; then
-    BAD " [FREE SPACE CHECK] Host $3 has less than recommended free space of $2MB in $LOGSDIR2"
-    WARN "  [REDUCE TRACES CAPACITY & INCREASE DIRECTORY SIZE] https://stackoverflow.com/c/weka/questions/1785/1786#1786"
+    BAD " [FREE SPACE CHECK] Host $3 has less than recommended free space of $2MB in $LOGSDIR2."
+    WARN "  [REDUCE TRACES CAPACITY & INCREASE DIRECTORY SIZE] https://stackoverflow.com/c/weka/questions/1785/1786#1786."
     return 1
   fi
 
@@ -504,8 +515,8 @@ function weka_ip_cleanup() {
     if [[ ! $XCEPT ]] ; then GOOD " [CHECKING IP WEKA RESOURCES] $1 invalid IP addresses found in Weka resources on Host $2."
     fi
   else
-    BAD " [CHECKING IP WEKA RESOURCES] $1 Invalid IP addresses in weka resources found on Host $2. Need to run update_backend_ips.py on this backend"
-    WARN "  [CHECKING IP WEKA RESOURCES] https://wekaio.atlassian.net/wiki/spaces/MGMT/pages/1503330580/Cleaning+up+backend+IPs+on+systems+upgraded+to+3.8"
+    BAD " [CHECKING IP WEKA RESOURCES] $1 Invalid IP addresses in weka resources found on Host $2. Need to run update_backend_ips.py on this backend."
+    WARN "  [CHECKING IP WEKA RESOURCES] https://wekaio.atlassian.net/wiki/spaces/MGMT/pages/1503330580/Cleaning+up+backend+IPs+on+systems+upgraded+to+3.8."
   fi
 }
 
@@ -533,21 +544,21 @@ function freespace_client() {
 
   if [ "$1" -lt "$CLIENTSPACE1" ]; then
     BAD " [FREE SPACE CHECK] Host $3 has Less than Recommended Free Space of $(($1 / 1000))GB in $LOGSDIR1."
-    WARN " [REDUCE TRACES CAPACITY & INCREASE DIRECTORY SIZE] https://stackoverflow.com/c/weka/questions/1785/1786#1786"
+    WARN " [REDUCE TRACES CAPACITY & INCREASE DIRECTORY SIZE] https://stackoverflow.com/c/weka/questions/1785/1786#1786."
   else
     if [[ ! $XCEPT ]] ; then GOOD " [FREE SPACE CHECK] Host $3 has Recommended Free Space of $(($1 / 1000))GB in $LOGSDIR1."
     fi
   fi
 
   if [[ "$TOTALHOSTS" -ge "$LARGE_CLUSTER" && "$2" -lt "$CLIENTSPACE2" ]]; then
-    BAD " [FREE SPACE CHECK] Host $3 has Less than Recommended Free Space of $2MB in $LOGSDIR2"
-    WARN " [REDUCE TRACES CAPACITY & INCREASE DIRECTORY SIZE] https://stackoverflow.com/c/weka/questions/1785/1786#1786"
+    BAD " [FREE SPACE CHECK] Host $3 has Less than Recommended Free Space of $2MB in $LOGSDIR2."
+    WARN " [REDUCE TRACES CAPACITY & INCREASE DIRECTORY SIZE] https://stackoverflow.com/c/weka/questions/1785/1786#1786."
     return 1
   fi
 
   if [ "$2" -lt "$CLIENTSPACEMIN" ]; then
     BAD " [FREE SPACE CHECK] Host $3 has Less than Recommended Free Space of $2MB in $LOGSDIR2."
-    WARN "  [REDUCE TRACES CAPACITY & INCREASE DIRECTORY SIZE] https://stackoverflow.com/c/weka/questions/1785/1786#1786"
+    WARN "  [REDUCE TRACES CAPACITY & INCREASE DIRECTORY SIZE] https://stackoverflow.com/c/weka/questions/1785/1786#1786."
   else
     if [[ ! $XCEPT ]] ; then GOOD " [FREE SPACE CHECK] Host $3 has Recommended Free Space of $2MB in $LOGSDIR2."
     fi
@@ -618,7 +629,7 @@ local CURHOST REMOTEDATE WEKACONSTATUS RESULTS1 RESULTS2 UPGRADECONT MOUNTWEKA S
   fi
 
   if [ $XCEPT ];then
-    WARN "Backend host checks completed please see logs for details $LOG"
+    WARN "Backend host checks completed please see logs for details $LOG."
   fi
 }
 
@@ -651,7 +662,7 @@ local CURHOST REMOTEDATE WEKACONSTATUS RESULTS1 RESULTS2 UPGRADECONT MOUNTWEKA
   upgrade_container "$UPGRADECONT" "$CURHOST"
 
   if [ $XCEPT ];then
-    WARN "Client checks completed please see logs for details $LOG"
+    WARN "Client checks completed please see logs for details $LOG."
   fi
 }
 
