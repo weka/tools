@@ -366,7 +366,7 @@ fi
 if [[ "$MAJOR" -eq 3 ]] && [[ "$WEKAMINOR1" -eq 12 ]]; then
   if [ $(weka cluster host --no-header | wc -l) -ge "$LARGE_CLUSTER" ]; then
      NOTICE "VERIFYING TLS SETTINGS"
-     if [ $(echo `weka local run /weka/cfgdump | grep serializedTLSData -n20 | grep state | awk '{gsub("\"",""); print $3 }'`) == NONE ]; then
+     if [ $(weka local run /weka/cfgdump | grep serializedTLSData -n20 | grep state | awk '{gsub("\"",""); print $3 }') == NONE ]; then
       GOOD "TLS is Disabled"
     else
       WARN "TLS is Enabled and should be disabled please contact Weka Support."
