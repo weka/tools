@@ -102,9 +102,9 @@ else
     NUM_HOSTS=0
     for HOST in $*; do
         let NUM_HOSTS=NUM_HOSTS+1
-                ssh $HOST 'hostname; for i in `ls /dev/mst/mt412*f[0-1]`; do mlxconfig -y -d $i s ADVANCED_PCI_SETTINGS=1 PCI_WR_ORDERING=1; done'
+                ssh $HOST 'hostname; for i in `ls /dev/mst/mt41*f[0-1]`; do mlxconfig -y -d $i s ADVANCED_PCI_SETTINGS=1 PCI_WR_ORDERING=1; done'
         echo -e "\n Settings ADVANCED_PCI_SETTINGS and PCI_WR_ORDERING set to 1 for 30% perf gain!: "
-                ssh $HOST 'hostname; for i in `ls /dev/mst/mt412*f[0-1]`; do ls $i; mlxconfig -d $i q |grep -e ADVANCED_PCI_SETTINGS -e PCI_WR_ORDERING; done'
+                ssh $HOST 'hostname; for i in `ls /dev/mst/mt41*f[0-1]`; do ls $i; mlxconfig -d $i q |grep -e ADVANCED_PCI_SETTINGS -e PCI_WR_ORDERING; done'
    done
 fi
 
