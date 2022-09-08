@@ -14,7 +14,7 @@
 #
 
 # EDIT below location for latest MFT tool. Check https://network.nvidia.com/products/adapter-software/firmware-tools/
-MFT=https://www.mellanox.com/downloads/MFT/mft-4.20.1-14-x86_64-rpm.tgz
+MFT=https://www.mellanox.com/downloads/MFT/mft-4.21.0-99-x86_64-rpm.tgz
 
 # EDIT below location for latest mlxup tool for firmware updates. Check https://network.nvidia.com/support/firmware/mlxup-mft/
 MLX=https://www.mellanox.com/downloads/firmware/mlxup/4.21.0/SFX/linux_x64/mlxup
@@ -43,10 +43,10 @@ for HOST in $*; do
                         echo "Next!"
                         continue
                 else
-                        ssh $HOST "cd /tmp; wget -qcp $MFT &> /dev/null"
+                        ssh $HOST "cd /tmp; wget $MFT &> /dev/null"
                         ssh $HOST yum install -y libelf-dev libelf-devel elfutils-libelf-devel > /dev/null 2>&1
                         ssh $HOST apt-get -y install -y libelf-dev libelf-devel elfutils-libelf-devel > /dev/null 2>&1
-                        ssh $HOST "cd /tmp; tar -xvf mft*.tgz; cd /tmp/mft-*rpm; sudo ./install.sh > /dev/null 2>&1"
+                        ssh $HOST "cd /tmp; tar -xvf mft*.tgz; cd mft-*rpm; sudo ./install.sh > /dev/null 2>&1"
                         echo "Starting mst on host $HOST"
                         ssh $HOST mst start > /dev/null 2>&1; mst version
                 fi
@@ -66,7 +66,7 @@ for HOST in $*; do
                         exit
                         else
                                 echo $HOST
-                                ssh $HOST "cd /tmp; wget -p $MFT &> /dev/null"
+                                ssh $HOST "cd /tmp; wget $MFT &> /dev/null"
                                 ssh $HOST "cd /tmp; tar -xvf mft*.tgz; cd /tmp/mft-*rpm; sudo ./install.sh > /dev/null 2>&1"
                                 echo "Starting mst on host $HOST"
                                 ssh $HOST "mst start > /dev/null 2>&1; mst version"
@@ -87,7 +87,7 @@ for HOST in $*; do
                         echo "Would you like to check for newer version(s)? (yn): "
                         read ANS
                         if [ "$ANS" = "y" ]; then
-                                ssh $HOST "cd /tmp; wget -p $MLX &> /dev/null; chmod +x mlxup; ./mlxup"
+                                ssh $HOST "cd /tmp; wget $MLX &> /dev/null; chmod +x mlxup; ./mlxup; rm -f mlxup.*"
                         else
                                 continue
                         fi
