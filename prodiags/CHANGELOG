@@ -69,3 +69,9 @@ Added support for Weka version 3.13 and 3.14 - updated scripts, binary and tests
 
 8/8/2022
 Removed connection to non weka domains, might break functionality of ipmi tests, if some packages are missing from the install
+
+9/8/2022
+Fixed few scripts and ipmitool / ipmiutil installations for both Debian and RHEL based systems
+Updated properly the Python binary to include the testbank and lib
+Would ask for username and password (the password must be the same between servers!!) will not run as non root user
+

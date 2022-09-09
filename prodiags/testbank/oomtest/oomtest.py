@@ -25,9 +25,19 @@ function testrun () {
 barline
 testname
 
-/usr/bin/grep -i 'Out of Memory' /var/log/messages*
-if [ $? -eq 0 ]; then 
-        res="1"
+# Check if Debian based OS
+which lsb_release 1> /dev/null 2> /dev/null
+if [ $? -eq 1 ]; then
+	/usr/bin/grep -i 'Out of Memory' /var/log/messages*
+	if [ $? -eq 0 ]; then 
+        	res="1"
+	fi
+
+else
+	/usr/bin/grep -i 'Out of Memory' /var/log/syslog*
+	if [ $? -eq 0 ]; then 
+        	res="1"
+	fi
 fi
 
 }

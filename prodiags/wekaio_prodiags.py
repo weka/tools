@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-import pathlib,os,sys,argparse,json,config,traceback,requests,io,tarfile,socket
+import getpass,pathlib,os,sys,argparse,json,config,traceback,requests,io,tarfile,socket
 from threading import Thread
 from time import sleep
 from random import randint
+# Remove the cryptography warning
+import warnings 
+warnings.filterwarnings(action='ignore',module='.*paramiko.*')
 from scp import SCPClient
 from paramiko import SSHClient,AutoAddPolicy
-import os
 
 def threaded(fn):
     """
@@ -59,7 +61,7 @@ class Generic:
             sys.exit()
         else:
             return 0
-
+    
 # Connection class to perform SSH commands on remote server
 class Connection:
     def __init__(self,server):
@@ -132,6 +134,8 @@ class Tester:
 
     # Getting list of servers output from weka cluster host command performed locally on backend system
     def get_servers(self):
+        user_name = input('Enter username: ')
+        pass_word = getpass.getpass('Enter password for user: ')
         ver = self.get_weka_version()
         if ver in ("3.9","3.10","3.11","3.12","3.13","3.14"):
             lst = os.popen("/usr/bin/weka cluster host -b --no-header | grep UP | awk {'print $3'} | sed 's/,//g' | uniq | sort").read().split()
@@ -140,7 +144,7 @@ class Tester:
         else:
             print('Weka version '+ver+' is not supported by WekaIO_ProDiags tool')
             sys.exit(1)
-        return [Connection({'host':ip,'username':config.USERNAME,'password':config.PASSWORD}) for ip in lst]
+        return [Connection({'host':ip,'username':user_name,'password':pass_word}) for ip in lst]
 
     # Testbank directory within the tool directory includes the tests fo runtime
     def get_tests(self):

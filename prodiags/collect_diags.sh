@@ -12,11 +12,16 @@ now=$(date +"%m-%d-%Y_%H-%M-%S")
 cluster_name=""
 log_fname="/var/log/WekaIO_ProDiags.log"
 
-internet_host="lib.ru"
+internet_host="127.0.0.1"
 
 function check_outer_space()
 {
 # Function to check internet connection
+
+# Will not collect logs, depracated
+echo "We are no longer collecting logs from WekaIO_ProDiags tool, please look in /var/log/WekaIO_ProDiags.log"
+exit 1
+
 ping -c 1 -W 1 $internet_host 1> /dev/null 2> /dev/null
 if [ $? -ne 0 ]; then
 	echo "Internet connection is unavailable, not collecting logs"
