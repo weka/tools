@@ -56,9 +56,9 @@ CONST_RESOURCES = dict(
     auto_remove_timeout=0,
     backend_endpoints=[],
     bandwidth=0,
-    cpu_governor="UNCONFIGURED",
-    dedicate_memory=False,
-    disable_numa_balancing=False,
+    cpu_governor="PERFORMANCE",
+    dedicate_memory=True,
+    disable_numa_balancing=True,
     drives=[],
     failure_domain="",
     format=3,
@@ -68,7 +68,7 @@ CONST_RESOURCES = dict(
     ignore_clock_skew=False,
     ips=["127.0.0.1"],
     join_secret=[],
-    mask_interrupts=False,
+    mask_interrupts=True,
     memory=0,
     mode="BACKEND",
     net_devices=[],
@@ -221,6 +221,7 @@ class ResourcesGenerator:
         self.numa_nodes_info = []
         self.next_base_port = INITIAL_BASE_PORT
         self.exclusive_nics_policy = is_cloud_env()
+        self.is_DEFAULT_DRIVES_BASE_PORT_used = False
 
     def set_user_args(self):
         """parses command line arguments"""
@@ -397,7 +398,8 @@ class ResourcesGenerator:
                 return
 
     def _get_next_base_port(self, role):
-        if role == DRIVE_ROLE:
+        if role == DRIVE_ROLE and not self.is_DEFAULT_DRIVES_BASE_PORT_used:
+            self.is_DEFAULT_DRIVES_BASE_PORT_used = True
             return DEFAULT_DRIVES_BASE_PORT
         else:
             current_port = self.next_base_port
@@ -853,6 +855,8 @@ class ResourcesGenerator:
     def find_unmounted_devices(self):
         """Get all /dev/nvme* (or relevant oraclevd in OCI) devices on the machine that are not mounted anywhere"""
         all_mounted_devices = os.popen("cat /proc/mounts").read().strip().splitlines()
+        all_mounted_devices_from_mount = os.popen("mount -l").read().strip().splitlines()
+        all_mounted_devices += all_mounted_devices_from_mount
         swaps = os.popen("cat /proc/swaps").read().splitlines()[1:]
 
         def _is_nvme(dev):
