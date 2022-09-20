@@ -24,22 +24,22 @@ Dell:
     #WorkloadConfiguration: Balance
 Hpe:
   AMD:
-    ApplicationPowerBoost: Disabled
-    CStateEfficiencyMode: Disabled
-    DataFabricCStateEnable: Disabled
-    DeterminismControl: DeterminismCtrlManual
-    InfinityFabricPstate: P0
-    LastLevelCacheAsNUMANode: Disabled
-    MinProcIdlePower: NoCStates
-    NumaGroupSizeOpt: Clustered
-    NumaMemoryDomainsPerSocket: TwoMemoryDomainsPerSocket
-    PerformanceDeterminism: PerformanceDeterministic
-    PowerRegulator: StaticHighPerf
-    ProcAmdIoVt: Disabled
-    ProcSMT: Disabled
+    ApplicationPowerBoost: Enabled
+    DeterminismControl: DeterminismCtrlAuto
+    NumaMemoryDomainsPerSocket: OneMemoryDomainPerSocket
+    ProcAmdIoVt: Enabled
     Sriov: Enabled
     ThermalConfig: IncreasedCooling
-    WorkloadProfile: I/OThroughput
+    WorkloadProfile: GeneralThroughputCompute
+    CStateEfficiencyMode: Disabled
+    DataFabricCStateEnable: Disabled
+    InfinityFabricPstate: P0
+    MinProcIdlePower: NoCStates
+    NumaGroupSizeOpt: Clustered
+    PerformanceDeterminism: PerformanceDeterministic
+    PowerRegulator: StaticHighPerf
+    ProcSMT: Disabled
+    ProcAmdIoVt: Disabled
   Intel:
     IntelProcVtd: Disabled
     ThermalConfig: IncreasedCooling
