@@ -43,7 +43,10 @@ OPTIONS:
   -s skip failed hosts
   -d override drain grace period for s3 in seconds
   -b to perform conversion on a single host
-  -l log file will be saved to this location insted of current dir
+  -l log file will be saved to this location instead of current dir
+  -D assign drive dedicated cores (use only for on-prem deployment, this will override pinned cores)
+  -F assign frontend dedicated cores (use only for on-prem deployment, this will override pinned cores)
+  -C assign compute dedicated cores (use only for on-prem deployment, this will override pinned cores)
   -h show this help string
 ```
 

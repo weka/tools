@@ -42,13 +42,17 @@ OPTIONS:
   -s skip failed hosts
   -d override drain grace period for s3 in seconds
   -b to perform conversion on a single host
-  -l log file will be saved to this location insted of current dir
+  -l log file will be saved to this location instead of current dir
+  -D assign drive dedicated cores (use only for on-prem deployment, this will override pinned cores)
+  -F assign frontend dedicated cores (use only for on-prem deployment, this will override pinned cores)
+  -C assign compute dedicated cores (use only for on-prem deployment, this will override pinned cores)
+  -m override max memory memory assignment after conversion (value should be given in GiB
   -h show this help string
 EOF
 exit
 }
 
-while getopts "hfasd:b:Sl:v" o; do
+while getopts "hfasd:b:Sl:vC:D:F:m:" o; do
     case "${o}" in
         f)
             FORCE='--force'
@@ -63,12 +67,12 @@ while getopts "hfasd:b:Sl:v" o; do
             echo "Option -s will skip failed host"
             ;;
         d)
-            DRAIN_TIMEOUT='--s3-drain-gracetime '$OPTARG
+            DRAIN_TIMEOUT='--s3-drain-gracetime '$OPTARG' '
             echo "Option -d set drain grace period to $OPTARG second"
             ;;
         b)
             BACKEND=${OPTARG}
-            echo "Option -b will run conversion on  $BACKEND"
+            echo "Option -b will run conversion on $BACKEND"
             ;;
         S)
             SILENT=1
@@ -80,6 +84,22 @@ while getopts "hfasd:b:Sl:v" o; do
         v)
             SKIP_VERSION_CHECK=1
             echo "Skipping version check"
+            ;;
+        D)
+            DRIVE_CORES='--drive-dedicated-cores '$OPTARG
+            echo "Option -D set drive cores to $OPTARG"
+            ;;
+        C)
+            COMPUTE_CORES='--compute-dedicated-cores '$OPTARG
+            echo "Option -C set compute cores to $OPTARG"
+            ;;
+        F)
+            FRONTEND_CORES='--frontend-dedicated-cores '$OPTARG
+            echo "Option -F set frontend cores to $OPTARG"
+            ;;
+        m)
+            LIMIT_MEMORY='--limit-maximum-memory '$OPTARG
+            echo "Option -m set limit maximum memory to  $OPTARG GiB"
             ;;
         h)
             usage
@@ -196,7 +216,7 @@ NOTICE "VERIFYING WEKA VERSION"
   MAJOR=$(echo "$WEKA_VERSION" | cut -d "." -f1)
   WEKAMINOR1=$(echo "$WEKA_VERSION" | cut -d "." -f2)
   WEKAMINOR2=$(echo "$WEKA_VERSION" | cut -d "." -f3 | tr -dc '0-9')
-if [ "$MAJOR" -eq 4 ] || [[ "$MAJOR" -eq 3 && "$WEKAMINOR1" -ge 14 && "$WEKAMINOR2" -ge 2 ]]; then
+if [ "$MAJOR" -eq 4 ] || [[ "$MAJOR" -eq 3 && "$WEKAMINOR1" -ge 14 && "$WEKAMINOR2" -ge 2 ]] || [ "$SKIP_VERSION_CHECK" -eq "1" ]; then
   GOOD "Supported Weka version $WEKA_VERSION"
   else
   BAD "Unsupported Weka version, this script support version 3.14.3 and up, current version $WEKA_VERSION"
@@ -233,7 +253,7 @@ fi
 
 NOTICE "CHECKING FOR ANY ALERTS"
 WEKAALERTS="$(weka alerts)"
-if [ "$WEKAALERTS" != "0" ]; then
+if [ "$WEKAALERTS" != "" ]; then
   WARN "$WEKAALERTS Weka alerts present, for additional details see log ${LOG}."
   logit "\n$(weka alerts)"
   if [ $ALERTS_SKIP -ne 1 ]; then
@@ -345,7 +365,7 @@ NOTICE "DISTRIBUTING FILE TO HOST $1"
 NOTICE "======================================
 EXECUTING CONVERSION TO MBC ON HOST $1
 ======================================"
-  ssh "$1" "$DIR/mbc_divider_script.py $AWS $FORCE $DRAIN_TIMEOUT" 2>&1 | tee -a ${LOG}
+  ssh "$1" "$DIR/mbc_divider_script.py $AWS $FORCE $DRAIN_TIMEOUT $DRIVE_CORES $COMPUTE_CORES $FRONTEND_CORES $LIMIT_MEMORY" 2>&1 | tee -a ${LOG}
 if [ "${PIPESTATUS[0]}" != "0" ]; then
     BAD "UNABLE TO CONVERT HOST $1"
     return 1

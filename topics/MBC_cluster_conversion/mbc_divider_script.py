@@ -12,7 +12,7 @@ from time import sleep
 import re
 from urllib import request, error
 from concurrent.futures import ThreadPoolExecutor
-
+from resources_generator import GiB
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s %(levelname)s: %(message)s',
                     datefmt='%m/%d/%Y %I:%M:%S %p')
 logger = logging.getLogger('mbc divider')
@@ -87,8 +87,10 @@ class NetDev:
             addr_file = os.path.join(path, dev_name, 'address')
             with open(addr_file) as f:
                 return next(f).strip()
+        net_suffix = ''
+        if self.ips:
+            net_suffix = '/' + '+'.join(self.ips) + '/' + str(self.netmask) + '/' + self.gateway
 
-        net_suffix = '/' + '+'.join(self.ips) + '/' + str(self.netmask) + '/' + self.gateway
         if _is_pci_address(self.name) and self.mac_address:
             return self.mac_address + net_suffix
         elif self.name:
@@ -114,6 +116,14 @@ def main():
                         help='Override backup resources')
     parser.add_argument('--s3-drain-gracetime', '--d', nargs="?", default=11, type=int, dest="s3_drain_gracetime",
                         help='Set a gracetime for s3 drain')
+    parser.add_argument('--drive-dedicated-cores', '--D', nargs="?", default=0, type=int, dest="drive_dedicated_cores",
+                        help='Set drive-dedicated-cores')
+    parser.add_argument('--compute-dedicated-cores', '--C', nargs="?", default=0, type=int,
+                        dest="compute_dedicated_cores", help='Set compute_dedicated_cores')
+    parser.add_argument('--frontend-dedicated-cores', '--F', nargs="?", default=0, type=int,
+                        dest="frontend_dedicated_cores", help='Set frontend_dedicated_cores')
+    parser.add_argument('--limit-maximum-memory', '--m', nargs="?", default=0, type=float,
+                        dest="limit_maximum_memory", help='override maximum memory in GiB')
     args = parser.parse_args()
     global dry_run
     dry_run = args.dry_run
@@ -167,14 +177,17 @@ def main():
     server_info = json.loads(run_shell_command(get_host_id_command))
     current_host_id = int(server_info['hostIdValue'])
 
-    compute_cores = 0
     pinned_compute_cores = []
     pinned_frontend_cores = []
     pinned_drive_cores = []
-    frontend_cores = 0
-    drive_cores = 0
+    compute_cores = args.compute_dedicated_cores
+    frontend_cores = args.frontend_dedicated_cores
+    drive_cores = args.drive_dedicated_cores
     failure_domain = prev_resources['failure_domain']
     memory = prev_resources['memory']
+    if args.limit_maximum_memory:
+        memory = int(args.limit_maximum_memory * GiB)
+
     management_ips = '--management-ips ' + ','.join(prev_resources['ips'])
     if failure_domain:
         failure_domain = '--failure-domain ' + failure_domain
@@ -184,15 +197,15 @@ def main():
         if len(roles) > 1:
             logger.warning("This script does not support multiple node roles. Please contact costumer support")
             exit(1)
-        if roles[0] == "COMPUTE":
+        if roles[0] == "COMPUTE" and not args.compute_dedicated_cores:
             compute_cores += 1
             if coreId != 4294967295:
                 pinned_compute_cores.append(coreId)
-        elif roles[0] == "DRIVES":
+        elif roles[0] == "DRIVES" and not args.drive_dedicated_cores:
             drive_cores += 1
             if coreId != 4294967295:
                 pinned_drive_cores.append(coreId)
-        elif roles[0] == "FRONTEND":
+        elif roles[0] == "FRONTEND" and not args.frontend_dedicated_cores:
             frontend_cores += 1
             if coreId != 4294967295:
                 pinned_frontend_cores.append(coreId)
@@ -201,6 +214,8 @@ def main():
         exit(1)
     network_devices = []
 
+    get_host_list = '/bin/sh -c "weka cluster host -b -J"'
+    weka_hosts_list = json.loads(run_shell_command(get_host_list))
     get_net_cmd = '/bin/sh -c "weka cluster host net {} -J"'.format(current_host_id)
     net_devs = json.loads(run_shell_command(get_net_cmd))
     for netDev in net_devs:
@@ -347,10 +362,13 @@ def main():
 
     join_ips = '--join-ips='
     join_ips_list = []
-    for ip_port in prev_resources['backend_endpoints']:
-        if ip_port['ip'] == prev_resources['ips'][0]:
+    for host in weka_hosts_list:
+        if host['ips'][0] == prev_resources['ips'][0]:
             continue
-        join_ips_list.append(str(ip_port['ip']) + ':' + str(ip_port['port']))
+        join_ips_list.append(str(host['ips'][0]) + ':' + str(host['mgmt_port']))
+        if len(join_ips_list) > 10:
+            break
+
     join_ips += ','.join(join_ips_list)
     logger.debug('IPs for Joining the cluster: {}'.format(join_ips))
 
@@ -378,7 +396,7 @@ def main():
         for core_id in pinned_frontend_cores:
             frontend_cores_cmd += str(core_id) + ' '
 
-    memory_cmd = ' --compute-memory ' + str(memory) if memory else ''
+    memory_cmd = ' --weka-hugepages-memory ' + str(memory) + 'B' if memory else ''
     resource_generator_command = '/bin/sh -c "/tmp/resources_generator.py --net {}{}{}{}{} -f"'.format(
         all_net,
         compute_cores_cmd,
