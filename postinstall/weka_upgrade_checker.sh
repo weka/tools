@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-#version=1.0.41
+#version=1.0.42
 
 # Colors
 export NOCOLOR="\033[0m"
@@ -499,6 +499,16 @@ function upgrade_container() {
   fi
 }
 
+function stats_usage_check() {
+  if [ $1 -le 5000 ]; then
+    if [[ ! $XCEPT ]] ; then GOOD " [STATS DIR USAGE] Stats directory is ok Host $2."
+    fi
+  else
+    BAD " [STATS DIR USAGE] Stats directory is too large on Host $2 current usage $(($1 / 1000))GB. Use 'weka stats retention set' command to reduce usage "
+  fi
+
+}
+
 # Check for any Weka filesystems mountd on /weka
 function weka_mount() {
   if [ -z "$1" ]; then
@@ -591,6 +601,9 @@ local CURHOST REMOTEDATE WEKACONSTATUS RESULTS1 RESULTS2 UPGRADECONT MOUNTWEKA S
   RESULTS1=$($SSH "$1" df -m "$LOGSDIR1" | awk '{print $4}' | tail -n +2)
   RESULTS2=$($SSH "$1" df -m "$LOGSDIR2" | awk '{print $4}' | tail -n +2)
   freespace_backend "$RESULTS1" "$RESULTS2" "$CURHOST"
+
+  STATSDIR=$($SSH "$1" "du -sm /opt/weka/data/default_$(weka version current)/current/stats | cut -f1")
+  stats_usage_check "$STATSDIR" "$CURHOST"
 
   MOUNTWEKA=$($SSH "$1" "mountpoint -qd /weka/")
   weka_mount "$MOUNTWEKA" "$CURHOST"
