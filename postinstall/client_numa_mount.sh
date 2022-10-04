@@ -45,4 +45,4 @@ for HOST in $*; do
         CORE_OPTION=`for i in "${CORES[@]}"; do echo -n "-o core=$i ";  done`
         echo -e "mount -t wekafs $CORE_OPTION-o net=$NIC <backend2>,$WEKA_IP/<fs> /mnt/<path>\n"
 
-exit
+done
