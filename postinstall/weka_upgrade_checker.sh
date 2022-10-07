@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-#version=1.0.43
+#version=1.0.44
 
 # Colors
 export NOCOLOR="\033[0m"
@@ -363,6 +363,17 @@ else
   WARN "\n$OVERRIDE"
 fi
 
+NOTICE "CHECKING WEKA STATS RETENTION"
+if [[ "$MAJOR" -eq 3 ]] && [[ "$WEKAMINOR1" -eq 14 ]] || [[ "$MAJOR" -ge 4 ]]; then
+STATSRETENTION=$(weka stats retention status -J | awk '/"retention_secs":/ {print $2}' | cut -d'"' -f2 | tr -d ",")
+  if [ "$STATSRETENTION" -le 172800 ]; then
+    GOOD "Weka stats retention settings are set correctly."
+  else
+    BAD "Prior to upgrading Weka, stats rention should be set to 2 days, use 'weka stats retention set --days 2' revert settings after the upgrade using 'weka stats retention set --days 7'."
+  fi
+fi
+
+
 if [[ "$MAJOR" -eq 3 ]] && [[ "$WEKAMINOR1" -eq 12 ]]; then
   if [ $(weka cluster host --no-header | wc -l) -ge "$LARGE_CLUSTER" ]; then
      NOTICE "VERIFYING TLS SETTINGS"
@@ -499,16 +510,6 @@ function upgrade_container() {
   fi
 }
 
-function stats_usage_check() {
-  if [ $1 -le 5000 ]; then
-    if [[ ! $XCEPT ]] ; then GOOD " [STATS DIR USAGE] Stats directory is ok Host $2."
-    fi
-  else
-    BAD " [STATS DIR USAGE] Stats directory is too large on Host $2 current usage $(($1 / 1000))GB. Use 'weka stats retention set' command to reduce usage "
-  fi
-
-}
-
 # Check for any Weka filesystems mountd on /weka
 function weka_mount() {
   if [ -z "$1" ]; then
@@ -601,9 +602,6 @@ local CURHOST REMOTEDATE WEKACONSTATUS RESULTS1 RESULTS2 UPGRADECONT MOUNTWEKA S
   RESULTS1=$($SSH "$1" df -m "$LOGSDIR1" | awk '{print $4}' | tail -n +2)
   RESULTS2=$($SSH "$1" df -m "$LOGSDIR2" | awk '{print $4}' | tail -n +2)
   freespace_backend "$RESULTS1" "$RESULTS2" "$CURHOST"
-
-  STATSDIR=$($SSH "$1" "du -sm /opt/weka/data/default_$(weka version current)/current/stats | cut -f1")
-  stats_usage_check "$STATSDIR" "$CURHOST"
 
   MOUNTWEKA=$($SSH "$1" "mountpoint -qd /weka/")
   weka_mount "$MOUNTWEKA" "$CURHOST"
