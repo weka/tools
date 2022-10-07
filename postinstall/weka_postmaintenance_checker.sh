@@ -21,6 +21,7 @@ fe_ssd_extra_load_threshold=250
 max_read_blocks=128
 ssd_base_load=24
 rdma_readbinding_expiration_timeout_secs=240
+allow_prefix_mismatch_on_expected_prefix=1151546163
 
 function NOTICE() {
 echo -e "\n${CYAN}$1${NOCOLOR}"
@@ -47,8 +48,10 @@ TRACE=$(weka debug override list -o key,value --no-header | grep trace_load_loca
 FESSD=$(weka debug override list -o key,value --no-header | grep fe_ssd_extra_load_threshold | awk '{print $2}')
 MAXREAD=$(weka debug override list -o key,value --no-header | grep max_read_blocks | awk '{print $2}')
 SSDBASE=$(weka debug override list -o key,value --no-header | grep ssd_base_load | awk '{print $2}')
-RDMAWRITE=$(weka debug override list -o key,value --no-header | grep rdma_force_disable_write | awk '{print $2}')
+RDMAWRITE=$(weka debug override list -o key,value --no-header | grep rdma_force_disable_write | awk '{print $1}')
 RDMABINDING=$(weka debug override list -o key,value --no-header | grep rdma_readbinding_expiration_timeout_secs | awk '{print $2}')
+MISMATCHPREFIX=$(weka debug override list -o key,value,bucketId --no-header | grep allow_prefix_mismatch_on_expected_prefix | awk '{print $2,$3}')
+STALLCOPIES=$(weka debug override list -o key,value --no-header | grep stall_secondary_copies_seek | awk '{print $1}')
 GRIMREAPER=$(weka status -J | grep -A1 grim_reaper | grep enabled | awk '{print $2}' | tr -d ',')
 
 
@@ -138,6 +141,20 @@ elif [ "$RDMABINDING" != "$rdma_readbinding_expiration_timeout_secs" ]; then
 fi
 }
 
+function _prefixmismatch() {
+if [ -z "$MISMATCHPREFIX" ]; then 
+    WARN "Missing Manual Override Key allow_prefix_mismatch_on_expected_prefix"
+elif [ "$MISMATCHPREFIX" != "$allow_prefix_mismatch_on_expected_prefix" ] || [ $(echo $MISMATCHPREFIX | cut -d' ' -f2) -ne 66 ] ; then
+    WARN "Overide setting incorrect set allow_prefix_mismatch_on_expected_prefix should be $allow_prefix_mismatch_on_expected_prefix on BucketId 66)"
+fi
+}
+
+function _stallcopies() {
+if [ -z "$STALLCOPIES" ]; then 
+    WARN "Missing Manual Override Key stall_secondary_copies_seek"
+fi
+}
+
 function _grimreaper() {
 if [ "$GRIMREAPER" == "true" ]; then 
     WARN "Grim Reaper should be disabled"
@@ -177,7 +194,12 @@ if [ "$CLUSTERNAME" == starkeast02 ]; then
 fi
 
 if [ "$CLUSTERNAME" == stark03-intel ]; then
-    blah
+    _clusterlease
+    _hbgrace
+    _hbtimeout
+    _prefixmismatch
+    _stallcopies
+    _grimreaper
 fi
 
 NOTICE "ALL CHECKS COMPLETE"
