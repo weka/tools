@@ -21,7 +21,7 @@ if [ -z "$created_user_password" ]; then
 fi
 # Add user
 # Check if that user already exists, if yes, we will ask the running user for permission to delete that directory
-if [ -d /home/$crated_user ]; then
+if [ -d /home/$created_user ]; then
 	echo "\r"
 	echo -n "The following user exists, would you like to remove it? (yes/no): "; read ret;
 	case $ret in
