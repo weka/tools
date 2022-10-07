@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-#version=1.0.42
+#version=1.0.43
 
 # Colors
 export NOCOLOR="\033[0m"
@@ -405,7 +405,7 @@ function weka_agent_service() {
     if [[ ! $XCEPT ]] ; then GOOD " [WEKA AGENT SERVICE] Weka Agent Serivce is running on host $2."
     fi
   else
-    BAD " [WEKA AGENT SERVICE] Weka Agent Serivce is NOT running on host $2."
+    BAD " [WEKA AGENT SERVICE] Weka Agent Service is NOT running on host $2."
   fi
 }
 
@@ -707,7 +707,7 @@ for ip in ${BACKEND}; do
 done
 
 if [ "$SKPCL" == "true" ]; then
-  NOTICE "SKIPPING CLIENTs UPGRADE CHECKs"
+  NOTICE "SKIPPING CLIENTS UPGRADE CHECKS"
 else
   for ip in ${CLIENT}; do
     clientloop "$ip" || continue
