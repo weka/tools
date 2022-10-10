@@ -412,7 +412,7 @@ fi
 }
 
 function weka_agent_service() {
-  if [ "$1" == "active" ]; then
+  if [ "$1" == "RUNNING" ]; then
     if [[ ! $XCEPT ]] ; then GOOD " [WEKA AGENT SERVICE] Weka Agent Serivce is running on host $2."
     fi
   else
