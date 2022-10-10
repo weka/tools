@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-#version=1.0.44
+#version=1.0.45
 
 # Colors
 export NOCOLOR="\033[0m"
@@ -606,7 +606,7 @@ local CURHOST REMOTEDATE WEKACONSTATUS RESULTS1 RESULTS2 UPGRADECONT MOUNTWEKA S
   MOUNTWEKA=$($SSH "$1" "mountpoint -qd /weka/")
   weka_mount "$MOUNTWEKA" "$CURHOST"
 
-  WEKAAGENTSRV=$($SSH "$1" sudo service weka-agent status | awk '/Active:/ {print $2}')
+  WEKAAGENTSRV=$($SSH "$1" sudo service weka-agent status | awk '{print $3}')
   weka_agent_service "$WEKAAGENTSRV" "$CURHOST"
 
   WEKACONSTATUS=$($SSH "$1" weka local ps --no-header -o name,running | grep -i default | awk '{print $2}')
