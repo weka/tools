@@ -369,7 +369,7 @@ STATSRETENTION=$(weka stats retention status -J | awk '/"retention_secs":/ {prin
   if [ "$STATSRETENTION" -le 172800 ]; then
     GOOD "Weka stats retention settings are set correctly."
   else
-    BAD "Prior to upgrading Weka, stats rention should be set to 2 days, use 'weka stats retention set --days 2' revert settings after the upgrade using 'weka stats retention set --days 7'."
+    BAD "Prior to upgrading Weka, stats retention should be set to 2 days, use 'weka stats retention set --days 2' revert settings after the upgrade using 'weka stats retention set --days 7'."
   fi
 fi
 
