@@ -87,7 +87,8 @@ for HOST in $*; do
                         echo "Would you like to check for newer version(s)? (yn): "
                         read ANS
                         if [ "$ANS" = "y" ]; then
-                                ssh $HOST "cd /tmp; wget $MLX &> /dev/null; chmod +x mlxup; ./mlxup; rm -f mlxup.*"
+                                ssh $HOST "cd /tmp; wget $MLX &> /dev/null; chmod +x /tmp/mlxup; "
+                                for i in `ssh $HOST ls /dev/mst/mt4123*`; do ssh $HOST /tmp/mlxup -d $i; done
                         else
                                 continue
                         fi
