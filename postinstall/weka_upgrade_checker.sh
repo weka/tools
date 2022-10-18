@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-#version=1.0.45
+#version=1.0.46
 
 # Colors
 export NOCOLOR="\033[0m"
@@ -25,7 +25,7 @@ usage()
 {
 cat <<EOF
 Usage: [-a for AWS instance.]
-Usage: [-c for skipping client upgrade checks.]
+Usage: [-s for skipping client upgrade checks.]
 Usage: [-r Check remote system. Enter valid ip address of a weka backend or client.]
 Usage: [-x Only report exceptions/errors on hosts.]
 This script checks Weka Clusters for Upgrade eligibility. On non-AWS instances you must run the script as root user.
@@ -207,6 +207,13 @@ if [[ "$MAJOR" -eq 3 ]] && [[ "$WEKAMINOR1" -eq 14 ]] && [[ "$WEKAMINOR2" -ge 1 
     WARN "Upgrading to 4.0 not supported. Requires Weka to use Ethernet connectivity. Please reach out to customer success on an ETA for IB support."
   else
     WARN "Upgrading to 4.0 requires Minimum OFED 5.1."
+  fi
+fi
+
+if [[ "$MAJOR" -eq 3 ]] && [[ "$WEKAMINOR1" -eq 14 ]]; then
+  DRIVES=$(weka cluster drive -o vendor --no-header | grep -i KIOXIA)
+  if [ ! -z "$DRIVES" ]; then
+    WARN "Contact Weka Support prior to Upgrading to Weka 4.0, System identified with Kioxia drives."
   fi
 fi
 
