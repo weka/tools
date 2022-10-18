@@ -213,7 +213,7 @@ fi
 if [[ "$MAJOR" -eq 3 ]] && [[ "$WEKAMINOR1" -eq 14 ]]; then
   DRIVES=$(weka cluster drive -o vendor --no-header | grep -i KIOXIA)
   if [ ! -z "$DRIVES" ]; then
-    WARN "Contact Weka Support prior to Upgrading to Weka 4.0, System identified with Kioxia drives."
+    WARN "Contact Weka Support prior to upgrading to Weka 4.0, System identified with Kioxia drives."
   fi
 fi
 
