@@ -5,10 +5,10 @@
 # Assumptions:
 #       OFED installed
 #       Internet access for MFT/driver toolsets
-#       Run on first cluster host if range is given
-#       MFT and MLX variables at top here set to latest
+#       CHECK MFT and MLX variables at the beginning are the latest!!!
 #
 # Written by Brady Turner brady.turner@weka.io
+# Report bugs or enhancement requests to https://github.com/weka/tools/issues
 #
 # set -x
 #
@@ -28,20 +28,20 @@ fi
 
 NUM_HOSTS=0
 for HOST in $*; do
-        echo "Checking $HOST"
+        echo -e "\n*** Checking $HOST ***\n"
         let NUM_HOSTS=$NUM_HOSTS+1
 
         # check if MFT is already installed on this host
         ssh $HOST which mst > /dev/null 2>&1
         if [ $? -eq 0 ]; then
-                echo "MFT version for host $HOST is: "
+                echo -e "MFT version for host $HOST is:\n "
                 ssh $HOST mst start > /dev/null 2>&1
-                ssh $HOST mst version
-                echo -n "Would you like to upgrade it to $MFT? (yn): "
+                ssh $HOST mst version |awk '{print $3}' |rev |cut -c2- |rev
+                echo -e "\nWould you like to upgrade the Mellanox firmare management/debug toolset to `basename $MFT?` (yn): "
                 read ANS
                 if [ "$ANS" = "n" ]; then
-                        echo "Next!"
-                        continue
+                        echo -e "\nNext!"
+                        #continue
                 else
                         ssh $HOST "cd /tmp; wget $MFT &> /dev/null"
                         ssh $HOST yum install -y libelf-dev libelf-devel elfutils-libelf-devel > /dev/null 2>&1
@@ -73,11 +73,8 @@ for HOST in $*; do
                         fi
                 fi
         fi
-done
 
-echo "Now let's check your MLNX driver versions: "
-NUM_HOSTS=0
-for HOST in $*; do
+        echo -e "\nNow let's check your MLNX driver versions:\n "
         ssh $HOST ofed_info > /dev/null 2>&1
                 if [ $? -eq 1 ]; then
                         echo "OFED not installed on $HOST! Please install before continuing. Bye!"
@@ -87,38 +84,34 @@ for HOST in $*; do
                         echo "Would you like to check for newer version(s)? (yn): "
                         read ANS
                         if [ "$ANS" = "y" ]; then
-                                ssh $HOST "cd /tmp; wget $MLX &> /dev/null; chmod +x mlxup; ./mlxup; rm -f mlxup.*"
+                                ssh $HOST "cd /tmp; wget $MLX &> /dev/null; chmod +x /tmp/mlxup; "
+                                for i in `ssh $HOST ls /dev/mst/mt4123*f[0-1]`; do ssh $HOST /tmp/mlxup -d $i; done
                         else
-                                continue
+                            :
                         fi
                 fi
+
+        echo "Do you want want to update the MLNX settings for max performance? (yn): "
+        read ANS
+
+            if [ "$ANS" != "y" ]; then
+                :
+        else
+            ssh $HOST 'hostname; for i in `ls /dev/mst/mt4123*`; do mlxconfig -y -d $i s ADVANCED_PCI_SETTINGS=1 PCI_WR_ORDERING=1; done'
+            echo -e "\nSettings ADVANCED_PCI_SETTINGS and PCI_WR_ORDERING set to 1 for 30% perf gain!:\n "
+            ssh $HOST 'hostname; for i in `ls /dev/mst/mt4123*`; do ls $i; mlxconfig -d $i q |grep -e ADVANCED_PCI_SETTINGS -e PCI_WR_ORDERING; done'
+
+        fi
+
+        echo "Done! Reboot $HOST now for any changes to take effect? (yn): "
+        read ANS
+            if [ "$ANS" != "y" ]; then
+            :
+        else
+            echo "Rebooting host $HOST now"
+            ssh $HOST "sleep 2; shutdown -r now"&
+        fi
+
 done
 
-echo "Do you want want to update the MLNX settings for max performance? (yn): "
-read ANS
-if [ "$ANS" != "y" ]; then
-    :
-else
-    NUM_HOSTS=0
-    for HOST in $*; do
-        let NUM_HOSTS=NUM_HOSTS+1
-                ssh $HOST 'hostname; for i in `ls /dev/mst/mt41*f[0-1]`; do mlxconfig -y -d $i s ADVANCED_PCI_SETTINGS=1 PCI_WR_ORDERING=1; done'
-        echo -e "\n Settings ADVANCED_PCI_SETTINGS and PCI_WR_ORDERING set to 1 for 30% perf gain!: "
-                ssh $HOST 'hostname; for i in `ls /dev/mst/mt41*f[0-1]`; do ls $i; mlxconfig -d $i q |grep -e ADVANCED_PCI_SETTINGS -e PCI_WR_ORDERING; done'
-   done
-fi
-
-echo "Done! Reboot cluster now for the changes to take effect? (yn): "
-read ANS
-if [ "$ANS" != "y" ]; then
-    exit
-else
-        NUM_HOSTS=0
-        for HOST in $*; do
-        let NUM_HOSTS=NUM_HOSTS+1
-                echo "Rebooting host $HOST now"
-                ssh $HOST "sleep 2; shutdown -r now"&
-        done
-fi
-
-exit
+echo -e "\nAll done!  BYE!"
