@@ -81,9 +81,9 @@ while getopts "hfasd:b:Sl:vC:D:F:m:" o; do
             LOG=${OPTARG}
             echo "Log path will be $LOG"
             ;;
-        v)
+        V)
             SKIP_VERSION_CHECK=1
-            echo "Skipping version check"
+            echo "Option -V will skip version check"
             ;;
         D)
             DRIVE_CORES='--drive-dedicated-cores '$OPTARG
@@ -433,7 +433,7 @@ if [ -z "$BACKEND" ]; then
     ret_val=$?
     if [ "$ret_val" -ne '0' ]; then
       if [ "$SKIP_FAILED" -ne '1' ]; then
-        WARN "FAILED converting $HOST, exiting. For more information refer to the log"
+        WARN "FAILED converting $HOST, exiting. For more information refer to the log at $LOG"
         exit 1
       fi
     fi
@@ -444,7 +444,7 @@ else
   ret_val=$?
   if [ "$ret_val" -ne '0' ]; then
     if [ "$SKIP_FAILED" -ne '1' ]; then
-      WARN "FAILED converting $BACKEND, exiting. For more information refer to the log"
+      WARN "FAILED converting $BACKEND, exiting. For more information refer to the log at $LOG"
       exit 1
     fi
   fi
