@@ -20,7 +20,7 @@ logger = logging.getLogger('mbc divider')
 
 def run_shell_command(command):
     if dry_run:
-        logger.debug('dry_run ot running'.format(command))
+        logger.warning('dry_run, not running: {}'.format(command))
         return 0
 
     process = subprocess.Popen(shlex.split(command), stdout=subprocess.PIPE)
@@ -142,22 +142,22 @@ def main():
     if ps:
         multiple_containers = 0
         for container in ps:
-            if container["internalStatus"]["display_status"] == 'READY' and container['type'] == 'weka':
+            if container["internalStatus"]["display_status"] == 'READY' and container['type'].lower() == 'weka':
                 multiple_containers += 1
                 container_name = container['name']
         if multiple_containers > 1:
-            logger.debug("This host is already an MBC, skipping")
+            logger.warning("This server already has multiple backend containers, skipping")
             exit(0)
         if not multiple_containers:
-            logger.warning("This host has no ready container, cannot convert unhealthy hosts")
+            logger.error("This server's containers are not ready: Cannot convert unhealthy hosts")
             exit(1)
     else:
-        logger.debug("This machine has no weka, skipping")
+        logger.warning("Weka is not installed on this server, skipping")
         exit(0)
     local_status_cmd = '/bin/sh -c "{}weka local status -J"'.format(sudo)
     status = json.loads(run_shell_command(local_status_cmd))
     if status[container_name]['mount_points']:
-        logger.warning("This BE host has an active mount, please remove this mount before continuing")
+        logger.warning("This server has an active WekaFS mount, please unmount before continuing")
         exit(1)
 
     backup_file_name = os.path.abspath('resources.json.backup')
@@ -166,7 +166,7 @@ def main():
         exit(1)
 
     backup_resources_command = '/bin/sh -c "{}weka local resources export {}"'.format(sudo, backup_file_name)
-    logger.debug("Backing up resources to {}".format(os.path.abspath(backup_file_name)))
+    logger.info("Backing up resources to {}".format(os.path.abspath(backup_file_name)))
     run_shell_command(backup_resources_command)
     resource_path = args.resources_path
     # Read content of the backup file - these are the current resources
@@ -188,14 +188,14 @@ def main():
     if args.limit_maximum_memory:
         memory = int(args.limit_maximum_memory * GiB)
 
-    management_ips = '--management-ips ' + ','.join(prev_resources['ips'])
     if failure_domain:
         failure_domain = '--failure-domain ' + failure_domain
+
     for slot in prev_resources['nodes']:
         roles = prev_resources['nodes'][slot]['roles']
         coreId = prev_resources['nodes'][slot]['core_id']
         if len(roles) > 1:
-            logger.warning("This script does not support multiple node roles. Please contact costumer support")
+            logger.warning("This script does not support multiple node roles. Please contact costumer support for more information")
             exit(1)
         if roles[0] == "COMPUTE" and not args.compute_dedicated_cores:
             compute_cores += 1
@@ -210,7 +210,7 @@ def main():
             if coreId != 4294967295:
                 pinned_frontend_cores.append(coreId)
     if len(prev_resources['backend_endpoints']) < 1:
-        logger.warning('The host resources are missing the the backend endpoints, is this host part of a Weka cluster?')
+        logger.warning('The host\'s resources are missing the backend endpoints, is this host part of a Weka cluster?')
         exit(1)
     network_devices = []
 
@@ -221,10 +221,13 @@ def main():
     for netDev in net_devs:
         network_devices.append(NetDev(netDev['name'], netDev['identifier'], netDev['gateway'], netDev['netmask_bits'],
                                       list(set(netDev['ips'])), netDev['net_devices'][0]['mac_address']))
-        logger.debug("add net devices: {}".format(network_devices[-1].to_cmd()))
-    retries = 5
+        logger.debug("Adding net devices: {}".format(network_devices[-1].to_cmd()))
+
+    retries = 30
+
+    # S3 check
     host_id_str = 'HostId<{}>'.format(current_host_id)
-    logger.debug('Checking for active protocols on the host')
+    logger.info('Checking for active protocols on the host')
     protocols_in_host = []
     s3_status_command = '/bin/sh -c "weka s3 cluster status -J"'
     s3_status = json.loads(run_shell_command(s3_status_command))
@@ -233,11 +236,13 @@ def main():
             logger.warning('We have only {} hosts in s3 cluster, in order to convert cluster we need at list 4'.format(
                 len(s3_status)))
             exit(1)
+
+    # SMB check
     smb_status_command = '/bin/sh -c "weka smb cluster status -J"'
     smb_status = json.loads(run_shell_command(smb_status_command))
     if host_id_str in smb_status:
         if len(smb_status) < 4:
-            logger.warning('We have only {} hosts in smb cluster, in order to convert cluster we need at list 4'.format(
+            logger.warning('We have only {} hosts in SMB cluster, in order to convert cluster we need at list 4'.format(
                 len(smb_status)))
             exit(1)
         for i in range(retries):
@@ -249,37 +254,41 @@ def main():
         if not all(status for status in smb_status.values()):
             logger.warning("SMB cluster never became ready, cannot convert")
             exit(1)
+
+    # NFS check
     nfs_interface_groups = '/bin/sh -c "weka nfs interface-group -J"'
     nfs_igs = json.loads(run_shell_command(nfs_interface_groups))
     if nfs_igs:
-        logger.debug('There is nfs setup in this cluster')
+        logger.info('There is NFS configured in this cluster')
         for ig in nfs_igs:
             for port in ig['ports']:
                 port_host_id = extract_digits(port['host_id'])
                 if int(port_host_id) == current_host_id and len(ig['ports']) < 2:
-                    logger.warning(
-                        'We have only {} hosts in nfs interface group, in order to convert cluster we need at list 2'
+                    logger.error(
+                        'We have only {} hosts in NFS interface group, in order to convert cluster we need at list 2'
                         .format(len(ig['ports'])))
                     exit(1)
+
+    # S3 drain and removal
     if host_id_str in s3_status:
         if not all(status for status in s3_status.values()):
-            logger.debug('waiting for s3 cluster to be fully healthy before converting host')
+            logger.info('Waiting for S3 cluster to be fully healthy before converting host')
             for i in range(retries):
                 sleep(10)
                 s3_status = json.loads(run_shell_command(s3_status_command))
                 if all(status for status in s3_status.values()):
                     break
             if not all(status for status in s3_status.values()):
-                logger.warning('s3 cluster never become ready. can not convert host')
+                logger.error('S3 cluster never became ready: Will not convert host with S3')
                 exit(1)
 
         drain_s3_cmd = '/bin/sh -c "weka s3 cluster drain {}"'.format(current_host_id)
-        logger.debug('Draining s3 host')
+        logger.warning('Draining S3 host')
         run_shell_command(drain_s3_cmd)
         s3_drain_grace_period = int(args.s3_drain_gracetime)
         sleep(s3_drain_grace_period)
         protocols_in_host.append(Protocols.S3)
-        logger.debug('Removing host from s3 cluster')
+        logger.warning('Removing host from S3 cluster')
         s3_update_command = '/bin/sh -c "weka s3 cluster update --host {}"'
         s3_hosts_list = []
         for k in s3_status.keys():
@@ -299,8 +308,9 @@ def main():
             logger.warning("Failed removing host {} from s3 cluster".format(current_host_id))
             exit(1)
 
+    # SMB removal
     if host_id_str in smb_status:
-        logger.debug('Removing host from SMB cluster')
+        logger.info('Removing host from SMB cluster')
         protocols_in_host.append(Protocols.SMB)
         remove_smb_host_cmd = '/bin/sh -c "weka smb cluster hosts remove --samba-hosts {} -f"'.format(current_host_id)
         run_shell_command(remove_smb_host_cmd)
@@ -314,16 +324,17 @@ def main():
             logger.warning("Failed removing host {} from SMB cluster".format(current_host_id))
             exit(1)
 
+    # NFS removal
     nfs_interface_groups = '/bin/sh -c "weka nfs interface-group -J"'
     nfs_igs = json.loads(run_shell_command(nfs_interface_groups))
     nfs_ifgs_to_add = []
     if nfs_igs:
-        logger.debug('There is nfs setup in this cluster')
+        logger.warning('There is nfs setup in this cluster')
         for ig in nfs_igs:
             for port in ig['ports']:
                 port_host_id = extract_digits(port['host_id'])
                 if int(port_host_id) == current_host_id:
-                    logger.debug('Removing host from nfs interface group {}'.format(ig['name']))
+                    logger.info('Removing host from nfs interface group {}'.format(ig['name']))
                     nfs_remove_port_cmd = '/bin/sh -c "weka nfs interface-group port delete {} {} {} -f"' \
                         .format(ig['name'], current_host_id, port['port'])
                     nfs_ifgs_to_add.append((ig['name'], port['port'], ig['allow_manage_gids']))
@@ -347,8 +358,8 @@ def main():
                 logger.warning('Failed removing nfs port')
                 exit(1)
 
-    logger.debug('Validating no protocols containers are running')
-    sleep(5)
+    logger.info('Validating no protocols containers are running')
+    sleep(5) # TODO: Why do we sleep?
     local_ps_cmd = '/bin/sh -c "{}weka local ps -J"'.format(sudo)
     for i in range(5):
         containers = json.loads(run_shell_command(local_ps_cmd))
@@ -360,19 +371,31 @@ def main():
             break
         sleep(2)
 
-    join_ips = '--join-ips='
     join_ips_list = []
     for host in weka_hosts_list:
-        if host['ips'][0] == prev_resources['ips'][0]:
+        # If this is the host we're currently open, skip adding it to join-ips
+        if host['host_id'] == host_id_str:
             continue
-        join_ips_list.append(str(host['ips'][0]) + ':' + str(host['mgmt_port']))
+
+        join_ips_list.append(str(host['ips'][0]))# + ':' + str(host['mgmt_port']))
         if len(join_ips_list) > 10:
             break
 
-    join_ips += ','.join(join_ips_list)
-    logger.debug('IPs for Joining the cluster: {}'.format(join_ips))
+    join_ips = '--join-ips=' + ','.join(join_ips_list)
+    logger.info('IPs for Joining the cluster: {}'.format(join_ips))
 
-    logger.debug('Stopping old container')
+    if prev_resources['ips']:
+        management_ips = '--management-ips ' + ','.join(prev_resources['ips'])
+    else:
+        # Find ourselves in the list, and use ips from hosts_list
+        management_ips = ''
+        for host in weka_hosts_list:
+            if host['host_id'] != host_id_str:
+                continue
+            management_ips = '--management-ips ' + ','.join(host['ips'])
+    logger.info('Management IPs selected: {}'.format(management_ips))
+
+    logger.info('Stopping old container')
     stop_container_cmd = '/bin/sh -c "{}weka local stop"'.format(sudo)
     run_shell_command(stop_container_cmd)
 
@@ -404,38 +427,41 @@ def main():
         frontend_cores_cmd,
         memory_cmd,
     )
-    logger.debug('Running Resources generator')
+    logger.info('Running resources-generator')
     run_shell_command(resource_generator_command)
 
-    logger.debug('Releasing old hugepages allocation')
+    logger.info('Releasing old hugepages allocation')
     path_to_huge = '/opt/weka/data/agent/containers/state/{}/huge'.format(container_name)
     path_to_huge1g = '/opt/weka/data/agent/containers/state/{}/huge1G'.format(container_name)
     if os.path.exists(path_to_huge) or os.path.exists(path_to_huge1g):
         find_and_remove_cmd = '/bin/sh -c "{}find {}* -name weka_* -delete"'.format(sudo, path_to_huge)
         run_shell_command(find_and_remove_cmd)
-    logger.debug('Starting new containers')
+    logger.info('Starting new containers')
+
+    # TODO: We should start container in order: drives, compute, frontend
     for container_type in ContainerType:
         if container_type == ContainerType.FRONTEND and frontend_cores == 0:
             continue
-        setup_host_command = '/bin/sh -c "{}weka local setup host --resources-path={} {} {} {} --disable"'.format(
+        setup_host_command = '/bin/sh -c "{}weka local setup host --name={} --resources-path={} {} {} {} --disable"'.format(
             sudo,
+            container_type.container_name(),
             container_type.json_name(),
             failure_domain,
             management_ips,
             join_ips
         )
-        logger.debug("Starting container of type {} using the following command: {}".format(
+        logger.info("Starting container of type {} using the following command: {}".format(
             container_type.name, setup_host_command))
         run_shell_command(setup_host_command)
 
-    # check if containers are up
+    # Check if containers are up
     status_command = '/bin/sh -c "{}weka local status -J"'.format(sudo)
     local_status = {}
     for i in range(retries):
         local_status = json.loads(run_shell_command(status_command))
         if local_status[ContainerType.DRIVE.container_name()]['status']['internalStatus']['state'] == 'READY':
             break
-    logger.debug('Waiting for drive containers to reach READY state, currently:{}'.format(
+    logger.info('Waiting for drive containers to reach READY state, currently:{}'.format(
         local_status[ContainerType.DRIVE.container_name()]['status']['internalStatus']['state']))
     sleep(5)
 
@@ -457,7 +483,7 @@ def main():
         server_info = json.loads(run_shell_command(get_host_id_command))
         frontend_hostid = server_info['hostIdValue']
         for protocol in protocols_in_host:
-            logger.debug("Adding {} protocol to frontend container".format(protocol.name))
+            logger.info("Adding {} protocol to frontend container".format(protocol.name))
             if protocol == Protocols.SMB:
                 add_smb_host_cmd = '/bin/sh -c "weka smb cluster hosts add --samba-hosts {} -f"' \
                     .format(frontend_hostid)
@@ -483,7 +509,7 @@ def main():
                     if ig[2]:
                         nfs_legacy = True
 
-    logger.debug('Starting cleanup')
+    logger.info('Starting cleanup: The old container will be removed locally and from the cluster')
     container_delete_command = '/bin/sh -c "{}weka local rm {} -f"'.format(sudo, container_name)
     run_shell_command(container_delete_command)
     container_delete_command = '/bin/sh -c "{}weka local enable"'.format(sudo)
@@ -499,10 +525,10 @@ def main():
             os.remove(ct.json_name())
     if os.path.exists(backup_file_name):
         os.remove(backup_file_name)
-    logger.debug('Finished cleanup')
-    logger.debug("\nFinished moving host to MBC architecture")
+    logger.info('Finished cleanup')
     container_delete_command = '/bin/sh -c "{}weka local status -v"'.format(sudo)
     print(run_shell_command(container_delete_command).decode())
+    logger.info("\nFinished moving server to MBC architecture")
 
 
 if '__main__' == __name__:
