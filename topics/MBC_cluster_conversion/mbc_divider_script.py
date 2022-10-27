@@ -49,8 +49,8 @@ def is_aws():
 
 
 class ContainerType(Enum):
-    COMPUTE = 'compute'
     DRIVE = 'drives'
+    COMPUTE = 'compute'
     FRONTEND = 'frontend'
 
     def container_name(self):
