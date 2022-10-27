@@ -317,6 +317,23 @@ if [[ "$MAJOR" -eq 3 ]] && [[ "$WEKAMINOR1" -eq 9 ]]; then
   GOOD "\nBucket L2BLOCK check completed."
 fi
 
+#Aggressive Dieting should be disabled prior to upgrading to 4.0.2
+if [[ "$MAJOR" -eq 3 ]] && [[ "$WEKAMINOR1" -eq 14 ]]; then
+  NOTICE "VERIFYING SYSTEM OPTIMAL SETTINGS"
+    WARN "After upgrading to Weka 4.0, issue the following override command. 'weka debug config override clusterInfo.allowDietAggressively false'"
+fi
+
+#Aggressive Dieting should be disabled prior to upgrading to 4.0.2
+if [ "$MAJOR" -eq 4 ]; then
+  NOTICE "VERIFYING SYSTEM OPTIMAL SETTINGS"
+  AGGRESSIVEDIET=$(weka local run /weka/cfgdump | grep allowDietAggressively | awk '{print $2}' | tr -d ",")
+    if [ $AGGRESSIVEDIET == false ]; then
+      GOOD "System checks passed"
+    else
+      BAD "Please contact Weka support Reference Agreessive Diet."
+    fi
+fi
+
 NOTICE "VERIFYING SSD FIRMWARE"
 SSD=$(weka cluster drive --no-header -o uuid,hostname,vendor,firmware,model | grep -i EDB5002Q)
 if [ -z "$SSD" ]; then
