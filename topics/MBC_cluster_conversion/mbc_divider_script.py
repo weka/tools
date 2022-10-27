@@ -13,7 +13,8 @@ import re
 from urllib import request, error
 from concurrent.futures import ThreadPoolExecutor
 from resources_generator import GiB
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s %(levelname)s: %(message)s',
+
+logging.basicConfig(format='%(asctime)s %(levelname)s: %(message)s',
                     datefmt='%m/%d/%Y %I:%M:%S %p')
 logger = logging.getLogger('mbc divider')
 
@@ -107,6 +108,11 @@ dry_run = False
 
 
 def main():
+    logging.basicConfig(format='%(asctime)s %(levelname)s: %(message)s',
+                        datefmt='%m/%d/%Y %I:%M:%S %p')
+    logger.setLevel(logging.DEBUG)
+
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--resources-path", dest='resources_path', nargs="?", default='',
                         help="Load resource from file")
