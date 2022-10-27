@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-#version=1.0.46
+#version=1.0.47
 
 # Colors
 export NOCOLOR="\033[0m"
@@ -268,7 +268,7 @@ NOTICE "VERIFYING WEKA FS SNAPSHOTS UPLOAD STATUS"
 if [[ "$MAJOR" -eq 3 ]] && [[ "$WEKAMINOR1" -ge 12 ]]; then
   WEKASNAP=$(weka fs snapshot --no-header -o id,name,remote_object_status,remote_object_progress | grep -i upload)
 else
-  WEKASNAP=$(weka fs snapshot --no-header -o name,stow,object | grep -i upload)
+  WEKASNAP=$(weka fs snapshot --no-header -o name,remote_object_status | grep -i upload)
 fi
 
 if [ -z "$WEKASNAP" ]; then
@@ -315,6 +315,23 @@ if [[ "$MAJOR" -eq 3 ]] && [[ "$WEKAMINOR1" -eq 9 ]]; then
     fi
   done
   GOOD "\nBucket L2BLOCK check completed."
+fi
+
+#Aggressive Dieting should be disabled prior to upgrading to 4.0.2
+if [[ "$MAJOR" -eq 3 ]] && [[ "$WEKAMINOR1" -eq 14 ]]; then
+  NOTICE "VERIFYING SYSTEM OPTIMAL SETTINGS"
+    WARN "After upgrading to Weka 4.0, issue the following override command. 'weka debug config override clusterInfo.allowDietAggressively false'"
+fi
+
+#Aggressive Dieting should be disabled prior to upgrading to 4.0.2
+if [ "$MAJOR" -eq 4 ]; then
+  NOTICE "VERIFYING SYSTEM OPTIMAL SETTINGS"
+  AGGRESSIVEDIET=$(weka local run /weka/cfgdump | grep allowDietAggressively | awk '{print $2}' | tr -d ",")
+    if [ $AGGRESSIVEDIET == false ]; then
+      GOOD "System checks passed"
+    else
+      BAD "Please contact Weka support Reference Agreessive Diet."
+    fi
 fi
 
 NOTICE "VERIFYING SSD FIRMWARE"
