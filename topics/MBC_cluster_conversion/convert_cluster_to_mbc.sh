@@ -52,7 +52,7 @@ EOF
 exit
 }
 
-while getopts "hfasd:b:Sl:vC:D:F:m:" o; do
+while getopts "hfasd:b:Sl:VC:D:F:m:" o; do
     case "${o}" in
         f)
             FORCE='--force'
