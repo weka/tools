@@ -102,14 +102,18 @@ def extract_digits(s):
 
 
 MAC_TO_NICS_MAP = dict()
-nics_addresses = os.popen("/sbin/ip link | grep -v lo | awk '{print $1, $2}'").read().splitlines()
-for i in range(0, len(nics_addresses)-1, 2):
-    nic_result = re.search(r'[0-9]: (.*?):', nics_addresses[i])
-    mac_result = re.search(r'([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})', nics_addresses[i+1])
-    if nic_result and mac_result:
-        nic = nic_result.group(1)
-        mac = mac_result.group(0)
-        MAC_TO_NICS_MAP[mac] = nic
+with os.scandir('/sys/class/net/') as nets:
+    for net in nets:
+        net_addr_path = '/sys/class/net/%s/address' % net.name
+        if net.name != 'lo' and os.path.isfile(net_addr_path):
+            try:
+                with open(net_addr_path) as file:
+                    mac = file.read().replace('\n', '')
+                    MAC_TO_NICS_MAP[mac] = net.name
+            except OSError:
+                logger.warning(
+                    "Couldn't get hardware address for %s, skipping" % net.name
+                )
 
 
 def _is_mac_address(mac):
