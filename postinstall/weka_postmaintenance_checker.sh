@@ -145,7 +145,6 @@ function _prefixmismatch() {
 if [ -z "$MISMATCHPREFIX" ]; then 
     WARN "Missing Manual Override Key allow_prefix_mismatch_on_expected_prefix"
 elif [ $(echo $MISMATCHPREFIX | cut -d' ' -f2) -ne "$allow_prefix_mismatch_on_expected_prefix" ] && [ $(echo $MISMATCHPREFIX | cut -d' ' -f2) -ne 66 ] ; then
-elif [ (echo "$MISMATCHPREFIX" | cut -d' ' -f2) != "$allow_prefix_mismatch_on_expected_prefix" ] || [ $(echo $MISMATCHPREFIX | cut -d' ' -f2) -ne 66 ] ; then
     WARN "Overide setting incorrect set allow_prefix_mismatch_on_expected_prefix should be $allow_prefix_mismatch_on_expected_prefix on BucketId 66)"
 fi
 }
