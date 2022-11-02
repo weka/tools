@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-#version=1.0.49
+#version=1.0.50
 
 # Colors
 export NOCOLOR="\033[0m"
@@ -197,7 +197,7 @@ if [[ "$MAJOR" -eq 3 ]] && [[ "$WEKAMINOR1" -eq 13 ]]; then
 fi
 
 if [[ "$MAJOR" -eq 3 ]] && [[ "$WEKAMINOR1" -eq 14 ]]; then
-  if [ $(weka status -J | awk '/"link_layer"/ {print $2}' | tr -d '"') = ETH ]; then
+  if [ $(weka status -J | awk '/"link_layer"/ {print $2}' | tr -d '"') != ETH ]; then
     WARN "Upgrading to 4.0 not supported. Requires Weka to use Ethernet connectivity and minimum Weka version 3.14.1 or greater."
   fi
 fi
