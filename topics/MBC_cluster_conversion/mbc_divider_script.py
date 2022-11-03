@@ -229,7 +229,7 @@ def main():
                                       list(set(netDev['ips'])), netDev['net_devices'][0]['mac_address']))
         logger.debug("Adding net devices: {}".format(network_devices[-1].to_cmd()))
 
-    retries = 30
+    retries = 180 # sleeps should be 1 second each, so this is a "timeout" of 180s
 
     # S3 check
     host_id_str = 'HostId<{}>'.format(current_host_id)
@@ -255,7 +255,7 @@ def main():
             smb_status = json.loads(run_shell_command(smb_status_command))
             if all(status for status in smb_status.values()):
                 break
-            sleep(10)
+            sleep(1)
         smb_status = json.loads(run_shell_command(smb_status_command))
         if not all(status for status in smb_status.values()):
             logger.warning("SMB cluster never became ready, cannot convert")
@@ -278,23 +278,23 @@ def main():
     # S3 drain and removal
     if host_id_str in s3_status:
         if not all(status for status in s3_status.values()):
-            logger.info('Waiting for S3 cluster to be fully healthy before converting host')
+            logger.info('Waiting for S3 cluster to be fully healthy before converting server')
             for i in range(retries):
-                sleep(10)
+                sleep(1)
                 s3_status = json.loads(run_shell_command(s3_status_command))
                 if all(status for status in s3_status.values()):
                     break
             if not all(status for status in s3_status.values()):
-                logger.error('S3 cluster never became ready: Will not convert host with S3')
+                logger.error('S3 cluster never became ready: Will not convert server with S3')
                 exit(1)
 
         drain_s3_cmd = '/bin/sh -c "weka s3 cluster drain {}"'.format(current_host_id)
-        logger.warning('Draining S3 host')
+        logger.warning('Draining S3 container')
         run_shell_command(drain_s3_cmd)
         s3_drain_grace_period = int(args.s3_drain_gracetime)
         sleep(s3_drain_grace_period)
         protocols_in_host.append(Protocols.S3)
-        logger.warning('Removing host from S3 cluster')
+        logger.warning('Removing container from S3 cluster')
         s3_update_command = '/bin/sh -c "weka s3 cluster update --host {}"'
         s3_hosts_list = []
         for k in s3_status.keys():
@@ -308,7 +308,7 @@ def main():
             s3_status = json.loads(run_shell_command(s3_status_command))
             if host_id_str not in s3_status:
                 break
-            sleep(3)
+            sleep(1)
         s3_status = json.loads(run_shell_command(s3_status_command))
         if host_id_str in s3_status:
             logger.warning("Failed removing host {} from s3 cluster".format(current_host_id))
@@ -324,7 +324,7 @@ def main():
             smb_status = json.loads(run_shell_command(smb_status_command))
             if host_id_str not in smb_status:
                 break
-            sleep(3)
+            sleep(1)
         smb_status = json.loads(run_shell_command(smb_status_command))
         if host_id_str in smb_status:
             logger.warning("Failed removing host {} from SMB cluster".format(current_host_id))
@@ -359,7 +359,7 @@ def main():
                             break
                 if not host_is_an_active_port:
                     break
-                sleep(3)
+                sleep(1)
             if host_is_an_active_port:
                 logger.warning('Failed removing nfs port')
                 exit(1)
@@ -367,7 +367,7 @@ def main():
     logger.info('Validating no protocols containers are running')
     sleep(5) # TODO: Why do we sleep?
     local_ps_cmd = '/bin/sh -c "{}weka local ps -J"'.format(sudo)
-    for i in range(5):
+    for i in range(10):
         containers = json.loads(run_shell_command(local_ps_cmd))
         has_protocols_containers = False
         for c in containers:
@@ -375,7 +375,7 @@ def main():
                 has_protocols_containers = True
         if not has_protocols_containers:
             break
-        sleep(2)
+        sleep(1)
 
     join_ips_list = []
     for host in weka_hosts_list:
