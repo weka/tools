@@ -297,7 +297,7 @@ def main():
         sleep(s3_drain_grace_period)
         #validate drain
         validate_drain_s3_cmd = '/bin/sh -c "weka debug jrpc container_get_drain_status hostId={}"'.format(current_host_id)
-        s3_drain_status = str2bool(run_shell_command(validate_drain_s3_cmd).strip())
+        s3_drain_status = run_shell_command(validate_drain_s3_cmd).strip()
         if not s3_drain_status:
             logger.info("Drain status for hostID {} is {}".format(current_host_id, s3_drain_status))
             for i in range(retries):
@@ -308,7 +308,6 @@ def main():
             if not s3_drain_status:
                 logger.warning('Draining S3 host {} failed.. exiting'.format(current_host_id))
                 exit(1)
-
         protocols_in_host.append(Protocols.S3)
         logger.warning('Removing container from S3 cluster')
         s3_update_command = '/bin/sh -c "weka s3 cluster update --host {}"'
