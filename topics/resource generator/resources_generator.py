@@ -105,15 +105,25 @@ MAC_TO_NICS_MAP = dict()
 with os.scandir('/sys/class/net/') as nets:
     for net in nets:
         net_addr_path = '/sys/class/net/%s/address' % net.name
+        net_master_path = '/sys/class/net/%s/master' % net.name
         if net.name != 'lo' and os.path.isfile(net_addr_path):
             try:
                 with open(net_addr_path) as file:
                     mac = file.read().replace('\n', '')
-                    MAC_TO_NICS_MAP[mac] = net.name
+                    MAC_TO_NICS_MAP[net.name] = {'mac': mac}
             except OSError:
                 logger.warning(
                     "Couldn't get hardware address for %s, skipping" % net.name
                 )
+                continue
+            if os.path.islink(net_master_path):
+                MAC_TO_NICS_MAP[net.name]['master'] = os.readlink(
+                        net_master_path).split('/')[-1]
+
+MACS = []
+for name in MAC_TO_NICS_MAP:
+    for mac in MAC_TO_NICS_MAP[name]:
+        MACS.append(MAC_TO_NICS_MAP[name]['mac'])
 
 
 def _is_mac_address(mac):
@@ -126,6 +136,10 @@ def _is_pci_address(pci):
     if re.fullmatch(pci_pattern, pci):
         return True
     return False
+
+def _is_slave(name):
+    if 'master' in MAC_TO_NICS_MAP[name]:
+        return True
 
 class NetDevice:
     def __init__(self, name, **kwargs):
@@ -275,19 +289,59 @@ class ResourcesGenerator:
                     quit(1)
 
         def _validate_net_dev():
+            missing_nics = []
+            nic_names = []
+            nic_error = False
+
             if not self.args.net:
                 logger.error("At least 1 net device is required")
                 quit(1)
             nics = [net_arg.split('/')[0] for net_arg in self.args.net]
+
             for nic in nics:
-                if self.args.net.count(nic) > 1:
-                    logger.error("Net device %s was passed multiple times" % nic)
-                    quit(1)
-                if not (nic in MAC_TO_NICS_MAP.keys() or nic in MAC_TO_NICS_MAP.values()):
-                    logger.error("mac addresses: %s", MAC_TO_NICS_MAP.keys())
-                    logger.error("net devices names: %s", MAC_TO_NICS_MAP.values())
-                    logger.error("Net device %s was not found on the server" % nic)
-                    quit(1)
+                # Check if NICs are present on the machine
+                if not (nic in MAC_TO_NICS_MAP.keys() or nic in MACS):
+                    missing_nics.append(nic)
+                    continue
+
+                # If MAC address provided, convert to NIC name, selecting bond
+                # interface (master) if present
+                elif _is_mac_address(nic):
+                    for name in MAC_TO_NICS_MAP:
+                        if MAC_TO_NICS_MAP[name]['mac'] == nic \
+                        and 'master' not in MAC_TO_NICS_MAP[name]:
+                            nic_names.append(name)
+                            break
+                else:
+                    nic_names.append(nic)
+
+            # Check for NICs passed multiple times
+            present_dupe_nics = {nic for nic in nic_names if
+                    nic_names.count(nic) > 1}
+            missing_dupe_nics = {nic for nic in missing_nics if
+                    missing_nics.count(nic) > 1}
+
+            # Set error mode and print detected NICs
+            if len(present_dupe_nics) > 0 or len(missing_dupe_nics) > 0 \
+                    or len(missing_nics) > 0:
+                nic_error = True
+                logger.error("Detected net devices: %s", MAC_TO_NICS_MAP)
+
+            # Print duplicated NICs passed as arguments
+            if len(present_dupe_nics) > 0:
+                logger.error('Detected NICs were passed multiple times: %s'
+                        % present_dupe_nics)
+            if len(missing_dupe_nics) > 0:
+                logger.error('Missing NICs were passed multiple times: %s'
+                        % missing_dupe_nics)
+
+            missing_nics = set(missing_nics)  # To strip duplicates
+            if len(missing_nics) > 0:
+                logger.error('Missing NICs were passed: %s' % missing_nics)
+
+            if nic_error:
+                quit(1)
+
 
         def _parse_pretty_bytes(size):
             units = dict(
@@ -511,7 +565,27 @@ class ResourcesGenerator:
             kwargs = dict()
             arg_parts = net_arg.split('/')
             name = arg_parts.pop(0)
-            name = MAC_TO_NICS_MAP[name] if _is_mac_address(name) else name
+
+            # If MAC address provided, convert to NIC name, selecting bond if
+            # present. Note that this occurs in _validate_net_dev as well;
+            # perhaps worth deduplicating this at some point in the future.
+            if _is_mac_address(name):
+                for nic_name in MAC_TO_NICS_MAP:
+                    if MAC_TO_NICS_MAP[nic_name]['mac'] == name \
+                    and 'master' not in MAC_TO_NICS_MAP[nic_name]:
+                        name = nic_name
+                        break
+
+            # Otherwise, if NIC name provided, check if slave and select its
+            # master (bond) instead. Note that this isn't validated in
+            # _validate_net_dev; these functions should perhaps be incorporated
+            # together in the future.
+            elif _is_slave(name):
+                logger.warning('Selecting %s as %s (%s) is slave device of %s'
+                        % (MAC_TO_NICS_MAP[name]['master'], name,
+                            MAC_TO_NICS_MAP[name]['mac'],
+                            MAC_TO_NICS_MAP[name]['master']))
+                name = MAC_TO_NICS_MAP[name]['master']
             if arg_parts:
                 ips = arg_parts.pop(0).split('+')
                 ips = list(map(_validate_ips, ips))
