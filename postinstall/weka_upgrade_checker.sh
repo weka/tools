@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-#version=1.0.51
+#version=1.0.52
 
 # Colors
 export NOCOLOR="\033[0m"
@@ -203,16 +203,6 @@ if [[ "$MAJOR" -eq 3 && "$WEKAMINOR1" -eq 14 ]] || [[ "$MAJOR" -eq 3 && "$WEKAMI
     WARN "Upgrading to 4.0 not supported. Requires Weka to use Ethernet connectivity and minimum Weka version 3.14.1 or greater."
   else
     GOOD "Cluster is upgrade eligible"
-  fi
-fi
-
-if [[ "$MAJOR" -eq 3 ]] && [[ "$WEKAMINOR1" -eq 14 ]]; then
-  NOTICE "VERIFYING WEKA FILESYSTEM CHECKS"
-  NUMFS=$(weka fs --no-header | wc -l)
-  if [ "$NUMFS" -ge 16 ]; then
-    BAD "Contact Weka Support prior to upgrading to Weka 4.0, System identified with too many Filesystems."
-  else
-    GOOD "Filesystem checks completed"
   fi
 fi
 
