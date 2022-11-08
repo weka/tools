@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-#version=1.0.50
+#version=1.0.51
 
 # Colors
 export NOCOLOR="\033[0m"
@@ -189,6 +189,7 @@ else
 fi
 
 if [[ "$MAJOR" -eq 3 ]] && [[ "$WEKAMINOR1" -eq 13 ]]; then
+  NOTICE "VERIFYING UPGRADE ELIGIBILITY"
   if [ $(weka status -J | awk '/"link_layer"/ {print $2}' | tr -d '"') != ETH ]; then
     WARN "Upgrading to 3.14 not supported. Requires Weka to use Ethernet connectivity. Please reach out to customer success on an ETA for IB support."
   else
@@ -196,21 +197,27 @@ if [[ "$MAJOR" -eq 3 ]] && [[ "$WEKAMINOR1" -eq 13 ]]; then
   fi
 fi
 
-if [[ "$MAJOR" -eq 3 ]] && [[ "$WEKAMINOR1" -eq 14 ]]; then
+if [[ "$MAJOR" -eq 3 && "$WEKAMINOR1" -eq 14 ]] || [[ "$MAJOR" -eq 3 && "$WEKAMINOR1" -eq 14 && "$WEKAMINOR2" -ge 1 ]]; then
+  NOTICE "VERIFYING UPGRADE ELIGIBILITY"
   if [ $(weka status -J | awk '/"link_layer"/ {print $2}' | tr -d '"') != ETH ]; then
     WARN "Upgrading to 4.0 not supported. Requires Weka to use Ethernet connectivity and minimum Weka version 3.14.1 or greater."
-  fi
-fi
-
-if [[ "$MAJOR" -eq 3 ]] && [[ "$WEKAMINOR1" -eq 14 ]] && [[ "$WEKAMINOR2" -ge 1 ]]; then
-  if [ $(weka status -J | awk '/"link_layer"/ {print $2}' | tr -d '"') != ETH ]; then
-    WARN "Upgrading to 4.0 not supported. Requires Weka to use Ethernet connectivity. Please reach out to customer success on an ETA for IB support."
   else
-    WARN "Upgrading to 4.0 requires Minimum OFED 5.1."
+    GOOD "Cluster is upgrade eligible"
   fi
 fi
 
 if [[ "$MAJOR" -eq 3 ]] && [[ "$WEKAMINOR1" -eq 14 ]]; then
+  NOTICE "VERIFYING WEKA FILESYSTEM CHECKS"
+  NUMFS=$(weka fs --no-header | wc -l)
+  if [ "$NUMFS" -ge 16 ]; then
+    BAD "Contact Weka Support prior to upgrading to Weka 4.0, System identified with too many Filesystems."
+  else
+    GOOD "Filesystem checks completed"
+  fi
+fi
+
+if [[ "$MAJOR" -eq 3 ]] && [[ "$WEKAMINOR1" -eq 14 ]]; then
+  NOTICE "VERIFYING PROBLEMATIC DRIVES"
   DRIVES=$(weka cluster drive -o vendor --no-header | grep -i KIOXIA)
   if [ ! -z "$DRIVES" ]; then
     WARN "Contact Weka Support prior to upgrading to Weka 4.0, System identified with Kioxia drives."
@@ -389,7 +396,7 @@ fi
 
 NOTICE "CHECKING WEKA STATS RETENTION"
 if [[ "$MAJOR" -eq 3 ]] && [[ "$WEKAMINOR1" -eq 14 ]] || [[ "$MAJOR" -ge 4 ]]; then
-STATSRETENTION=$(weka stats retention status -J | awk '/"retention_secs":/ {print $2}' | cut -d'"' -f2 | tr -d ",")
+STATSRETENTION=$(weka stats retention status -J | awk '/"retention_secs":/ {print $2}' | tr -d ",")
   if [ "$STATSRETENTION" -le 172800 ]; then
     GOOD "Weka stats retention settings are set correctly."
   else
@@ -419,6 +426,94 @@ function check_ssh_connectivity() {
   fi
 }
 
+function os_check() {
+
+ID="$1"
+VERSION_ID="$2"
+VERSION="$3"
+NAME="$4"
+
+if [ "$ID" = 'centos' ]; then
+  VERSION_ID=$(cat /etc/redhat-release)
+  VERSION_ID=${VERSION_ID##*release }
+  VERSION_ID=${VERSION_ID%.*}
+elif [ "$ID" = 'ubuntu' ]; then
+  VERSION_ID=${VERSION%% *}
+fi
+
+distro_not_found=0
+version_not_found=0
+unsupported_distro=0
+unsupported_version=0
+client_only=0
+
+case $ID in
+  'centos')
+    case $VERSION_ID in
+      '7.'[2-9]) ;;
+      '8.'[0-5]) ;;
+      '') version_not_found=1 ;;
+      *) unsupported_version=1 ;;
+    esac
+    ;;
+
+  'rhel')
+    case $VERSION_ID in
+      '7.'[2-9]) ;;
+      '8.'[0-6]) ;;
+      '') version_not_found=1 ;;
+      *) unsupported_version=1 ;;
+    esac
+    ;;
+
+  'rocky')
+    case $VERSION_ID in
+      '8.6') ;;
+      '') version_not_found=1 ;;
+      *) unsupported_version=1 ;;
+    esac
+    ;;
+
+  'sles')
+    case $VERSION_ID in
+      '12.5') client_only=1 ;;
+      '15.2') client_only=1 ;;
+      '') version_not_found=1 ;;
+      *) unsupported_version=1 ;;
+    esac
+    ;;
+
+  'ubuntu')
+    case $VERSION_ID in
+      '18.04.'[0-6]) ;;
+      '20.04.'[0-4]) ;;
+      '') version_not_found=1 ;;
+      *) unsupported_version=1 ;;
+    esac
+    ;;
+
+  '') distro_not_found=1 ;;
+  *) unsupported_distro=1 ;;
+esac
+
+if [ "$distro_not_found" -eq 1 ]; then
+  BAD " [VERIFYING OS SUPPORT] Distribution not found"
+elif [ "$version_not_found" -eq 1 ]; then
+  BAD " [VERIFYING OS SUPPORT] $NAME detected but version not found"
+elif [ "$unsupported_distro" -eq 1 ]; then
+  BAD " [VERIFYING OS SUPPORT] $NAME is not a supported distribution"
+elif [ "$unsupported_version" -eq 1 ]; then
+  BAD " [VERIFYING OS SUPPORT] $NAME $VERSION_ID is not a supported version of $NAME"
+else
+  if [ "$client_only" -eq 1 ]; then
+    GOOD " [VERIFYING OS SUPPORT] $NAME $VERSION_ID is supported (for client only)"
+  else
+    GOOD " [VERIFYING OS SUPPORT] $NAME $VERSION_ID is supported"
+  fi
+fi
+
+}
+
 function check_jq() {
   if ! $SSH $1 command -v jq &>/dev/null; then
     BAD " [JQ CHECK ROLLING UPGRADE] 'jq' executable was not found on host $2."
@@ -436,11 +531,12 @@ fi
 }
 
 function weka_agent_service() {
-  if [ "$1" == "RUNNING" ]; then
+  if [ "$1" -eq 0 ]; then
     if [[ ! $XCEPT ]] ; then GOOD " [WEKA AGENT SERVICE] Weka Agent Serivce is running on host $2."
     fi
   else
-    BAD " [WEKA AGENT SERVICE] Weka Agent Service is NOT running on host $2."
+    BAD " [WEKA AGENT SERVICE] Weka Agent Service is NOT running on host $2. Skipping checks."
+    return 1
   fi
 }
 
@@ -466,7 +562,7 @@ function diffdate() {
 
 function weka_container_status() {
   if [ -z "$1" ]; then
-    BAD " [WEKA CONTAINER STATUS] Unable to determine container status on Host $2."
+    BAD " [WEKA CONTAINER STATUS] Unable to determine container status on Host $2. Skipping checks."
     return 1
   fi
 
@@ -480,12 +576,11 @@ function weka_container_status() {
 
 function weka_container_disabled() {
   if [ -z "$1" ]; then
-    BAD " [WEKA CONTAINER STATUS] Unable to determine container status on Host $2."
-    return 1
+    BAD " [WEKA CONTAINER DISABLED STATUS] Unable to determine container status on Host $2."
   fi
 
   if [ "$1" = "True" ]; then
-    BAD " [WEKA CONTAINER STATUS] Weka local container is disabled on Host $2, please enable using weka local enable."
+    BAD " [WEKA CONTAINER DISABLED STATUS] Weka local container is disabled on Host $2, please enable using weka local enable."
   else
     if [[ ! $XCEPT ]] ; then GOOD " [WEKA CONTAINER STATUS] Weka local container is running Host $2."
     fi
@@ -620,6 +715,9 @@ local CURHOST REMOTEDATE WEKACONSTATUS RESULTS1 RESULTS2 UPGRADECONT MOUNTWEKA S
   NOTICE "VERIFYING SETTINGS ON BACKEND HOST $CURHOST"
   check_ssh_connectivity "$1" "$CURHOST" || return
 
+  ID=$(grep -w ID /etc/os-release | awk -F= '{print $2}' | tr -d '"') ; VERSION_ID=$(grep -w VERSION_ID /etc/os-release | awk -F= '{print $2}' | tr -d '"') ; VERSION=$(grep -w VERSION /etc/os-release | awk -F= '{print $2}' | tr -d '"') ; NAME=$(grep -w NAME /etc/os-release | awk -F= '{print $2}' | tr -d '"')
+  os_check "$ID" "$VERSION_ID" "$VERSION" "$NAME"
+
   REMOTEDATE=$($SSH "$1" "date --utc '+%s'")
   diffdate "$REMOTEDATE" "$CURHOST"
 
@@ -630,8 +728,8 @@ local CURHOST REMOTEDATE WEKACONSTATUS RESULTS1 RESULTS2 UPGRADECONT MOUNTWEKA S
   MOUNTWEKA=$($SSH "$1" "mountpoint -qd /weka/")
   weka_mount "$MOUNTWEKA" "$CURHOST"
 
-  WEKAAGENTSRV=$($SSH "$1" sudo service weka-agent status | awk '{print $3}')
-  weka_agent_service "$WEKAAGENTSRV" "$CURHOST"
+  WEKAAGENTSRV=$($SSH "$1" sudo service weka-agent status > /dev/null ; echo $?)
+  weka_agent_service "$WEKAAGENTSRV" "$CURHOST" || return
 
   WEKACONSTATUS=$($SSH "$1" weka local ps --no-header -o name,running | grep -i default | awk '{print $2}')
   weka_container_status "$WEKACONSTATUS" "$CURHOST" || return
@@ -674,6 +772,9 @@ local CURHOST REMOTEDATE WEKACONSTATUS RESULTS1 RESULTS2 UPGRADECONT MOUNTWEKA
   NOTICE "VERIFYING SETTINGS ON CLIENTs HOST $CURHOST"
   check_ssh_connectivity "$1" "$CURHOST" || return
 
+  ID=$(grep -w ID /etc/os-release | awk -F= '{print $2}' | tr -d '"') ; VERSION_ID=$(grep -w VERSION_ID /etc/os-release | awk -F= '{print $2}' | tr -d '"') ; VERSION=$(grep -w VERSION /etc/os-release | awk -F= '{print $2}' | tr -d '"') ; NAME=$(grep -w NAME /etc/os-release | awk -F= '{print $2}' | tr -d '"')
+  os_check "$ID" "$VERSION_ID" "$VERSION" "$NAME"
+
   RESULTS1=$($SSH "$1" df -m "$LOGSDIR1" | awk '{print $4}' | tail -n +2)
   RESULTS2=$($SSH "$1" df -m "$LOGSDIR2" | awk '{print $4}' | tail -n +2)
   freespace_client "$RESULTS1" "$RESULTS2" "$CURHOST"
@@ -687,11 +788,11 @@ local CURHOST REMOTEDATE WEKACONSTATUS RESULTS1 RESULTS2 UPGRADECONT MOUNTWEKA
   MOUNTWEKA=$($SSH "$1" "mountpoint -qd /weka/")
   weka_mount "$MOUNTWEKA" "$CURHOST"
 
-  WEKAAGENTSRV=$($SSH "$1" sudo systemctl is-active weka-agent.service)
-  weka_agent_service "$WEKAAGENTSRV" "$CURHOST"
+  WEKAAGENTSRV=$($SSH "$1" sudo service weka-agent status > /dev/null ; echo $?)
+  weka_agent_service "$WEKAAGENTSRV" "$CURHOST" || return
 
   WEKACONSTATUS=$($SSH "$1" weka local ps --no-header -o name,running | grep -E 'client|default' | awk '{print $2}')
-  weka_container_status "$WEKACONSTATUS" "$CURHOST"
+  weka_container_status "$WEKACONSTATUS" "$CURHOST" || return
 
   UPGRADECONT=$($SSH "$1" "weka local ps --no-header -o name,running | awk '/upgrade/ {print $2}'")
   upgrade_container "$UPGRADECONT" "$CURHOST"
