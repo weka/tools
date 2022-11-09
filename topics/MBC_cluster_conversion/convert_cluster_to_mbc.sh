@@ -12,7 +12,7 @@ export GREEN="\033[1;32m"
 export BLUE="\033[1;34m"
 
 DIR='/tmp'
-SSH='/usr/bin/ssh'
+SSH='/usr/bin/ssh -o LogLevel=ERROR -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no'
 LOG="./mbc_divider.log"
 FILE="$DIR/mbc_divider_script.py"
 RES_GEN_FILE="$DIR/resources_generator.py"
@@ -33,6 +33,7 @@ Usage: [-s skip failed hosts.]
 Usage: [-d override drain grace period in seconds.]
 Usage: [-b to perform conversion on a single host, input should be a valid ip.]
 Usage: [-l log file will be saved to this location instead of current dir.]
+Usage: [-i path to ssh identity file.]
 Usage: [-h show this help string.]
 
 This script allow the conversion of regular weka architecture to multiple backend architecture
@@ -47,12 +48,13 @@ OPTIONS:
   -F assign frontend dedicated cores (use only for on-prem deployment, this will override pinned cores)
   -C assign compute dedicated cores (use only for on-prem deployment, this will override pinned cores)
   -m override max memory memory assignment after conversion (value should be given in GiB
+  -i path to ssh identity file.
   -h show this help string
 EOF
 exit
 }
 
-while getopts "hfasd:b:Sl:VC:D:F:m:" o; do
+while getopts "hfasd:b:Sl:VC:D:F:m:i:" o; do
     case "${o}" in
         f)
             FORCE='--force'
@@ -100,6 +102,10 @@ while getopts "hfasd:b:Sl:VC:D:F:m:" o; do
         m)
             LIMIT_MEMORY='--limit-maximum-memory '$OPTARG
             echo "Option -m set limit maximum memory to  $OPTARG GiB"
+            ;;
+        i)
+            SSH="$SSH -i $OPTARG"
+            echo "Option -i set ssh identity file to $OPTARG"
             ;;
         h)
             usage
@@ -183,6 +189,8 @@ function BAD() {
 echo -e "${RED}$1${NOCOLOR}"
 logit [ FAILED ] "$1"
 }
+
+SSH=
 
 if [ "$EUID" -ne 0 ]; then
   SUDO="sudo "
