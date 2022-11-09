@@ -99,8 +99,6 @@ class NetDev:
         else:
             return self.identifier + net_suffix
 
-def str2bool(v):
-    return v.lower() in ("yes", "true", "t", "1")
 
 def extract_digits(s):
     return "".join(filter(str.isdigit, s))
@@ -297,12 +295,12 @@ def main():
         sleep(s3_drain_grace_period)
         #validate drain
         validate_drain_s3_cmd = '/bin/sh -c "weka debug jrpc container_get_drain_status hostId={}"'.format(current_host_id)
-        s3_drain_status = run_shell_command(validate_drain_s3_cmd).strip()
+        s3_drain_status = json.loads(run_shell_command(validate_drain_s3_cmd))
         if not s3_drain_status:
             logger.info("Drain status for hostID {} is {}".format(current_host_id, s3_drain_status))
             for i in range(retries):
                 sleep(1)
-                s3_drain_status = run_shell_command(validate_drain_s3_cmd).strip()
+                s3_drain_status = json.loads(run_shell_command(validate_drain_s3_cmd))
                 if s3_drain_status:
                     break
             if not s3_drain_status:
