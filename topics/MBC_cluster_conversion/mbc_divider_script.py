@@ -19,7 +19,7 @@ logging.basicConfig(format='%(asctime)s %(levelname)s: %(message)s',
 logger = logging.getLogger('mbc divider')
 
 
-def run_shell_command(command):
+def run_shell_command(command, no_fail=False):
     if dry_run:
         logger.warning('dry_run, not running: {}'.format(command))
         return 0
@@ -31,7 +31,9 @@ def run_shell_command(command):
         logger.warning("Return Code: {}".format(process.returncode))
         logger.warning("Output: {}".format(output))
         logger.warning("Stderr: {}".format(stderr))
-        exit(1)
+        if not no_fail:
+            raise
+        return 0
     return output
 
 
@@ -100,6 +102,25 @@ class NetDev:
             return self.identifier + net_suffix
 
 
+def drain_in_progress():
+    s3_cluster_info = json.loads(run_shell_command('/bin/sh -c "weka s3 cluster -J"'))
+    protocol = "https" if s3_cluster_info["tls_enabled"] else "http"
+    port = s3_cluster_info["port"]
+    drain_url = protocol + "://127.0.0.1:" + port + "/minio/drain/mode"
+    minio_drain_check_cmd = '/bin/sh -c "weka local exec -C s3 curl -sk {}"'.format(drain_url)
+    drain_status = json.loads(run_shell_command(minio_drain_check_cmd))
+    return json.loads(drain_status["mode"])
+
+
+def check_etcd_health():
+    logger.info("Checking etcd Health")
+    etcd_health_cmd = '/bin/sh -c "weka local exec -C s3 etcdctl endpoint health --cluster -w json"'
+    etcd_status = json.loads(run_shell_command(etcd_health_cmd))
+    if not all(etcd_host["health"] for etcd_host in etcd_status):
+        failed_etcd_hosts = [etcd_host["endpoint"] for etcd_host in etcd_status if not etcd_host["health"]]
+        logger.error("We have {} failed etcd hosts, from the following ips {}"
+                     .format(len(failed_etcd_hosts), failed_etcd_hosts))
+        exit(1)
 def extract_digits(s):
     return "".join(filter(str.isdigit, s))
 
@@ -242,6 +263,7 @@ def main():
             logger.warning('We have only {} hosts in s3 cluster, in order to convert cluster we need at list 4'.format(
                 len(s3_status)))
             exit(1)
+        check_etcd_health()
 
     # SMB check
     smb_status_command = '/bin/sh -c "weka smb cluster status -J"'
@@ -249,7 +271,7 @@ def main():
     if host_id_str in smb_status:
         if len(smb_status) < 4:
             logger.warning('We have only {} hosts in SMB cluster, in order to convert cluster we need at list 4'.format(
-                len(smb_status)))
+                len(smb_status), "bla"))
             exit(1)
         for i in range(retries):
             smb_status = json.loads(run_shell_command(smb_status_command))
@@ -279,6 +301,10 @@ def main():
     if host_id_str in s3_status:
         if not all(status for status in s3_status.values()):
             logger.info('Waiting for S3 cluster to be fully healthy before converting server')
+            if drain_in_progress():
+                logger.info('S3 is currently draining, undraining in order to get to ready status')
+                undrain_s3_cmd = '/bin/sh -c "weka s3 cluster undrain {}"'.format(current_host_id)
+                run_shell_command(undrain_s3_cmd)
             for i in range(retries):
                 sleep(1)
                 s3_status = json.loads(run_shell_command(s3_status_command))
