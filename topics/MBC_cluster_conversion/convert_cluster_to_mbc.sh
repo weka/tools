@@ -12,7 +12,7 @@ export GREEN="\033[1;32m"
 export BLUE="\033[1;34m"
 
 DIR='/tmp'
-SSH='/usr/bin/ssh -o LogLevel=ERROR -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no'
+SSH="/usr/bin/ssh -o LogLevel=ERROR -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no"
 LOG="./mbc_divider.log"
 FILE="$DIR/mbc_divider_script.py"
 RES_GEN_FILE="$DIR/resources_generator.py"
@@ -104,7 +104,8 @@ while getopts "hfasd:b:Sl:VC:D:F:m:i:" o; do
             echo "Option -m set limit maximum memory to  $OPTARG GiB"
             ;;
         i)
-            SSH="$SSH -i $OPTARG"
+            SSH_IDENTITY=" -i $OPTARG"
+            SSH="$SSH $SSH_IDENTITY"
             echo "Option -i set ssh identity file to $OPTARG"
             ;;
         h)
@@ -189,8 +190,6 @@ function BAD() {
 echo -e "${RED}$1${NOCOLOR}"
 logit [ FAILED ] "$1"
 }
-
-SSH=
 
 if [ "$EUID" -ne 0 ]; then
   SUDO="sudo "
@@ -308,11 +307,10 @@ else
   BAD "Failed Weka Nodes Found."
   WARN "\n$WEKANODES\n"
 fi
-
 let SSHERRORS=0
 NOTICE "SSH connectivity between backend hosts"
 for IP in ${BACKENDIP}; do
-  $SSH -q -o BatchMode=yes -o ConnectTimeout=5 "$IP" exit
+  $SSH -q -o BatchMode=yes -o ConnectTimeout=5 $IP exit
   if [ $? -ne 0 ]; then
     BAD "[SSH PASSWORDLESS CONNECTIVITY CHECK] SSH connectivity test FAILED on Host $IP"
     let SSHERRORS=$SSHERRORS+1
@@ -340,40 +338,49 @@ else
   GOOD "File Permission are set correctly"
 fi
 
+NOTICE "VERIFYING $RES_GEN_FILE PERMISSIONS"
+FPERM=$(stat -c "%a %n" $RES_GEN_FILE | cut -c1-3)
+if [ "$FPERM" != 775 ]; then
+  NOTICE "MAKING $RES_GEN_FILE EXECUTABLE"
+  $SUDO chmod 775 $RES_GEN_FILE
+else
+  GOOD "File Permission are set correctly"
+fi
 NOTICE "DISTRIBUTING FILE TO HOST $1"
-  scp -p "$FILE" "$1":/$DIR > /dev/null
-  if [ $? -ne 0 ]; then
-    BAD "Unable to SCP @FILE to $1"
-    WARN "Skipping $1"
-    return 1
-  else
-    GOOD "$FILE transferred successfully"
-  fi
+echo "scp $SSH_IDENTITY -p $FILE $1:$DIR > /dev/null"
+scp $SSH_IDENTITY -p $FILE $1:$DIR > /dev/null
+if [ $? -ne 0 ]; then
+  BAD "Unable to SCP $FILE to $1"
+  WARN "Skipping $1"
+  return 1
+else
+  GOOD "$FILE transferred successfully"
+fi
 
-  scp -p "$RES_GEN_FILE" "$1":/$DIR > /dev/null
+scp $SSH_IDENTITY -p $RES_GEN_FILE $1:$DIR > /dev/null
+if [ $? -ne 0 ]; then
+  BAD "Unable to SCP @RES_GEN_FILE to $1"
+  WARN "Skipping $1"
+  return 1
+else
+  GOOD "$RES_GEN_FILE transferred successfully"
+fi
+if [ -f "$WEKA_AUTH_FILE" ]; then
+  $SSH $1 mkdir -p $WEKA_AUTH_DIR
+  scp $SSH_IDENTITY -p $WEKA_AUTH_FILE $1:$WEKA_AUTH_FILE > /dev/null
   if [ $? -ne 0 ]; then
-    BAD "Unable to SCP @RES_GEN_FILE to $1"
-    WARN "Skipping $1"
-    return 1
+      BAD "Unable to SCP @WEKA_AUTH_FILE to $1"
+      WARN "Skipping $1"
+      return 1
   else
-    GOOD "$RES_GEN_FILE transferred successfully"
+      GOOD "$WEKA_AUTH_FILE transferred successfully"
   fi
-  if [ -f "$WEKA_AUTH_FILE" ]; then
-    ssh $1 mkdir -p $WEKA_AUTH_DIR
-    scp -p "$WEKA_AUTH_FILE" "$1":$WEKA_AUTH_FILE > /dev/null
-    if [ $? -ne 0 ]; then
-        BAD "Unable to SCP @WEKA_AUTH_FILE to $1"
-        WARN "Skipping $1"
-        return 1
-    else
-        GOOD "$WEKA_AUTH_FILE transferred successfully"
-    fi
-  fi
+fi
 
 NOTICE "======================================
 EXECUTING CONVERSION TO MBC ON HOST $1
 ======================================"
-  ssh "$1" "$DIR/mbc_divider_script.py $AWS $FORCE $DRAIN_TIMEOUT $DRIVE_CORES $COMPUTE_CORES $FRONTEND_CORES $LIMIT_MEMORY" 2>&1 | tee -a ${LOG}
+  $SSH "$1" "$DIR/mbc_divider_script.py $AWS $FORCE $DRAIN_TIMEOUT $DRIVE_CORES $COMPUTE_CORES $FRONTEND_CORES $LIMIT_MEMORY" 2>&1 | tee -a ${LOG}
 if [ "${PIPESTATUS[0]}" != "0" ]; then
     BAD "UNABLE TO CONVERT HOST $1"
     return 1
