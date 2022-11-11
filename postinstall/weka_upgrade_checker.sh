@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-#version=1.0.53
+#version=1.0.55
 
 # Colors
 export NOCOLOR="\033[0m"
@@ -180,8 +180,8 @@ GOOD "Working on CLUSTER: $CLUSTER UUID: $UUID STATUS:${CLUSTERSTATUS}${IOSTATUS
 
 #verify local container status otherwise commands will fail
 NOTICE "VERIFYING WEKA LOCAL CONTAINER STATUS"
-CONSTATUS=$(weka local ps --no-header -o name,state | awk '/default/{print $2}')
-if [ "$CONSTATUS" == Stopped ]; then
+CONSTATUS=$(weka local ps --no-header -o name,running | awk '/default/{print $2}')
+if [ -z "$CONSTATUS" ]; then
   BAD "Weka local container is down cannot continue."
   exit
 else
@@ -386,8 +386,8 @@ else
   WARN "\n$OVERRIDE"
 fi
 
-NOTICE "CHECKING WEKA STATS RETENTION"
 if [[ "$MAJOR" -eq 3 ]] && [[ "$WEKAMINOR1" -eq 14 ]] || [[ "$MAJOR" -ge 4 ]]; then
+NOTICE "CHECKING WEKA STATS RETENTION"
 STATSRETENTION=$(weka stats retention status -J | awk '/"retention_secs":/ {print $2}' | tr -d ",")
   if [ "$STATSRETENTION" -le 172800 ]; then
     GOOD "Weka stats retention settings are set correctly."
@@ -558,7 +558,7 @@ function weka_container_status() {
     return 1
   fi
 
-  if [ "$1" == "Stopped" ]; then
+  if [ "$1" != "True" ]; then
     BAD " [WEKA CONTAINER STATUS] Weka local container is down on Host $2."
   else
     if [[ ! $XCEPT ]] ; then GOOD " [WEKA CONTAINER STATUS] Weka local container is running Host $2."
@@ -571,7 +571,7 @@ function weka_container_disabled() {
     BAD " [WEKA CONTAINER DISABLED STATUS] Unable to determine container status on Host $2."
   fi
 
-  if [ "$1" = "True" ]; then
+  if [ "$1" == "True" ]; then
     BAD " [WEKA CONTAINER DISABLED STATUS] Weka local container is disabled on Host $2, please enable using weka local enable."
   else
     if [[ ! $XCEPT ]] ; then GOOD " [WEKA CONTAINER STATUS] Weka local container is running Host $2."
@@ -721,12 +721,12 @@ if [ "$S3CLUSTERSTATUS" == true ]; then
     done
 fi
 
-BACKEND=$(weka cluster host -b --no-header -o ips | awk -F, '{print $1}')
+BACKEND=$(weka cluster host -b --no-header -o ips | awk -F, '{print $1}' | sort -u)
 CLIENT=$(weka cluster host -c --no-header -o ips | awk -F, '{print $1}')
 
 function backendloop() {
 local CURHOST REMOTEDATE WEKACONSTATUS RESULTS1 RESULTS2 UPGRADECONT MOUNTWEKA SMBCHECK
-  CURHOST=$(weka cluster host --no-header -o hostname,ips | grep -w "$1" | awk '{print $1}')
+  CURHOST=$(weka cluster host --no-header -o hostname,ips | grep -w "$1" | awk '{print $1}' | sort -u)
   NOTICE "VERIFYING SETTINGS ON BACKEND HOST $CURHOST"
   check_ssh_connectivity "$1" "$CURHOST" || return
 
@@ -749,7 +749,7 @@ local CURHOST REMOTEDATE WEKACONSTATUS RESULTS1 RESULTS2 UPGRADECONT MOUNTWEKA S
   WEKAAGENTSRV=$($SSH "$1" sudo service weka-agent status > /dev/null ; echo $?)
   weka_agent_service "$WEKAAGENTSRV" "$CURHOST" || return
 
-  WEKACONSTATUS=$($SSH "$1" weka local ps --no-header -o name,state | awk '/default/ {print $2}')
+  WEKACONSTATUS=$($SSH "$1" weka local ps --no-header -o name,running | awk '/default/ {print $2}')
   weka_container_status "$WEKACONSTATUS" "$CURHOST" || return
 
   CONDISABLED=$($SSH "$1" weka local ps --no-header -o name,disabled | awk '/default/ {print $2}')
@@ -759,7 +759,7 @@ local CURHOST REMOTEDATE WEKACONSTATUS RESULTS1 RESULTS2 UPGRADECONT MOUNTWEKA S
   AMEMORY=$($SSH "$1" sudo cat /proc/meminfo | awk '/MemAvailable:/ {print $2}')
   smb_check "$SMBCHECK" "$CURHOST" "$AMEMORY"
 
-  UPGRADECONT=$($SSH "$1" weka local ps --no-header -o name,state | awk '/upgrade/ {print $2}')
+  UPGRADECONT=$($SSH "$1" weka local ps --no-header -o name,running | awk '/upgrade/ {print $2}')
   upgrade_container "$UPGRADECONT" "$CURHOST"
 
   if [ ! -z "$AWS" ]; then
@@ -812,10 +812,10 @@ local CURHOST REMOTEDATE WEKACONSTATUS RESULTS1 RESULTS2 UPGRADECONT MOUNTWEKA
   WEKAAGENTSRV=$($SSH "$1" sudo service weka-agent status > /dev/null ; echo $?)
   weka_agent_service "$WEKAAGENTSRV" "$CURHOST" || return
 
-  WEKACONSTATUS=$($SSH "$1" sudo weka local ps --no-header -o name,state | awk '/client/ {print $2}')
+  WEKACONSTATUS=$($SSH "$1" sudo weka local ps --no-header -o name,running | awk '/client/ {print $2}')
   weka_container_status "$WEKACONSTATUS" "$CURHOST" || return
 
-  UPGRADECONT=$($SSH "$1" sudo weka local ps --no-header -o name,state | awk '/upgrade/ {print $2}')
+  UPGRADECONT=$($SSH "$1" sudo weka local ps --no-header -o name,running | awk '/upgrade/ {print $2}')
   upgrade_container "$UPGRADECONT" "$CURHOST"
 
   if [ "$XCEPT" ];then
