@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-#version=1.0.52
+#version=1.0.53
 
 # Colors
 export NOCOLOR="\033[0m"
@@ -12,7 +12,7 @@ export BLUE="\033[1;34m"
 
 DIR='/tmp'
 SSHCONF="$DIR/ssh_config"
-LOG="$DIR/weka_upgrade_checker_`date +"%Y%m%dT%I%M%S"`.log"
+LOG="$DIR/weka_upgrade_checker_$(date +"%Y%m%dT%I%M%S").log"
 LARGE_CLUSTER=100 #Total number of hosts and clients in cluster
 HOSTSPACE1=6000 #Minimum Free space on BACKEND in /weka specified in MBs
 HOSTSPACE2=50 #Minimum Free space on BACKEND in /opt/weka/logs specified in MBs
@@ -64,7 +64,7 @@ done
 
 shift $((OPTIND -1))
 
-if [ ! -z $AWS ]; then
+if [ ! -z "$AWS" ]; then
 cat > $SSHCONF <<EOF
 BatchMode yes
 Compression yes
@@ -77,14 +77,14 @@ IdentityFile /home/ec2-user/.ssh/support_id_rsa.pem
 EOF
 fi
 
-if [ -z $AWS ]; then
+if [ -z "$AWS" ]; then
   SSH='/usr/bin/ssh'
 else
   SSH="/usr/bin/ssh -F /tmp/ssh_config -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
 fi
 
 function logit() {
-  echo -e "[${USER}][$(date)] - ${*}\n" >> ${LOG}
+  echo -e "[${USER}][$(date)] - ${*}\n" >> "${LOG}"
 }
 
 function LogRotate () {
@@ -113,7 +113,7 @@ echo "" > "$f"
 fi
 }
 
-LogRotate $LOG 3
+LogRotate "$LOG" 3
 
 function NOTICE() {
 echo -e "\n${CYAN}$1${NOCOLOR}"
@@ -142,14 +142,14 @@ if [ ! -z "$RHOST" ]; then
   fi
 fi
 
-if [ -z "$AWS" ]; then
-  if [ "$(id -u)" -ne 0 ]; then
-    BAD "Must run as root user, cannot continue."
-    exit 1
-  fi
-fi
+#if [ -z "$AWS" ]; then
+#  if [ "$(id -u)" -ne 0 ]; then
+#   BAD "Must run as root user, cannot continue."
+#   exit 1
+#  fi
+#fi
 
-NOTICE "VERIFYING WEKA AGENT"
+NOTICE "VERIFYING WEKA AGENT STATUS"
 WEKAVERIFY=$(lsmod | grep -i weka)
 if [ -z "$WEKAVERIFY" ]; then
   BAD "Weka is NOT installed on host or the container is down, cannot continue."
@@ -159,7 +159,7 @@ WEKAVERSION=$(weka version current)
 MAJOR=$(weka version current | cut -d "." -f1)
 WEKAMINOR1=$(weka version current | cut -d "." -f2)
 WEKAMINOR2=$(weka version current | cut -d "." -f3)
-  GOOD "Weka verified $WEKAVERSION."
+  GOOD "Weka agent status verified."
 fi
 
 NOTICE "WEKA USER LOGIN TEST"
@@ -180,8 +180,8 @@ GOOD "Working on CLUSTER: $CLUSTER UUID: $UUID STATUS:${CLUSTERSTATUS}${IOSTATUS
 
 #verify local container status otherwise commands will fail
 NOTICE "VERIFYING WEKA LOCAL CONTAINER STATUS"
-CONSTATUS=$(weka local ps --no-header -o name,running | grep -i TRUE)
-if [ -z "$CONSTATUS" ]; then
+CONSTATUS=$(weka local ps --no-header -o name,state | awk '/default/{print $2}')
+if [ "$CONSTATUS" == Stopped ]; then
   BAD "Weka local container is down cannot continue."
   exit
 else
@@ -211,6 +211,8 @@ if [[ "$MAJOR" -eq 3 ]] && [[ "$WEKAMINOR1" -eq 14 ]]; then
   DRIVES=$(weka cluster drive -o vendor --no-header | grep -i KIOXIA)
   if [ ! -z "$DRIVES" ]; then
     WARN "Contact Weka Support prior to upgrading to Weka 4.0, System identified with Kioxia drives."
+  else
+    GOOD "No problematic drives found"
   fi
 fi
 
@@ -289,7 +291,7 @@ if [[ "$MAJOR" -eq 3 ]] && [[ "$WEKAMINOR1" -eq 12 ]]; then
   sudo weka local run /weka/cfgdump > $DIR/cfgdump.txt
   if [ $? -eq 0 ]; then
     RAID=$(awk '/clusterInfo/{f=1} f && /reserved/ {getline ; getline ; print ($0+0); exit}' $DIR/cfgdump.txt)
-      if [ $RAID -eq 1 ]; then
+      if [ "$RAID" -eq 1 ]; then
         GOOD "Raid Reduction is disabled."
       else
         BAD "Raid Reduction is ENABLED issue command 'weka debug jrpc config_override_key key='clusterInfo.reserved[1]' value=1' to disable."
@@ -305,10 +307,10 @@ if [[ "$MAJOR" -eq 3 ]] && [[ "$WEKAMINOR1" -eq 9 ]]; then
   COMPUTENODEID=$(weka cluster nodes --no-header -o id,role | awk '/COMPUTE/ {print $1}')
   for ID in ${COMPUTENODEID}; do
     echo -ne "${CYAN}working on Compute NodeID $ID $NOCOLOR\033[Complete\r"
-    L2BLOCK=$(weka debug manhole --node $ID buckets_get_registry_stats | awk  '/entriesInL2Block/{getline ; getline ; getline; gsub(",",""); print $2}' | awk '$1>= 477')
+    L2BLOCK=$(weka debug manhole --node "$ID" buckets_get_registry_stats | awk  '/entriesInL2Block/{getline ; getline ; getline; gsub(",",""); print $2}' | awk '$1>= 477')
     if [ ! -z "$L2BLOCK" ]; then
       BAD -e "\nFound high L2BLOCK values for Weka buckets, Please contact Weka Support prior to upgrade Ref:WEKAPP-229504."
-      WARN "$(weka cluster nodes $ID -o id,hostname,role)"
+      WARN "$(weka cluster nodes "$ID" -o id,hostname,role)"
     fi
   done
   GOOD "\nBucket L2BLOCK check completed."
@@ -324,7 +326,7 @@ fi
 if [ "$MAJOR" -eq 4 ]; then
   NOTICE "VERIFYING SYSTEM OPTIMAL SETTINGS"
   AGGRESSIVEDIET=$(weka local run /weka/cfgdump | grep allowDietAggressively | awk '{print $2}' | tr -d ",")
-    if [ $AGGRESSIVEDIET == false ]; then
+    if [ "$AGGRESSIVEDIET" == false ]; then
       GOOD "System checks passed"
     else
       BAD "Please contact Weka support Reference Agreessive Diet."
@@ -390,7 +392,7 @@ STATSRETENTION=$(weka stats retention status -J | awk '/"retention_secs":/ {prin
   if [ "$STATSRETENTION" -le 172800 ]; then
     GOOD "Weka stats retention settings are set correctly."
   else
-    BAD "Prior to upgrading Weka, stats retention should be set to 2 days, use 'weka stats retention set --days 2' revert settings after the upgrade using 'weka stats retention set --days 7'."
+    BAD "Set stats retention to 2 days, execute 'weka stats retention set --days 2'. Following the upgrade revert back using 'weka stats retention set --days $(($STATSRETENTION / 86400))'."
   fi
 fi
 
@@ -398,7 +400,7 @@ fi
 if [[ "$MAJOR" -eq 3 ]] && [[ "$WEKAMINOR1" -eq 12 ]]; then
   if [ $(weka cluster host --no-header | wc -l) -ge "$LARGE_CLUSTER" ]; then
      NOTICE "VERIFYING TLS SETTINGS"
-     if [ $(weka local run /weka/cfgdump | grep serializedTLSData -n20 | grep state | awk '{gsub("\"",""); print $3 }') == NONE ]; then
+     if [ $(sudo weka local run /weka/cfgdump | grep serializedTLSData -n20 | grep state | awk '{gsub("\"",""); print $3 }') == NONE ]; then
       GOOD "TLS is Disabled"
     else
       WARN "TLS is Enabled and should be disabled please contact Weka Support."
@@ -487,25 +489,25 @@ case $ID in
 esac
 
 if [ "$distro_not_found" -eq 1 ]; then
-  BAD " [VERIFYING OS SUPPORT] Distribution not found"
+  BAD " [VERIFYING OS SUPPORT] Distribution not found."
 elif [ "$version_not_found" -eq 1 ]; then
-  BAD " [VERIFYING OS SUPPORT] $NAME detected but version not found"
+  BAD " [VERIFYING OS SUPPORT] $NAME detected but version not found."
 elif [ "$unsupported_distro" -eq 1 ]; then
-  BAD " [VERIFYING OS SUPPORT] $NAME is not a supported distribution"
+  BAD " [VERIFYING OS SUPPORT] $NAME is not a supported distribution."
 elif [ "$unsupported_version" -eq 1 ]; then
-  BAD " [VERIFYING OS SUPPORT] $NAME $VERSION_ID is not a supported version of $NAME"
+  BAD " [VERIFYING OS SUPPORT] $NAME $VERSION_ID is not a supported version of $NAME."
 else
   if [ "$client_only" -eq 1 ]; then
-    GOOD " [VERIFYING OS SUPPORT] $NAME $VERSION_ID is supported (for client only)"
+    GOOD " [VERIFYING OS SUPPORT] $NAME $VERSION_ID is supported (for client only)."
   else
-    GOOD " [VERIFYING OS SUPPORT] $NAME $VERSION_ID is supported"
+    GOOD " [VERIFYING OS SUPPORT] $NAME $VERSION_ID is supported."
   fi
 fi
 
 }
 
 function check_jq() {
-  if ! $SSH $1 command -v jq &>/dev/null; then
+  if ! $SSH "$1" command -v jq &>/dev/null; then
     BAD " [JQ CHECK ROLLING UPGRADE] 'jq' executable was not found on host $2."
   else
     GOOD " [JQ CHECK ROLLING UPGRADE] 'jq is installed on host $2'."
@@ -556,7 +558,7 @@ function weka_container_status() {
     return 1
   fi
 
-  if [ "$1" != "True" ]; then
+  if [ "$1" == "Stopped" ]; then
     BAD " [WEKA CONTAINER STATUS] Weka local container is down on Host $2."
   else
     if [[ ! $XCEPT ]] ; then GOOD " [WEKA CONTAINER STATUS] Weka local container is running Host $2."
@@ -574,6 +576,32 @@ function weka_container_disabled() {
   else
     if [[ ! $XCEPT ]] ; then GOOD " [WEKA CONTAINER STATUS] Weka local container is running Host $2."
     fi
+  fi
+}
+
+# Check for any SMB containers, these may need stopping BEFORE upgrade.
+function smb_check() {
+  if [ -z "$1" ]; then
+    if [[ ! $XCEPT ]] ; then GOOD " [CHECKING SMB RESOURCES] NO SMB containers found on Host $2."
+    fi
+  else
+    WARN " [CHECKING SMB RESOURCES] Found SMB resources on Host $2. Recommend stopping SMB container before upgrade on this backend."
+  if [ "$3" -gt 10000000 ]; then
+    if [[ ! $XCEPT ]] ; then GOOD " [CHECKING AVAILABLE MEMORY] Sufficient memory found on $2."
+    fi
+  else
+    WARN "  [CHECKING AVAILABLE MEMORY] Insufficient memory found on Host $2 running SMB, minimum required 10GB."
+  fi
+fi
+}
+
+# Check for any upgrade container, these should be removed before upgrading if found.
+function upgrade_container() {
+  if [ -z "$1" ]; then
+    if [[ ! $XCEPT ]] ; then GOOD " [UPGRADE CONTAINER CHECK] No upgrade containers found on Host $2."
+    fi
+  else
+    BAD " [UPGRADE CONTAINER CHECK] Upgrade container found on Host $2 status $1."
   fi
 }
 
@@ -609,23 +637,13 @@ function freespace_backend() {
   fi
 }
 
-# Check for any upgrade container, these should be removed before upgrading if found.
-function upgrade_container() {
-  if [ -z "$1" ]; then
-    if [[ ! $XCEPT ]] ; then GOOD " [UPGRADE CONTAINER CHECK] No upgrade containers found on Host $2."
-    fi
-  else
-    BAD " [UPGRADE CONTAINER CHECK] Upgrade container found on Host $2 status $1."
-  fi
-}
-
 # Check for any Weka filesystems mountd on /weka
 function weka_mount() {
-  if [ -z "$1" ]; then
-    if [[ ! $XCEPT ]] ; then GOOD " [CHECKING WEKA MOUNT] NO Mount point on '/weka' found on Host $2."
+  if [ "$1" -eq 0 ]; then
+    if [[ ! $XCEPT ]] ; then GOOD " [CHECKING WEKA MOUNT] NO Weka file systems mounted on Host $2."
     fi
   else
-    BAD " [CHECKING WEKA MOUNT] Mount point on '/weka' found on Host $2."
+    BAD " [CHECKING WEKA MOUNT] Weka mounts found on Host $2 unmount prior to upgrade."
   fi
 }
 
@@ -638,22 +656,6 @@ function weka_ip_cleanup() {
     BAD " [CHECKING IP WEKA RESOURCES] $1 Invalid IP addresses in weka resources found on Host $2. Need to run update_backend_ips.py on this backend."
     WARN "  [CHECKING IP WEKA RESOURCES] https://wekaio.atlassian.net/wiki/spaces/MGMT/pages/1503330580/Cleaning+up+backend+IPs+on+systems+upgraded+to+3.8."
   fi
-}
-
-# Check for any SMB containers, these may need stopping BEFORE upgrade.
-function smb_check() {
-  if [ -z "$1" ]; then
-    if [[ ! $XCEPT ]] ; then GOOD " [CHECKING SMB RESOURCES] NO SMB containers found on Host $2."
-    fi
-  else
-    WARN " [CHECKING SMB RESOURCES] Found SMB resources on Host $2. Recommend stopping SMB container before upgrade on this backend."
-  if [ "$3" -gt 10000000 ]; then
-    if [[ ! $XCEPT ]] ; then GOOD " [CHECKING AVAILABLE MEMORY] Sufficient memory found on $2."
-    fi
-  else
-    WARN "  [CHECKING AVAILABLE MEMORY] Insufficient memory found on Host $2 running SMB, minimum required 10GB."
-  fi
-fi
 }
 
 function freespace_client() {
@@ -696,6 +698,29 @@ function client_web_test() {
   fi
 }
 
+
+S3CLUSTERSTATUS=$(weka s3 cluster -J | awk '/"active":/{print $2}' | tr -d ",")
+if [ "$S3CLUSTERSTATUS" == true ]; then
+  NOTICE "VERIFYING S3 CONTAINER STATUS"
+  S3HOSTIP=$(weka cluster host $(weka s3 cluster -v | grep "S3 Hosts" | cut -d":" -f2 | sed 's/[^0-9]*/ /g') --no-header -o ips)
+    for s3host in ${S3HOSTIP}; do
+      CURHOST=$(weka cluster host --no-header -o hostname,ips | grep -w "$s3host" | awk '{print $1}')
+      S3CONRUN=$("$SSH" "$s3host" weka local ps --no-header -o name,state | awk '/s3/ {print $2}');
+      S3CONDISABLE=$("$SSH" "$s3host" weka local ps --no-header -o name,disabled | awk '/s3/ {print $2}')
+      if [ -z "$S3CONRUN" ]; then
+        BAD "Unable to determine s3 container status on Host $CURHOST."
+      elif [ "$S3CONRUN" == "Running" ] && [ "$S3CONDISABLE" == "False" ]; then
+        GOOD "Host $CURHOST s3 container status running and is enabled."
+      elif [ "$S3CONRUN" == "Running" ] && [ "$S3CONDISABLE" == "True" ]; then
+        WARN "Host $CURHOST s3 container status running but is disabled."
+      elif [ "$S3CONRUN" == "Stopped" ] && [ "$S3CONDISABLE" == "False" ]; then
+        BAD "Host $CURHOST s3 container status stopped but is enabled."
+      elif [ "$S3CONRUN" == "Stopped" ] && [ "$S3CONDISABLE" == "True" ]; then
+        BAD "Host $CURHOST s3 container status stopped and its disabled."
+      fi
+    done
+fi
+
 BACKEND=$(weka cluster host -b --no-header -o ips | awk -F, '{print $1}')
 CLIENT=$(weka cluster host -c --no-header -o ips | awk -F, '{print $1}')
 
@@ -705,7 +730,10 @@ local CURHOST REMOTEDATE WEKACONSTATUS RESULTS1 RESULTS2 UPGRADECONT MOUNTWEKA S
   NOTICE "VERIFYING SETTINGS ON BACKEND HOST $CURHOST"
   check_ssh_connectivity "$1" "$CURHOST" || return
 
-  ID=$(grep -w ID /etc/os-release | awk -F= '{print $2}' | tr -d '"') ; VERSION_ID=$(grep -w VERSION_ID /etc/os-release | awk -F= '{print $2}' | tr -d '"') ; VERSION=$(grep -w VERSION /etc/os-release | awk -F= '{print $2}' | tr -d '"') ; NAME=$(grep -w NAME /etc/os-release | awk -F= '{print $2}' | tr -d '"')
+  ID=$($SSH "$1" grep -w ID /etc/os-release | awk -F= '{print $2}' | tr -d '"')
+  VERSION_ID=$($SSH "$1" grep -w VERSION_ID /etc/os-release | awk -F= '{print $2}' | tr -d '"')
+  VERSION=$($SSH "$1" grep -w VERSION /etc/os-release | awk -F= '{print $2}' | tr -d '"')
+  NAME=$($SSH "$1" grep -w NAME /etc/os-release | awk -F= '{print $2}' | tr -d '"')
   os_check "$ID" "$VERSION_ID" "$VERSION" "$NAME"
 
   REMOTEDATE=$($SSH "$1" "date --utc '+%s'")
@@ -715,43 +743,43 @@ local CURHOST REMOTEDATE WEKACONSTATUS RESULTS1 RESULTS2 UPGRADECONT MOUNTWEKA S
   RESULTS2=$($SSH "$1" df -m "$LOGSDIR2" | awk '{print $4}' | tail -n +2)
   freespace_backend "$RESULTS1" "$RESULTS2" "$CURHOST"
 
-  MOUNTWEKA=$($SSH "$1" "mountpoint -qd /weka/")
+  MOUNTWEKA=$($SSH "$1" "mount -t wekafs | tail -n +2 | wc -l")
   weka_mount "$MOUNTWEKA" "$CURHOST"
 
   WEKAAGENTSRV=$($SSH "$1" sudo service weka-agent status > /dev/null ; echo $?)
   weka_agent_service "$WEKAAGENTSRV" "$CURHOST" || return
 
-  WEKACONSTATUS=$($SSH "$1" weka local ps --no-header -o name,running | grep -i default | awk '{print $2}')
+  WEKACONSTATUS=$($SSH "$1" weka local ps --no-header -o name,state | awk '/default/ {print $2}')
   weka_container_status "$WEKACONSTATUS" "$CURHOST" || return
 
-  CONDISABLED=$($SSH "$1" weka local ps --no-header -o name,disabled | grep -E 'client|default' | awk '{print $2}')
+  CONDISABLED=$($SSH "$1" weka local ps --no-header -o name,disabled | awk '/default/ {print $2}')
   weka_container_disabled "$CONDISABLED" "$CURHOST"
 
-  SMBCHECK=$($SSH "$1" "weka local ps | grep samba")
-  AMEMORY=$($SSH "$1" cat /proc/meminfo | awk '/MemAvailable:/ {print $2}')
+  SMBCHECK=$($SSH "$1" weka local ps | grep -E 'samba|ganesha')
+  AMEMORY=$($SSH "$1" sudo cat /proc/meminfo | awk '/MemAvailable:/ {print $2}')
   smb_check "$SMBCHECK" "$CURHOST" "$AMEMORY"
 
-  UPGRADECONT=$($SSH "$1" "weka local ps --no-header -o name,running | awk '/upgrade/ {print $2}'")
+  UPGRADECONT=$($SSH "$1" weka local ps --no-header -o name,state | awk '/upgrade/ {print $2}')
   upgrade_container "$UPGRADECONT" "$CURHOST"
 
-  if [ ! -z $AWS ]; then
-    IPCLEANUP=$($SSH "$1" "sudo weka local resources -J | grep -c -E -o '([0]{1,3}[\.]){3}[0]{1,3}'")
+  if [ ! -z "$AWS" ]; then
+    IPCLEANUP=$($SSH "$1" sudo weka local resources -J | grep -c -E -o '([0]{1,3}[\.]){3}[0]{1,3}')
      weka_ip_cleanup "$IPCLEANUP" "$CURHOST"
   else
-    IPCLEANUP=$($SSH "$1" "weka local resources -J | grep -c -E -o '([0]{1,3}[\.]){3}[0]{1,3}'")
+    IPCLEANUP=$($SSH "$1" sudo weka local resources -J | grep -c -E -o '([0]{1,3}[\.]){3}[0]{1,3}')
      weka_ip_cleanup "$IPCLEANUP" "$CURHOST"
   fi
 
-  if [ ! -z $ROLL ]; then
+  if [ ! -z "$ROLL" ]; then
   WEKALOGIN=$($SSH "$1" "weka cluster nodes 2>&1 | awk '/error:/'")
   weka_user_login "$WEKALOGIN" "$CURHOST"
   fi
 
-  if [ ! -z $ROLL ]; then
+  if [ ! -z "$ROLL" ]; then
   check_jq "$1" "$CURHOST"
   fi
 
-  if [ $XCEPT ];then
+  if [ "$XCEPT" ];then
     WARN "Backend host checks completed please see logs for details $LOG."
   fi
 }
@@ -762,7 +790,10 @@ local CURHOST REMOTEDATE WEKACONSTATUS RESULTS1 RESULTS2 UPGRADECONT MOUNTWEKA
   NOTICE "VERIFYING SETTINGS ON CLIENTs HOST $CURHOST"
   check_ssh_connectivity "$1" "$CURHOST" || return
 
-  ID=$(grep -w ID /etc/os-release | awk -F= '{print $2}' | tr -d '"') ; VERSION_ID=$(grep -w VERSION_ID /etc/os-release | awk -F= '{print $2}' | tr -d '"') ; VERSION=$(grep -w VERSION /etc/os-release | awk -F= '{print $2}' | tr -d '"') ; NAME=$(grep -w NAME /etc/os-release | awk -F= '{print $2}' | tr -d '"')
+  ID=$($SSH "$1" grep -w ID /etc/os-release | awk -F= '{print $2}' | tr -d '"') ;
+  VERSION_ID=$($SSH "$1" grep -w VERSION_ID /etc/os-release | awk -F= '{print $2}' | tr -d '"')
+  VERSION=$($SSH "$1" grep -w VERSION /etc/os-release | awk -F= '{print $2}' | tr -d '"')
+  NAME=$($SSH "$1" grep -w NAME /etc/os-release | awk -F= '{print $2}' | tr -d '"')
   os_check "$ID" "$VERSION_ID" "$VERSION" "$NAME"
 
   RESULTS1=$($SSH "$1" df -m "$LOGSDIR1" | awk '{print $4}' | tail -n +2)
@@ -775,19 +806,19 @@ local CURHOST REMOTEDATE WEKACONSTATUS RESULTS1 RESULTS2 UPGRADECONT MOUNTWEKA
   REMOTEDATE=$($SSH "$1" "date --utc '+%s'")
   diffdate "$REMOTEDATE" "$CURHOST"
 
-  MOUNTWEKA=$($SSH "$1" "mountpoint -qd /weka/")
+  MOUNTWEKA=$($SSH "$1" "sudo mountpoint -qd /weka/ | wc -l")
   weka_mount "$MOUNTWEKA" "$CURHOST"
 
   WEKAAGENTSRV=$($SSH "$1" sudo service weka-agent status > /dev/null ; echo $?)
   weka_agent_service "$WEKAAGENTSRV" "$CURHOST" || return
 
-  WEKACONSTATUS=$($SSH "$1" weka local ps --no-header -o name,running | grep -E 'client|default' | awk '{print $2}')
+  WEKACONSTATUS=$($SSH "$1" sudo weka local ps --no-header -o name,state | awk '/client/ {print $2}')
   weka_container_status "$WEKACONSTATUS" "$CURHOST" || return
 
-  UPGRADECONT=$($SSH "$1" "weka local ps --no-header -o name,running | awk '/upgrade/ {print $2}'")
+  UPGRADECONT=$($SSH "$1" sudo weka local ps --no-header -o name,state | awk '/upgrade/ {print $2}')
   upgrade_container "$UPGRADECONT" "$CURHOST"
 
-  if [ $XCEPT ];then
+  if [ "$XCEPT" ];then
     WARN "Client checks completed please see logs for details $LOG."
   fi
 }
