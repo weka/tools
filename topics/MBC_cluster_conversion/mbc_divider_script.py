@@ -157,7 +157,7 @@ def main():
     parser.add_argument('--dry-run', dest='dry_run', action='store_true', help=argparse.SUPPRESS)
     parser.add_argument('--force', '-f', dest='force', action='store_true',
                         help='Override backup resources')
-    parser.add_argument('--s3-drain-gracetime', '--d', nargs="?", default=11, type=int, dest="s3_drain_gracetime",
+    parser.add_argument('--s3-drain-gracetime', '--d', nargs="?", default=80, type=int, dest="s3_drain_gracetime",
                         help='Set a gracetime for s3 drain')
     parser.add_argument('--drive-dedicated-cores', '--D', nargs="?", default=0, type=int, dest="drive_dedicated_cores",
                         help='Set drive-dedicated-cores')
