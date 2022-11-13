@@ -112,17 +112,33 @@ def drain_in_progress():
     return json.loads(drain_status["mode"])
 
 
-def check_etcd_health():
+def check_etcd_health(hostId):
     logger.info("Checking etcd Health")
     etcd_health_cmd = '/bin/sh -c "weka local exec -C s3 etcdctl endpoint health --cluster -w json"'
-    etcd_status = json.loads(run_shell_command(etcd_health_cmd))
-    if not all(etcd_host["health"] for etcd_host in etcd_status):
-        failed_etcd_hosts = [etcd_host["endpoint"] for etcd_host in etcd_status if not etcd_host["health"]]
-        logger.error("We have {} failed etcd hosts, from the following ips {}"
-                     .format(len(failed_etcd_hosts), failed_etcd_hosts))
-        exit(1)
+    etcd_status = json.loads(run_shell_command(etcd_health_cmd, True))
+    while True:
+        if etcd_status:
+            if not all(etcd_host["health"] for etcd_host in etcd_status):
+                failed_etcd_hosts = [etcd_host["endpoint"] for etcd_host in etcd_status if not etcd_host["health"]]
+                logger.error("We have {} failed etcd hosts, from the following ips {}"
+                             .format(len(failed_etcd_hosts), failed_etcd_hosts))
+                sleep(15)
+            else:
+                break
+
 def extract_digits(s):
     return "".join(filter(str.isdigit, s))
+
+def wait_for_s3_container(sudo):
+    local_ps_cmd = '/bin/sh -c "{}weka local ps -J"'.format(sudo)
+    retries = 10
+    for i in range(retries):
+        sleep(5)  # wait for s3 container to start
+        ps = json.loads(run_shell_command(local_ps_cmd))
+        s3_ready = [container for container in ps if
+                     container["internalStatus"]["display_status"] == 'READY' and container['type'].lower() == 's3']
+        if s3_ready:
+            break
 
 
 dry_run = False
@@ -265,7 +281,7 @@ def main():
             logger.warning('We have only {} hosts in s3 cluster, in order to convert cluster we need at list 4'.format(
                 len(s3_status)))
             exit(1)
-        check_etcd_health()
+        check_etcd_health(current_host_id)
 
     # SMB check
     smb_status_command = '/bin/sh -c "weka smb cluster status -J"'
@@ -615,7 +631,7 @@ def main():
 
     container_enable_command = '/bin/sh -c "{}weka local enable"'.format(sudo)
     run_shell_command(container_enable_command)
-
+    check_etcd_health(sudo)
     for ct in ContainerType:
         if os.path.exists(ct.json_name()):
             os.remove(ct.json_name())
