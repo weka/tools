@@ -54,7 +54,7 @@ EOF
 exit
 }
 
-while getopts "hfasd:b:Sl:VC:D:F:m:i:" o; do
+while getopts "hfasd:b:Sl:VC:D:F:m:i:k" o; do
     case "${o}" in
         f)
             FORCE='--force'
@@ -102,6 +102,10 @@ while getopts "hfasd:b:Sl:VC:D:F:m:i:" o; do
         m)
             LIMIT_MEMORY='--limit-maximum-memory '$OPTARG
             echo "Option -m set limit maximum memory to  $OPTARG GiB"
+            ;;
+        k)
+            KEEP_S3_UP='--keep-s3-up '$OPTARG
+            echo ""
             ;;
         i)
             SSH_IDENTITY=" -i $OPTARG"
@@ -258,6 +262,10 @@ else
   GOOD "Weka local container is running."
 fi
 
+if [ "$KEEP_S3_UP" == "--keep-s3-up " ]; then
+  WARN "Enabling changing nodes role"
+  weka debug jrpc config_override_key key=clusterInfo.allowChangingActiveHostNodes value=true > /dev/null
+fi
 NOTICE "CHECKING FOR ANY ALERTS"
 WEKAALERTS="$(weka alerts)"
 if [ "$WEKAALERTS" != "" ]; then
@@ -380,7 +388,7 @@ fi
 NOTICE "======================================
 EXECUTING CONVERSION TO MBC ON HOST $1
 ======================================"
-  $SSH "$1" "$DIR/mbc_divider_script.py $AWS $FORCE $DRAIN_TIMEOUT $DRIVE_CORES $COMPUTE_CORES $FRONTEND_CORES $LIMIT_MEMORY" 2>&1 | tee -a ${LOG}
+$SSH "$1" "$DIR/mbc_divider_script.py $AWS $FORCE $DRAIN_TIMEOUT $DRIVE_CORES $COMPUTE_CORES $FRONTEND_CORES $LIMIT_MEMORY $KEEP_S3_UP" 2>&1 | tee -a ${LOG}
 if [ "${PIPESTATUS[0]}" != "0" ]; then
     BAD "UNABLE TO CONVERT HOST $1"
     return 1
@@ -465,6 +473,7 @@ else
   fi
   NOTICE "Done converting $BACKEND to MBC"
 fi
+weka debug jrpc config_override_key key=clusterInfo.allowChangingActiveHostNodes value=false > /dev/null
 weka status
 }
 main "$@"
