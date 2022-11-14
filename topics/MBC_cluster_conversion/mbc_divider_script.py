@@ -33,7 +33,6 @@ def run_shell_command(command, no_fail=False):
         logger.warning("Stderr: {}".format(stderr))
         if not no_fail:
             raise
-        return 0
     return output
 
 
@@ -123,13 +122,16 @@ def check_etcd_health(hostId):
                 logger.error("We have {} failed etcd hosts, from the following ips {}"
                              .format(len(failed_etcd_hosts), failed_etcd_hosts))
                 sleep(15)
+                etcd_status = json.loads(run_shell_command(etcd_health_cmd, True))
             else:
                 break
 
 def extract_digits(s):
     return "".join(filter(str.isdigit, s))
 
+
 def wait_for_s3_container(sudo):
+    logger.info("Waiting for s3 container to be Ready")
     local_ps_cmd = '/bin/sh -c "{}weka local ps -J"'.format(sudo)
     retries = 10
     for i in range(retries):
@@ -228,14 +230,15 @@ def main():
     compute_cores = args.compute_dedicated_cores
     frontend_cores = args.frontend_dedicated_cores
     drive_cores = args.drive_dedicated_cores
-    failure_domain = prev_resources['failure_domain']
+    old_failure_domain = prev_resources['failure_domain']
     memory = prev_resources['memory']
     if args.limit_maximum_memory:
         memory = int(args.limit_maximum_memory * GiB)
-
-    if failure_domain:
-        failure_domain = '--failure-domain ' + failure_domain
-
+    failure_domain = ""
+    failure_domain_for_local = ""
+    if old_failure_domain:
+        failure_domain = '--failure-domain ' + old_failure_domain
+        failure_domain_for_local = '--name ' + old_failure_domain
     for slot in prev_resources['nodes']:
         roles = prev_resources['nodes'][slot]['roles']
         coreId = prev_resources['nodes'][slot]['core_id']
@@ -269,7 +272,6 @@ def main():
         logger.debug("Adding net devices: {}".format(network_devices[-1].to_cmd()))
 
     retries = 180 # sleeps should be 1 second each, so this is a "timeout" of 180s
-    keep_s3_up = args.keep_s3_up
     # S3 check
     host_id_str = 'HostId<{}>'.format(current_host_id)
     logger.info('Checking for active protocols on the host')
@@ -323,14 +325,11 @@ def main():
                 logger.info('S3 is currently draining, undraining in order to get to ready status')
                 undrain_s3_cmd = '/bin/sh -c "weka s3 cluster undrain {}"'.format(current_host_id)
                 run_shell_command(undrain_s3_cmd)
-            for i in range(retries):
+            while True:
                 sleep(1)
                 s3_status = json.loads(run_shell_command(s3_status_command))
                 if all(status for status in s3_status.values()):
                     break
-            if not all(status for status in s3_status.values()):
-                logger.error('S3 cluster never became ready: Will not convert server with S3')
-                exit(1)
 
         drain_s3_cmd = '/bin/sh -c "weka s3 cluster drain {}"'.format(current_host_id)
         logger.warning('Draining S3 container')
@@ -351,7 +350,7 @@ def main():
                 logger.warning('Draining S3 host {} failed.. exiting'.format(current_host_id))
                 exit(1)
         protocols_in_host.append(Protocols.S3)
-        if not keep_s3_up:
+        if not args.keep_s3_up:
             logger.warning('Removing container from S3 cluster')
             s3_update_command = '/bin/sh -c "weka s3 cluster update --host {}"'
             s3_hosts_list = []
@@ -506,7 +505,7 @@ def main():
         if container_type == ContainerType.FRONTEND:
             if frontend_cores == 0:
                 continue
-            elif keep_s3_up:
+            elif args.keep_s3_up:
                 logger.info("Appling resources of type {} on container {}".format(container_type, container_name))
                 import_resources_command = '/bin/sh -c "{}weka local resources import {} -C {} -f"'.format(
                     sudo,
@@ -526,6 +525,13 @@ def main():
                     container_name,
                 )
                 run_shell_command(set_join_ips_command)
+                if old_failure_domain:
+                    set_FD_command = '/bin/sh -c "{}weka local resources failure-domain {} -C {}"'.format(
+                        sudo,
+                        failure_domain_for_local,
+                        container_name,
+                    )
+                    run_shell_command(set_FD_command)
                 apply_command = '/bin/sh -c "{}weka local resources apply -C {} -f"'.format(
                     sudo,
                     container_name,
@@ -583,7 +589,7 @@ def main():
 
     if protocols_in_host:
         fe_container_name = ContainerType.FRONTEND.container_name()
-        if keep_s3_up:
+        if args.keep_s3_up:
             fe_container_name = container_name
         get_resources_cmd = '/bin/sh -c "{}weka local resources -C {} -J"'.format(
             sudo,
@@ -599,15 +605,18 @@ def main():
                 add_smb_host_cmd = '/bin/sh -c "weka smb cluster hosts add --samba-hosts {} -f"' \
                     .format(frontend_hostid)
                 run_shell_command(add_smb_host_cmd)
-            elif protocol == Protocols.S3 and not keep_s3_up:
-                hosts_list = ''
-                for k in s3_status.keys():
-                    if int(extract_digits(k)) == current_host_id:
-                        continue
-                    hosts_list += extract_digits(k) + ','
-                hosts_list += str(frontend_hostid)
-                s3_update_command = '/bin/sh -c "weka s3 cluster update --host {}"'
-                run_shell_command(s3_update_command.format(hosts_list))
+            elif protocol == Protocols.S3:
+                if not args.keep_s3_up:
+                    hosts_list = ''
+                    for k in s3_status.keys():
+                        if int(extract_digits(k)) == current_host_id:
+                            continue
+                        hosts_list += extract_digits(k) + ','
+                    hosts_list += str(frontend_hostid)
+                    s3_update_command = '/bin/sh -c "weka s3 cluster update --host {}"'
+                    run_shell_command(s3_update_command.format(hosts_list))
+                wait_for_s3_container(sudo)
+                check_etcd_health(sudo)
             elif protocol == Protocols.NFS:
                 if is_aws():
                     set_local_nfs_server_command = '/bin/sh -c "weka debug manhole set_local_nfs_server --slot=0 -P {} val=true"' \
@@ -621,7 +630,7 @@ def main():
                         nfs_legacy = True
 
     logger.info('Starting cleanup: The old container will be removed locally and from the cluster')
-    if not keep_s3_up:
+    if not args.keep_s3_up:
         container_delete_command = '/bin/sh -c "{}weka local rm {} -f"'.format(sudo, container_name)
         run_shell_command(container_delete_command)
         host_deactivate_command = '/bin/sh -c "weka cluster host deactivate {}"'.format(current_host_id)
@@ -631,7 +640,6 @@ def main():
 
     container_enable_command = '/bin/sh -c "{}weka local enable"'.format(sudo)
     run_shell_command(container_enable_command)
-    check_etcd_health(sudo)
     for ct in ContainerType:
         if os.path.exists(ct.json_name()):
             os.remove(ct.json_name())

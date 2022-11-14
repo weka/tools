@@ -104,7 +104,8 @@ while getopts "hfasd:b:Sl:VC:D:F:m:i:k" o; do
             echo "Option -m set limit maximum memory to  $OPTARG GiB"
             ;;
         k)
-            KEEP_S3_UP='--keep-s3-up '$OPTARG
+            KEEP_S3_UP_FLAG='--keep-s3-up '$OPTARG
+            KEEP_S3_UP=true
             echo ""
             ;;
         i)
@@ -262,7 +263,7 @@ else
   GOOD "Weka local container is running."
 fi
 
-if [ "$KEEP_S3_UP" == "--keep-s3-up " ]; then
+if [ "$KEEP_S3_UP" == true ]; then
   WARN "Enabling changing nodes role"
   weka debug jrpc config_override_key key=clusterInfo.allowChangingActiveHostNodes value=true > /dev/null
 fi
@@ -388,7 +389,7 @@ fi
 NOTICE "======================================
 EXECUTING CONVERSION TO MBC ON HOST $1
 ======================================"
-$SSH "$1" "$DIR/mbc_divider_script.py $AWS $FORCE $DRAIN_TIMEOUT $DRIVE_CORES $COMPUTE_CORES $FRONTEND_CORES $LIMIT_MEMORY $KEEP_S3_UP" 2>&1 | tee -a ${LOG}
+$SSH "$1" "$DIR/mbc_divider_script.py $AWS $FORCE $DRAIN_TIMEOUT $DRIVE_CORES $COMPUTE_CORES $FRONTEND_CORES $LIMIT_MEMORY $KEEP_S3_UP_FLAG" 2>&1 | tee -a ${LOG}
 if [ "${PIPESTATUS[0]}" != "0" ]; then
     BAD "UNABLE TO CONVERT HOST $1"
     return 1
