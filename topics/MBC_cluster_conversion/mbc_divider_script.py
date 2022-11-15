@@ -101,12 +101,12 @@ class NetDev:
             return self.identifier + net_suffix
 
 
-def drain_in_progress():
+def drain_in_progress(sudo):
     s3_cluster_info = json.loads(run_shell_command('/bin/sh -c "weka s3 cluster -J"'))
     protocol = "https" if s3_cluster_info["tls_enabled"] else "http"
     port = s3_cluster_info["port"]
     drain_url = protocol + "://127.0.0.1:" + port + "/minio/drain/mode"
-    minio_drain_check_cmd = '/bin/sh -c "weka local exec -C s3 curl -sk {}"'.format(drain_url)
+    minio_drain_check_cmd = '/bin/sh -c "{} weka local exec -C s3 curl -sk {}"'.format(sudo, drain_url)
     drain_status = json.loads(run_shell_command(minio_drain_check_cmd))
     return json.loads(drain_status["mode"])
 
@@ -148,12 +148,12 @@ def s3_has_active_ios(host_id):
     return not s3_drain_status
 
 
-def wait_for_s3_drain(timeout, host_id, interval, required_checks, hostname, force):
+def wait_for_s3_drain(timeout, host_id, interval, required_checks, hostname, force, sudo):
     successful_checks_in_a_row = 0
     start = time()
     while time() - start < timeout:
         try:
-            minio_in_drain_mode = drain_in_progress()
+            minio_in_drain_mode = drain_in_progress(sudo)
             has_active_ios = s3_has_active_ios(host_id)
             if minio_in_drain_mode and not has_active_ios:
                 successful_checks_in_a_row += 1
@@ -169,8 +169,12 @@ def wait_for_s3_drain(timeout, host_id, interval, required_checks, hostname, for
         except Exception as e:
             logger.error("Error while waiting for draining S3 container of %s to finish: '%s'; retrying" % (hostname, e))
             successful_checks_in_a_row = 0
-    if not force:
-        raise Exception("Timed out waiting for draining S3 container of %s to finish" % hostname)
+
+    if force:
+        logger.error("Timed out while waiting for S3 container IOs to complete on %s, but force flag allows to stop S3 container" % (hostname, ))
+        return
+
+    raise Exception("Timed out waiting for draining S3 container of %s to finish" % hostname)
 
 
 dry_run = False
@@ -201,7 +205,7 @@ def main():
                         dest="limit_maximum_memory", help='override maximum memory in GiB')
     parser.add_argument('--keep-s3-up', '-S', dest='keep_s3_up', action='store_true',
                         help=argparse.SUPPRESS)
-    parser.add_argument('--dont-enforce-drain', '-c', dest='dont_enforce_drain', action='store_true',
+    parser.add_argument('--s3-force-stop-with-failed-drain-check', '-c', dest='dont_enforce_drain', action='store_true',
                         help=argparse.SUPPRESS)
     args = parser.parse_args()
     global dry_run
@@ -353,7 +357,7 @@ def main():
     if host_id_str in s3_status:
         if not all(status for status in s3_status.values()):
             logger.info('Waiting for S3 cluster to be fully healthy before converting server')
-            if drain_in_progress():
+            if drain_in_progress(sudo):
                 logger.info('S3 is currently draining, undraining in order to get to ready status')
                 undrain_s3_cmd = '/bin/sh -c "weka s3 cluster undrain {}"'.format(current_host_id)
                 run_shell_command(undrain_s3_cmd)
@@ -370,7 +374,8 @@ def main():
         sleep(s3_drain_grace_period)
         #validate drain
         hostname = os.uname()[1]
-        wait_for_s3_drain(retries, current_host_id, 1, 10, hostname, args.dont_enforce_drain)
+        s3_drain_timeout = 60
+        wait_for_s3_drain(s3_drain_timeout, current_host_id, 1, 10, hostname, args.dont_enforce_drain, sudo=sudo)
         protocols_in_host.append(Protocols.S3)
         if not args.keep_s3_up:
             logger.warning('Removing container from S3 cluster')
