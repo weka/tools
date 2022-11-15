@@ -8,7 +8,7 @@ import shlex
 import subprocess
 from enum import Enum
 import argparse
-from time import sleep
+from time import sleep, time
 import re
 from urllib import request, error
 from concurrent.futures import ThreadPoolExecutor
@@ -111,9 +111,9 @@ def drain_in_progress():
     return json.loads(drain_status["mode"])
 
 
-def check_etcd_health(hostId):
+def check_etcd_health(sudo):
     logger.info("Checking etcd Health")
-    etcd_health_cmd = '/bin/sh -c "weka local exec -C s3 etcdctl endpoint health --cluster -w json"'
+    etcd_health_cmd = '/bin/sh -c "{} weka local exec -C s3 etcdctl endpoint health --cluster -w json"'.format(sudo)
     etcd_status = json.loads(run_shell_command(etcd_health_cmd, True))
     while True:
         if etcd_status:
@@ -124,7 +124,7 @@ def check_etcd_health(hostId):
                 sleep(15)
                 etcd_status = json.loads(run_shell_command(etcd_health_cmd, True))
             else:
-                break
+                return True
 
 def extract_digits(s):
     return "".join(filter(str.isdigit, s))
@@ -141,6 +141,36 @@ def wait_for_s3_container(sudo):
                      container["internalStatus"]["display_status"] == 'READY' and container['type'].lower() == 's3']
         if s3_ready:
             break
+
+def s3_has_active_ios(host_id):
+    validate_drain_s3_cmd = '/bin/sh -c "weka debug jrpc container_get_drain_status hostId={}"'.format(host_id)
+    s3_drain_status = json.loads(run_shell_command(validate_drain_s3_cmd))
+    return not s3_drain_status
+
+
+def wait_for_s3_drain(timeout, host_id, interval, required_checks, hostname, force):
+    successful_checks_in_a_row = 0
+    start = time()
+    while time() - start < timeout:
+        try:
+            minio_in_drain_mode = drain_in_progress()
+            has_active_ios = s3_has_active_ios(host_id)
+            if minio_in_drain_mode and not has_active_ios:
+                successful_checks_in_a_row += 1
+                logger.info("Got %s successful drain checks in a row on host %s; We need %s"
+                    % (successful_checks_in_a_row, hostname, required_checks))
+                if successful_checks_in_a_row >= required_checks:
+                    return
+            else:
+                logger.warning("Drain on host %s hasn't finished yet. Is Minio in drain mode? %s. Are there active IOs? %s."
+                    % (hostname, minio_in_drain_mode, has_active_ios))
+                successful_checks_in_a_row = 0
+            sleep(interval)
+        except Exception as e:
+            logger.error("Error while waiting for draining S3 container of %s to finish: '%s'; retrying" % (hostname, e))
+            successful_checks_in_a_row = 0
+    if not force:
+        raise Exception("Timed out waiting for draining S3 container of %s to finish" % hostname)
 
 
 dry_run = False
@@ -170,6 +200,8 @@ def main():
     parser.add_argument('--limit-maximum-memory', '--m', nargs="?", default=0, type=float,
                         dest="limit_maximum_memory", help='override maximum memory in GiB')
     parser.add_argument('--keep-s3-up', '-S', dest='keep_s3_up', action='store_true',
+                        help=argparse.SUPPRESS)
+    parser.add_argument('--dont-enforce-drain', '-c', dest='dont_enforce_drain', action='store_true',
                         help=argparse.SUPPRESS)
     args = parser.parse_args()
     global dry_run
@@ -283,7 +315,7 @@ def main():
             logger.warning('We have only {} hosts in s3 cluster, in order to convert cluster we need at list 4'.format(
                 len(s3_status)))
             exit(1)
-        check_etcd_health(current_host_id)
+        check_etcd_health(sudo)
 
     # SMB check
     smb_status_command = '/bin/sh -c "weka smb cluster status -J"'
@@ -337,18 +369,8 @@ def main():
         s3_drain_grace_period = int(args.s3_drain_gracetime)
         sleep(s3_drain_grace_period)
         #validate drain
-        validate_drain_s3_cmd = '/bin/sh -c "weka debug jrpc container_get_drain_status hostId={}"'.format(current_host_id)
-        s3_drain_status = json.loads(run_shell_command(validate_drain_s3_cmd))
-        if not s3_drain_status:
-            logger.info("Drain status for hostID {} is {}".format(current_host_id, s3_drain_status))
-            for i in range(retries):
-                sleep(1)
-                s3_drain_status = json.loads(run_shell_command(validate_drain_s3_cmd))
-                if s3_drain_status:
-                    break
-            if not s3_drain_status:
-                logger.warning('Draining S3 host {} failed.. exiting'.format(current_host_id))
-                exit(1)
+        hostname = os.uname()[1]
+        wait_for_s3_drain(retries, current_host_id, 1, 10, hostname, args.dont_enforce_drain)
         protocols_in_host.append(Protocols.S3)
         if not args.keep_s3_up:
             logger.warning('Removing container from S3 cluster')
@@ -491,7 +513,6 @@ def main():
     )
     logger.info('Running resources-generator')
     run_shell_command(resource_generator_command)
-
     logger.info('Releasing old hugepages allocation')
     path_to_huge = '/opt/weka/data/agent/containers/state/{}/huge'.format(container_name)
     path_to_huge1g = '/opt/weka/data/agent/containers/state/{}/huge1G'.format(container_name)
