@@ -148,7 +148,7 @@ def s3_has_active_ios(host_id):
     return not s3_drain_status
 
 
-def wait_for_s3_drain(timeout, host_id, interval, required_checks, hostname):
+def wait_for_s3_drain(timeout, host_id, interval, required_checks, hostname, force):
     successful_checks_in_a_row = 0
     start = time()
     while time() - start < timeout:
@@ -163,13 +163,14 @@ def wait_for_s3_drain(timeout, host_id, interval, required_checks, hostname):
                     return
             else:
                 logger.warning("Drain on host %s hasn't finished yet. Is Minio in drain mode? %s. Are there active IOs? %s."
-                    % (host.hostname, minio_in_drain_mode, has_active_ios))
+                    % (hostname, minio_in_drain_mode, has_active_ios))
                 successful_checks_in_a_row = 0
             sleep(interval)
         except Exception as e:
             logger.error("Error while waiting for draining S3 container of %s to finish: '%s'; retrying" % (hostname, e))
             successful_checks_in_a_row = 0
-    raise Exception("Timed out waiting for draining S3 container of %s to finish" % hostname)
+    if not force:
+        raise Exception("Timed out waiting for draining S3 container of %s to finish" % hostname)
 
 
 dry_run = False
@@ -199,6 +200,8 @@ def main():
     parser.add_argument('--limit-maximum-memory', '--m', nargs="?", default=0, type=float,
                         dest="limit_maximum_memory", help='override maximum memory in GiB')
     parser.add_argument('--keep-s3-up', '-S', dest='keep_s3_up', action='store_true',
+                        help=argparse.SUPPRESS)
+    parser.add_argument('--dont-enforce-drain', '-c', dest='dont_enforce_drain', action='store_true',
                         help=argparse.SUPPRESS)
     args = parser.parse_args()
     global dry_run
@@ -367,7 +370,7 @@ def main():
         sleep(s3_drain_grace_period)
         #validate drain
         hostname = os.uname()[1]
-        wait_for_s3_drain(retries, current_host_id, 1, 10, hostname)
+        wait_for_s3_drain(retries, current_host_id, 1, 10, hostname, args.dont_enforce_drain)
         protocols_in_host.append(Protocols.S3)
         if not args.keep_s3_up:
             logger.warning('Removing container from S3 cluster')
@@ -510,7 +513,6 @@ def main():
     )
     logger.info('Running resources-generator')
     run_shell_command(resource_generator_command)
-
     logger.info('Releasing old hugepages allocation')
     path_to_huge = '/opt/weka/data/agent/containers/state/{}/huge'.format(container_name)
     path_to_huge1g = '/opt/weka/data/agent/containers/state/{}/huge1G'.format(container_name)

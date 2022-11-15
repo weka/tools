@@ -54,7 +54,7 @@ EOF
 exit
 }
 
-while getopts "hfasd:b:Sl:VC:D:F:m:i:k" o; do
+while getopts "hfasd:b:Sl:VC:D:F:m:i:kO" o; do
     case "${o}" in
         f)
             FORCE='--force'
@@ -112,6 +112,10 @@ while getopts "hfasd:b:Sl:VC:D:F:m:i:k" o; do
             SSH_IDENTITY=" -i $OPTARG"
             SSH="$SSH $SSH_IDENTITY"
             echo "Option -i set ssh identity file to $OPTARG"
+            ;;
+        O)
+            FORCE_CONTINUE_WITHOUT_REAL_DRAIN="--dont-enforce-drain"
+            echo "Option -O dont enforce drain"
             ;;
         h)
             usage
@@ -389,7 +393,7 @@ fi
 NOTICE "======================================
 EXECUTING CONVERSION TO MBC ON HOST $1
 ======================================"
-$SSH "$1" "$DIR/mbc_divider_script.py $AWS $FORCE $DRAIN_TIMEOUT $DRIVE_CORES $COMPUTE_CORES $FRONTEND_CORES $LIMIT_MEMORY $KEEP_S3_UP_FLAG" 2>&1 | tee -a ${LOG}
+$SSH "$1" "$DIR/mbc_divider_script.py $AWS $FORCE $DRAIN_TIMEOUT $DRIVE_CORES $COMPUTE_CORES $FRONTEND_CORES $LIMIT_MEMORY $KEEP_S3_UP_FLAG $FORCE_CONTINUE_WITHOUT_REAL_DRAIN" 2>&1 | tee -a ${LOG}
 if [ "${PIPESTATUS[0]}" != "0" ]; then
     BAD "UNABLE TO CONVERT HOST $1"
     return 1
