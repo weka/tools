@@ -114,7 +114,7 @@ while getopts "hfasd:b:Sl:VC:D:F:m:i:kO" o; do
             echo "Option -i set ssh identity file to $OPTARG"
             ;;
         O)
-            FORCE_CONTINUE_WITHOUT_REAL_DRAIN="--dont-enforce-drain"
+            FORCE_CONTINUE_WITHOUT_REAL_DRAIN="--s3-force-stop-with-failed-drain-check"
             echo "Option -O dont enforce drain"
             ;;
         h)
