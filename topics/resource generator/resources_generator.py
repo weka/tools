@@ -75,6 +75,17 @@ CONST_RESOURCES = dict(
 )
 
 
+class SupportedDevice:
+    def __init__(self):
+        self.pci_class = None
+        self.pci_vendor = None
+        self.pci_device = None
+        self.is_vf = None
+
+SUPPORTED_DEVICES = {
+
+}
+
 def is_cloud_env(check_aws=True, check_oci=True):
     req_list = []
     if check_aws:
@@ -95,6 +106,9 @@ def is_cloud_env(check_aws=True, check_oci=True):
 
     with ThreadPoolExecutor() as executor:
         return any(executor.map(_send_request, req_list))
+
+
+def is_vmware():
 
 
 def extract_digits(s):
@@ -238,7 +252,7 @@ class ResourcesGenerator:
         self.numa_to_ionodes = dict()
         self.numa_nodes_info = []
         self.next_base_port = INITIAL_BASE_PORT
-        self.exclusive_nics_policy = is_cloud_env()
+        self.exclusive_nics_policy = None
         self.is_DEFAULT_DRIVES_BASE_PORT_used = False
 
     def set_user_args(self):
@@ -419,6 +433,8 @@ class ResourcesGenerator:
                                  "For allowing rotating disks - please add '--allow-rotational' as well")
         parser.add_argument("--allow-rotational", action='store_true',
                             help="Detect rotational disks")
+        parser.add_argument("--allocate-nics-exclusively", action='store_true',
+                            help="Set one unique net device per each io node, relevant when using virtual functions (VMware, KVM etc.)")
         parser.add_argument("--core-ids", default=[], nargs='+', type=int,
                             help="Specify manually which CPUs to allocate for weka nodes")
         parser.add_argument("--compute-core-ids", default=[], nargs='+', type=int,
@@ -439,6 +455,7 @@ class ResourcesGenerator:
         parser.add_argument("--path", default=".", type=_validate_path,
                             help="Specify the directory path to which the resources files will be written, default is '.'")
         self.args = parser.parse_args()
+        self.exclusive_nics_policy = is_cloud_env() or self.args.allocate_nics_exclusively
         _validate_net_dev()
         _verify_core_ids(self.args.drive_core_ids + self.args.compute_core_ids + self.args.frontend_core_ids)
         _verify_core_ids(self.args.core_ids)
