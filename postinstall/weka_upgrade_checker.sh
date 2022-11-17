@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-#version=1.0.55
+#version=1.0.56
 
 # Colors
 export NOCOLOR="\033[0m"
@@ -141,13 +141,6 @@ if [ ! -z "$RHOST" ]; then
     exit 1
   fi
 fi
-
-#if [ -z "$AWS" ]; then
-#  if [ "$(id -u)" -ne 0 ]; then
-#   BAD "Must run as root user, cannot continue."
-#   exit 1
-#  fi
-#fi
 
 NOTICE "VERIFYING WEKA AGENT STATUS"
 WEKAVERIFY=$(lsmod | grep -i weka)
@@ -319,7 +312,7 @@ fi
 #Aggressive Dieting should be disabled prior to upgrading to 4.0.2
 if [[ "$MAJOR" -eq 3 ]] && [[ "$WEKAMINOR1" -eq 14 ]]; then
   NOTICE "VERIFYING SYSTEM OPTIMAL SETTINGS"
-    WARN "After upgrading to Weka 4.0, issue the following override command. 'weka debug config override clusterInfo.allowDietAggressively false'"
+    WARN "After upgrading to Weka 4.0.2, issue the following override command. 'weka debug config override clusterInfo.allowDietAggressively false'"
 fi
 
 #Aggressive Dieting should be disabled prior to upgrading to 4.0.2
@@ -705,18 +698,24 @@ if [ "$S3CLUSTERSTATUS" == true ]; then
   S3HOSTIP=$(weka cluster host $(weka s3 cluster -v | grep "S3 Hosts" | cut -d":" -f2 | sed 's/[^0-9]*/ /g') --no-header -o ips)
     for s3host in ${S3HOSTIP}; do
       CURHOST=$(weka cluster host --no-header -o hostname,ips | grep -w "$s3host" | awk '{print $1}')
+      CURRHOSTID=$(weka cluster host --no-header -o id,ips | grep -w "$s3host" | awk '{print $1}')
       S3CONRUN=$("$SSH" "$s3host" weka local ps --no-header -o name,state | awk '/s3/ {print $2}');
       S3CONDISABLE=$("$SSH" "$s3host" weka local ps --no-header -o name,disabled | awk '/s3/ {print $2}')
+      ETCDHEALTH=$("$SSH" "$s3host" weka s3 cluster status | awk -F: '/HostId<'"$CURRHOSTID"'>/ {print $2}' | grep Not)
       if [ -z "$S3CONRUN" ]; then
         BAD "Unable to determine s3 container status on Host $CURHOST."
-      elif [ "$S3CONRUN" == "Running" ] && [ "$S3CONDISABLE" == "False" ]; then
-        GOOD "Host $CURHOST s3 container status running and is enabled."
-      elif [ "$S3CONRUN" == "Running" ] && [ "$S3CONDISABLE" == "True" ]; then
-        WARN "Host $CURHOST s3 container status running but is disabled."
-      elif [ "$S3CONRUN" == "Stopped" ] && [ "$S3CONDISABLE" == "False" ]; then
-        BAD "Host $CURHOST s3 container status stopped but is enabled."
+      elif [ "$S3CONRUN" == "Running" ] && [ "$S3CONDISABLE" == "False" ] && [ -z "$ETCDHEALTH" ]; then
+        GOOD "Host $CURHOST s3 container status running, is enabled and Minio is ready."
+      elif [ "$S3CONRUN" == "Running" ] && [ "$S3CONDISABLE" == "False" ] && [ ! -z "$ETCDHEALTH" ]; then
+        WARN "Host $CURHOST s3 container status running, is enabled but Minio is NOT ready."
+      elif [ "$S3CONRUN" == "Running" ] && [ "$S3CONDISABLE" == "True" ] && [ -z "$ETCDHEALTH" ]; then
+        WARN "Host $CURHOST s3 container status running, but is disabled and Minio is NOT ready."
+      elif [ "$S3CONRUN" == "Running" ] && [ "$S3CONDISABLE" == "True" ] && [ ! -z "$ETCDHEALTH" ]; then
+        WARN "Host $CURHOST s3 container status running, but is disabled and Minio is ready."
       elif [ "$S3CONRUN" == "Stopped" ] && [ "$S3CONDISABLE" == "True" ]; then
-        BAD "Host $CURHOST s3 container status stopped and its disabled."
+        WARN "Host $CURHOST s3 container status stopped but is disabled and Minio is Not ready."
+      elif [ "$S3CONRUN" == "Stopped" ] && [ "$S3CONDISABLE" == "False" ]; then
+        WARN "Host $CURHOST s3 container status stopped but its enabled and Minio is Not ready."
       fi
     done
 fi
