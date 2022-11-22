@@ -153,7 +153,9 @@ def wait_for_s3_drain(timeout, host_id, interval, required_checks, hostname, for
     start = time()
     while time() - start < timeout:
         try:
-            minio_in_drain_mode = drain_in_progress(sudo)
+            # HACK: This is a hack since when running through envoy we load-balance the minio route
+            minio_in_drain_mode = True
+            # minio_in_drain_mode = drain_in_progress(sudo)
             has_active_ios = s3_has_active_ios(host_id)
             if minio_in_drain_mode and not has_active_ios:
                 successful_checks_in_a_row += 1
@@ -357,10 +359,10 @@ def main():
     if host_id_str in s3_status:
         if not all(status for status in s3_status.values()):
             logger.info('Waiting for S3 cluster to be fully healthy before converting server')
-            if drain_in_progress(sudo):
-                logger.info('S3 is currently draining, undraining in order to get to ready status')
-                undrain_s3_cmd = '/bin/sh -c "weka s3 cluster undrain {}"'.format(current_host_id)
-                run_shell_command(undrain_s3_cmd)
+            # if drain_in_progress(sudo):
+            #     logger.info('S3 is currently draining, undraining in order to get to ready status')
+            #     undrain_s3_cmd = '/bin/sh -c "weka s3 cluster undrain {}"'.format(current_host_id)
+            #     run_shell_command(undrain_s3_cmd)
             while True:
                 sleep(1)
                 s3_status = json.loads(run_shell_command(s3_status_command))
