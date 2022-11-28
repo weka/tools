@@ -32,7 +32,8 @@ def run_shell_command(command, no_fail=False):
         logger.warning("Output: {}".format(output))
         logger.warning("Stderr: {}".format(stderr))
         if not no_fail:
-            raise
+            raise Exception("Error running command (exit code {}): {}".format(process.returncode, command))
+
     return output
 
 
@@ -600,18 +601,24 @@ def main():
             local_status = json.loads(run_shell_command(status_command))
             logger.info('Waiting for drive containers to reach READY state, currently:{}'.format(
                 local_status[ContainerType.DRIVE.container_name()]['status']['internalStatus']['state']))
-            for i in range(retries):
-                local_status = json.loads(run_shell_command(status_command))
-                if local_status[ContainerType.DRIVE.container_name()]['status']['internalStatus']['state'] == 'READY':
+
+            for i in range(retries * 10):
+                sleep(0.1)
+
+                try:
+                    local_status = json.loads(run_shell_command(status_command))
+                    if local_status[ContainerType.DRIVE.container_name()]['status']['internalStatus']['state'] != 'READY':
+                        continue
+
+                    server_info = json.loads(run_shell_command(get_host_id_command))
+                    new_drive_host_id = server_info['hostIdValue']
+
+                    scan_disk_command = '/bin/sh -c "weka cluster drive scan {}"'.format(new_drive_host_id)
+                    run_shell_command(scan_disk_command)
                     break
-                sleep(1)
 
-            server_info = json.loads(run_shell_command(get_host_id_command))
-            new_drive_host_id = server_info['hostIdValue']
-
-            scan_disk_command = '/bin/sh -c "weka cluster drive scan {}"'.format(new_drive_host_id)
-            run_shell_command(scan_disk_command)
-
+                except Exception as e:
+                    logger.error("Error querying container status and invoking scan: {}".format(str(e)))
 
     if protocols_in_host:
         fe_container_name = ContainerType.FRONTEND.container_name()
