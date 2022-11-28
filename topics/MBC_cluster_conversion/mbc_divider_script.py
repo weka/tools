@@ -602,8 +602,8 @@ def main():
             logger.info('Waiting for drive containers to reach READY state, currently:{}'.format(
                 local_status[ContainerType.DRIVE.container_name()]['status']['internalStatus']['state']))
 
-            for i in range(retries * 10):
-                sleep(0.1)
+            for i in range(retries):
+                sleep(1)
 
                 try:
                     local_status = json.loads(run_shell_command(status_command))
