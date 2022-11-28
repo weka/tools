@@ -595,7 +595,7 @@ def main():
         run_shell_command(setup_host_command)
         if container_type == ContainerType.DRIVE:
             # Check if drive container is up
-            sleep(2)
+            sleep(15)
             status_command = '/bin/sh -c "{}weka local status -J"'.format(sudo)
             local_status = {}
             local_status = json.loads(run_shell_command(status_command))
