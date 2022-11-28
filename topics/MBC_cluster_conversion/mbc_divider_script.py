@@ -594,16 +594,17 @@ def main():
         run_shell_command(setup_host_command)
         if container_type == ContainerType.DRIVE:
             # Check if drive container is up
-            sleep (15)
+            sleep(2)
             status_command = '/bin/sh -c "{}weka local status -J"'.format(sudo)
             local_status = {}
+            local_status = json.loads(run_shell_command(status_command))
+            logger.info('Waiting for drive containers to reach READY state, currently:{}'.format(
+                local_status[ContainerType.DRIVE.container_name()]['status']['internalStatus']['state']))
             for i in range(retries):
                 local_status = json.loads(run_shell_command(status_command))
                 if local_status[ContainerType.DRIVE.container_name()]['status']['internalStatus']['state'] == 'READY':
                     break
-            logger.info('Waiting for drive containers to reach READY state, currently:{}'.format(
-                local_status[ContainerType.DRIVE.container_name()]['status']['internalStatus']['state']))
-            sleep(5)
+                sleep(1)
 
             server_info = json.loads(run_shell_command(get_host_id_command))
             new_drive_host_id = server_info['hostIdValue']
@@ -611,7 +612,6 @@ def main():
             scan_disk_command = '/bin/sh -c "weka cluster drive scan {}"'.format(new_drive_host_id)
             run_shell_command(scan_disk_command)
 
-    sleep(5)
 
     if protocols_in_host:
         fe_container_name = ContainerType.FRONTEND.container_name()
