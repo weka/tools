@@ -615,6 +615,7 @@ def main():
 
                     scan_disk_command = '/bin/sh -c "weka cluster drive scan {}"'.format(new_drive_host_id)
                     run_shell_command(scan_disk_command)
+                    logger.info('Done scanning drives')
                     break
 
                 except Exception as e:
