@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-#version=1.0.56
+#version=1.0.57
 
 # Colors
 export NOCOLOR="\033[0m"
@@ -318,7 +318,7 @@ fi
 #Aggressive Dieting should be disabled prior to upgrading to 4.0.2
 if [ "$MAJOR" -eq 4 ]; then
   NOTICE "VERIFYING SYSTEM OPTIMAL SETTINGS"
-  AGGRESSIVEDIET=$(weka local run /weka/cfgdump | grep allowDietAggressively | awk '{print $2}' | tr -d ",")
+  AGGRESSIVEDIET=$(sudo weka local run -C default /weka/cfgdump | grep allowDietAggressively | awk '{print $2}' | tr -d ",")
     if [ "$AGGRESSIVEDIET" == false ]; then
       GOOD "System checks passed"
     else
@@ -345,10 +345,10 @@ else
 fi
 
 NOTICE "VERIFYING WEKA TRACES STATUS"
-if [[ "$MAJOR" -eq 3 ]] && [[ "$WEKAMINOR1" -ge 10 ]]; then
+if [[ "$MAJOR" -ge 3 && "$WEKAMINOR1" -ge 10 ]] || [[ "$MAJOR" -ge 3 ]]; then
   WEKATRACE=$(weka debug traces status | awk 'NR==1 {print $3}')
 else
-  WEKATRACE=$(weka local exec /usr/local/bin/supervisorctl status weka-trace-dumper | tr -d '\n' | awk '{print $2}')
+  WEKATRACE=$(sudo weka local exec /usr/local/bin/supervisorctl status weka-trace-dumper | tr -d '\n' | awk '{print $2}')
 fi
 
 if [[ "$WEKATRACE" == "enabled." || "$WEKATRACE" == "RUNNING" ]]; then
@@ -697,25 +697,25 @@ if [ "$S3CLUSTERSTATUS" == true ]; then
   NOTICE "VERIFYING S3 CONTAINER STATUS"
   S3HOSTIP=$(weka cluster host $(weka s3 cluster -v | grep "S3 Hosts" | cut -d":" -f2 | sed 's/[^0-9]*/ /g') --no-header -o ips)
     for s3host in ${S3HOSTIP}; do
-      CURHOST=$(weka cluster host --no-header -o hostname,ips | grep -w "$s3host" | awk '{print $1}')
-      CURRHOSTID=$(weka cluster host --no-header -o id,ips | grep -w "$s3host" | awk '{print $1}')
-      S3CONRUN=$("$SSH" "$s3host" weka local ps --no-header -o name,state | awk '/s3/ {print $2}');
-      S3CONDISABLE=$("$SSH" "$s3host" weka local ps --no-header -o name,disabled | awk '/s3/ {print $2}')
-      ETCDHEALTH=$("$SSH" "$s3host" weka s3 cluster status | awk -F: '/HostId<'"$CURRHOSTID"'>/ {print $2}' | grep Not)
+      CURHOSTNAME=$(weka cluster host --no-header -o hostname,ips | grep -w ${s3host} | awk '{print $1}' | sort -u)
+      CURRHOSTID=$(weka cluster host --no-header -o id,ips,container | grep -i default | grep -w ${s3host} | awk '{print $1}' | sort -u)
+      S3CONRUN=$("$SSH" ${s3host} weka local ps --no-header -o name,state | awk '/s3/ {print $2}');
+      S3CONDISABLE=$("$SSH" ${s3host} weka local ps --no-header -o name,disabled | awk '/s3/ {print $2}')
+      ETCDHEALTH=$(weka s3 cluster status | awk -F: '/HostId<'${CURRHOSTID}'>/ {print $2}' | grep Not)
       if [ -z "$S3CONRUN" ]; then
-        BAD "Unable to determine s3 container status on Host $CURHOST."
+        BAD "Unable to determine s3 container status on Host ${CURHOSTNAME}."
       elif [ "$S3CONRUN" == "Running" ] && [ "$S3CONDISABLE" == "False" ] && [ -z "$ETCDHEALTH" ]; then
-        GOOD "Host $CURHOST s3 container status running, is enabled and Minio is ready."
+        GOOD "Host ${CURHOSTNAME} s3 container status running, is enabled and Minio is ready."
       elif [ "$S3CONRUN" == "Running" ] && [ "$S3CONDISABLE" == "False" ] && [ ! -z "$ETCDHEALTH" ]; then
-        WARN "Host $CURHOST s3 container status running, is enabled but Minio is NOT ready."
+        WARN "Host ${CURHOSTNAME} s3 container status running, is enabled but Minio is NOT ready."
       elif [ "$S3CONRUN" == "Running" ] && [ "$S3CONDISABLE" == "True" ] && [ -z "$ETCDHEALTH" ]; then
-        WARN "Host $CURHOST s3 container status running, but is disabled and Minio is NOT ready."
+        WARN "Host ${CURHOSTNAME}s3 container status running, but is disabled and Minio is NOT ready."
       elif [ "$S3CONRUN" == "Running" ] && [ "$S3CONDISABLE" == "True" ] && [ ! -z "$ETCDHEALTH" ]; then
-        WARN "Host $CURHOST s3 container status running, but is disabled and Minio is ready."
+        WARN "Host ${CURHOSTNAME} s3 container status running, but is disabled and Minio is ready."
       elif [ "$S3CONRUN" == "Stopped" ] && [ "$S3CONDISABLE" == "True" ]; then
-        WARN "Host $CURHOST s3 container status stopped but is disabled and Minio is Not ready."
+        WARN "Host ${CURHOSTNAME} s3 container status stopped but is disabled and Minio is Not ready."
       elif [ "$S3CONRUN" == "Stopped" ] && [ "$S3CONDISABLE" == "False" ]; then
-        WARN "Host $CURHOST s3 container status stopped but its enabled and Minio is Not ready."
+        WARN "Host ${CURHOSTNAME} s3 container status stopped but its enabled and Minio is Not ready."
       fi
     done
 fi
@@ -762,10 +762,10 @@ local CURHOST REMOTEDATE WEKACONSTATUS RESULTS1 RESULTS2 UPGRADECONT MOUNTWEKA S
   upgrade_container "$UPGRADECONT" "$CURHOST"
 
   if [ ! -z "$AWS" ]; then
-    IPCLEANUP=$($SSH "$1" sudo weka local resources -J | grep -c -E -o '([0]{1,3}[\.]){3}[0]{1,3}')
+    IPCLEANUP=$($SSH "$1" sudo weka local resources -C default -J | grep -c -E -o '([0]{1,3}[\.]){3}[0]{1,3}')
      weka_ip_cleanup "$IPCLEANUP" "$CURHOST"
   else
-    IPCLEANUP=$($SSH "$1" sudo weka local resources -J | grep -c -E -o '([0]{1,3}[\.]){3}[0]{1,3}')
+    IPCLEANUP=$($SSH "$1" sudo weka local resources -C default -J | grep -c -E -o '([0]{1,3}[\.]){3}[0]{1,3}')
      weka_ip_cleanup "$IPCLEANUP" "$CURHOST"
   fi
 
