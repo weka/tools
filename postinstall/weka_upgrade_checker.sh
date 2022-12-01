@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
-#version=1.0.58
+
+#version=1.0.59
 
 # Colors
 export NOCOLOR="\033[0m"
@@ -186,7 +187,7 @@ if [[ "$MAJOR" -eq 3 ]] && [[ "$WEKAMINOR1" -eq 13 ]]; then
   if [ $(weka status -J | awk '/"link_layer"/ {print $2}' | tr -d '"') != ETH ]; then
     WARN "Upgrading to 3.14 not supported. Requires Weka to use Ethernet connectivity. Please reach out to customer success on an ETA for IB support."
   else
-    WARN "Upgrading to 3.14 requires Minimum OFED 4.6."
+    WARN "Upgrading to 3.14 requires Minimum OFED 5.1-2.5.8.0."
   fi
 fi
 
