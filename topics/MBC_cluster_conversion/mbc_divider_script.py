@@ -139,11 +139,12 @@ def check_etcd_health(sudo):
 def extract_digits(s):
     return "".join(filter(str.isdigit, s))
 
-def safer_drive_scan(drives_container_host_id, old_host_id):
+
+def safe_drive_scan(drives_container_host_id, old_host_id):
     retries = 15
     drives_list = json.loads(run_shell_command('/bin/sh -c "weka cluster drive --host {} -J"'.format(old_host_id)))
     drives_uuids = [disk["uuid"] for disk in drives_list]
-    print(drives_uuids)
+    logger.info("The following drives will be moved to the new container: {}".format(drives_uuids))
     scan_disk_command = '/bin/sh -c "weka cluster drive scan {}"'.format(drives_container_host_id)
     run_shell_command(scan_disk_command)
     sleep(2)
@@ -152,8 +153,8 @@ def safer_drive_scan(drives_container_host_id, old_host_id):
         drives_uuids = [disk["uuid"] for disk in drives_list]
         if not drives_uuids:
             return
-    logger.warning("the following drives did not move to the new container, {} retrying".format(drives_uuids))
-    raise
+    logger.warning("The following drives did not move to the new container, {} retrying".format(drives_uuids))
+    raise Exception("The following drives did not move to the new container, {} retrying".format(drives_uuids))
 
 
 def check_and_fix_machine_identifier_in_failure_domain(host_id):
@@ -174,7 +175,7 @@ def check_and_fix_machine_identifier_in_failure_domain(host_id):
             run_shell_command(config_assign_cmd)
         except Exception as e:
             logger.warning("Failed to change the machine identifier for {} with the the following error: {}".format(host_row["failure_domain_id"], e))
-            raise
+            raise e
 
 
 def wait_for_s3_container(sudo):
@@ -188,6 +189,7 @@ def wait_for_s3_container(sudo):
                      container["internalStatus"]["display_status"] == 'READY' and container['type'].lower() == 's3']
         if s3_ready:
             break
+
 
 def s3_has_active_ios(host_id):
     validate_drain_s3_cmd = '/bin/sh -c "weka debug jrpc container_get_drain_status hostId={}"'.format(host_id)
@@ -319,6 +321,9 @@ def main():
     if old_failure_domain:
         failure_domain = '--failure-domain ' + old_failure_domain
         failure_domain_for_local = '--name ' + old_failure_domain
+    else:
+        check_and_fix_machine_identifier_in_failure_domain(current_host_id)
+
     for slot in prev_resources['nodes']:
         roles = prev_resources['nodes'][slot]['roles']
         coreId = prev_resources['nodes'][slot]['core_id']
@@ -655,9 +660,7 @@ def main():
 
                     server_info = json.loads(run_shell_command(get_host_id_command))
                     new_drive_host_id = server_info['hostIdValue']
-
-                    scan_disk_command = '/bin/sh -c "weka cluster drive scan {}"'.format(new_drive_host_id)
-                    run_shell_command(scan_disk_command)
+                    safe_drive_scan(new_drive_host_id, current_host_id)
                     logger.info('Done scanning drives')
                     break
 
