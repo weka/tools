@@ -14,9 +14,18 @@ from urllib import request, error
 from concurrent.futures import ThreadPoolExecutor
 from resources_generator import GiB
 
-logging.basicConfig(format='%(asctime)s %(levelname)s: %(message)s',
-                    datefmt='%m/%d/%Y %I:%M:%S %p')
 logger = logging.getLogger('mbc divider')
+
+
+def setup_logger():
+    if logger.hasHandlers():
+        logger.handlers.clear()
+    ch = logging.StreamHandler()
+    formatter = logging.Formatter('%(asctime)s %(name)s - %(levelname)s: %(message)s', '%Y-%m-%d %H:%M:%S')
+    ch.setFormatter(formatter)
+    logger.addHandler(ch)
+    logger.setLevel(logging.DEBUG)
+    logger.propagate = False
 
 
 def run_shell_command(command, no_fail=False):
@@ -130,6 +139,43 @@ def check_etcd_health(sudo):
 def extract_digits(s):
     return "".join(filter(str.isdigit, s))
 
+def safer_drive_scan(drives_container_host_id, old_host_id):
+    retries = 15
+    drives_list = json.loads(run_shell_command('/bin/sh -c "weka cluster drive --host {} -J"'.format(old_host_id)))
+    drives_uuids = [disk["uuid"] for disk in drives_list]
+    print(drives_uuids)
+    scan_disk_command = '/bin/sh -c "weka cluster drive scan {}"'.format(drives_container_host_id)
+    run_shell_command(scan_disk_command)
+    sleep(2)
+    for i in range(retries):
+        drives_list = json.loads(run_shell_command('/bin/sh -c "weka cluster drive --host {} -J"'.format(old_host_id)))
+        drives_uuids = [disk["uuid"] for disk in drives_list]
+        if not drives_uuids:
+            return
+    logger.warning("the following drives did not move to the new container, {} retrying".format(drives_uuids))
+    raise
+
+
+def check_and_fix_machine_identifier_in_failure_domain(host_id):
+    host_row = json.loads(run_shell_command('/bin/sh -c "weka cluster host {} -J"'.format(host_id)))[0]
+    failure_domain_machine_id = json.loads(run_shell_command(
+        '/bin/sh -c "weka debug config show failureDomains[{}].machineIdentifier"'
+        .format(extract_digits(host_row['failure_domain_id']))))
+    host_row_machine_id = json.loads(run_shell_command(
+        '/bin/sh -c "weka debug config show hosts[{}].machineIdentifier"'.format(host_id)))
+    if failure_domain_machine_id != host_row_machine_id:
+        logger.info('Fixing the machine identifier in {} to fit host {}'.format(host_row['failure_domain_id'], host_id))
+        kv_strings_list = []
+        for i in range(len(host_row_machine_id)):
+            kv_strings_list.append("machineIdentifier[{}]={}".format(i, host_row_machine_id[i]))
+        config_assign_cmd = '/bin/sh -c "weka debug config assign failureDomains[{}] {}"'\
+            .format(extract_digits(host_row["failure_domain_id"]), " ".join(kv_strings_list))
+        try:
+            run_shell_command(config_assign_cmd)
+        except Exception as e:
+            logger.warning("Failed to change the machine identifier for {} with the the following error: {}".format(host_row["failure_domain_id"], e))
+            raise
+
 
 def wait_for_s3_container(sudo):
     logger.info("Waiting for s3 container to be Ready")
@@ -182,10 +228,7 @@ dry_run = False
 
 
 def main():
-    logging.basicConfig(format='%(asctime)s %(levelname)s: %(message)s',
-                        datefmt='%m/%d/%Y %I:%M:%S %p')
-    logger.setLevel(logging.DEBUG)
-
+    setup_logger()
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--resources-path", dest='resources_path', nargs="?", default='',
