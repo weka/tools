@@ -14,9 +14,18 @@ from urllib import request, error
 from concurrent.futures import ThreadPoolExecutor
 from resources_generator import GiB
 
-logging.basicConfig(format='%(asctime)s %(levelname)s: %(message)s',
-                    datefmt='%m/%d/%Y %I:%M:%S %p')
 logger = logging.getLogger('mbc divider')
+
+
+def setup_logger():
+    if logger.hasHandlers():
+        logger.handlers.clear()
+    ch = logging.StreamHandler()
+    formatter = logging.Formatter('%(asctime)s %(name)s - %(levelname)s: %(message)s', '%Y-%m-%d %H:%M:%S')
+    ch.setFormatter(formatter)
+    logger.addHandler(ch)
+    logger.setLevel(logging.DEBUG)
+    logger.propagate = False
 
 
 def run_shell_command(command, no_fail=False):
@@ -90,6 +99,7 @@ class NetDev:
             addr_file = os.path.join(path, dev_name, 'address')
             with open(addr_file) as f:
                 return next(f).strip()
+
         net_suffix = ''
         if self.ips:
             net_suffix = '/' + '+'.join(self.ips) + '/' + str(self.netmask) + '/' + self.gateway
@@ -127,8 +137,47 @@ def check_etcd_health(sudo):
             else:
                 return True
 
+
 def extract_digits(s):
     return "".join(filter(str.isdigit, s))
+
+
+def safe_drive_scan(drives_container_host_id, old_host_id):
+    retries = 15
+    drives_list = json.loads(run_shell_command('/bin/sh -c "weka cluster drive --host {} -J"'.format(old_host_id)))
+    drives_uuids = [disk["uuid"] for disk in drives_list]
+    logger.info("The following drives will be moved to the new container: {}".format(drives_uuids))
+    scan_disk_command = '/bin/sh -c "weka cluster drive scan {}"'.format(drives_container_host_id)
+    run_shell_command(scan_disk_command)
+    sleep(2)
+    for i in range(retries):
+        drives_list = json.loads(run_shell_command('/bin/sh -c "weka cluster drive --host {} -J"'.format(old_host_id)))
+        drives_uuids = [disk["uuid"] for disk in drives_list]
+        if not drives_uuids:
+            return
+    logger.warning("The following drives did not move to the new container, {} retrying".format(drives_uuids))
+    raise Exception("The following drives did not move to the new container, {} retrying".format(drives_uuids))
+
+
+def check_and_fix_machine_identifier_in_failure_domain(host_id):
+    host_row = json.loads(run_shell_command('/bin/sh -c "weka cluster host {} -J"'.format(host_id)))[0]
+    failure_domain_machine_id = json.loads(run_shell_command(
+        '/bin/sh -c "weka debug config show failureDomains[{}].machineIdentifier"'
+        .format(extract_digits(host_row['failure_domain_id']))))
+    host_row_machine_id = json.loads(run_shell_command(
+        '/bin/sh -c "weka debug config show hosts[{}].machineIdentifier"'.format(host_id)))
+    if failure_domain_machine_id != host_row_machine_id:
+        logger.info('Fixing the machine identifier in {} to fit host {}'.format(host_row['failure_domain_id'], host_id))
+        kv_strings_list = []
+        for i in range(len(host_row_machine_id)):
+            kv_strings_list.append("machineIdentifier[{}]={}".format(i, host_row_machine_id[i]))
+        config_assign_cmd = '/bin/sh -c "weka debug config assign failureDomains[{}] {}"'\
+            .format(extract_digits(host_row["failure_domain_id"]), " ".join(kv_strings_list))
+        try:
+            run_shell_command(config_assign_cmd)
+        except Exception as e:
+            logger.warning("Failed to change the machine identifier for {} with the the following error: {}".format(host_row["failure_domain_id"], e))
+            raise e
 
 
 def wait_for_s3_container(sudo):
@@ -139,9 +188,10 @@ def wait_for_s3_container(sudo):
         sleep(5)  # wait for s3 container to start
         ps = json.loads(run_shell_command(local_ps_cmd))
         s3_ready = [container for container in ps if
-                     container["internalStatus"]["display_status"] == 'READY' and container['type'].lower() == 's3']
+                    container["internalStatus"]["display_status"] == 'READY' and container['type'].lower() == 's3']
         if s3_ready:
             break
+
 
 def s3_has_active_ios(host_id):
     validate_drain_s3_cmd = '/bin/sh -c "weka debug jrpc container_get_drain_status hostId={}"'.format(host_id)
@@ -182,10 +232,7 @@ dry_run = False
 
 
 def main():
-    logging.basicConfig(format='%(asctime)s %(levelname)s: %(message)s',
-                        datefmt='%m/%d/%Y %I:%M:%S %p')
-    logger.setLevel(logging.DEBUG)
-
+    setup_logger()
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--resources-path", dest='resources_path', nargs="?", default='',
@@ -276,11 +323,15 @@ def main():
     if old_failure_domain:
         failure_domain = '--failure-domain ' + old_failure_domain
         failure_domain_for_local = '--name ' + old_failure_domain
+    else:
+        check_and_fix_machine_identifier_in_failure_domain(current_host_id)
+
     for slot in prev_resources['nodes']:
         roles = prev_resources['nodes'][slot]['roles']
         coreId = prev_resources['nodes'][slot]['core_id']
         if len(roles) > 1:
-            logger.warning("This script does not support multiple node roles. Please contact costumer support for more information")
+            logger.warning(
+                "This script does not support multiple node roles. Please contact costumer support for more information")
             exit(1)
         if roles[0] == "COMPUTE" and not args.compute_dedicated_cores:
             compute_cores += 1
@@ -308,7 +359,7 @@ def main():
                                       list(set(netDev['ips'])), netDev['net_devices'][0]['mac_address']))
         logger.debug("Adding net devices: {}".format(network_devices[-1].to_cmd()))
 
-    retries = 180 # sleeps should be 1 second each, so this is a "timeout" of 180s
+    retries = 180  # sleeps should be 1 second each, so this is a "timeout" of 180s
     # S3 check
     host_id_str = 'HostId<{}>'.format(current_host_id)
     logger.info('Checking for active protocols on the host')
@@ -373,7 +424,7 @@ def main():
         run_shell_command(drain_s3_cmd)
         s3_drain_grace_period = int(args.s3_drain_gracetime)
         sleep(s3_drain_grace_period)
-        #validate drain
+        # validate drain
         hostname = os.uname()[1]
         s3_drain_timeout = 60
         wait_for_s3_drain(s3_drain_timeout, current_host_id, 1, 10, hostname, args.dont_enforce_drain, sudo=sudo)
@@ -450,7 +501,7 @@ def main():
                 exit(1)
 
     logger.info('Validating no protocols containers are running')
-    sleep(5) # TODO: Why do we sleep?
+    sleep(5)  # TODO: Why do we sleep?
     local_ps_cmd = '/bin/sh -c "{}weka local ps -J"'.format(sudo)
     for i in range(10):
         containers = json.loads(run_shell_command(local_ps_cmd))
@@ -468,7 +519,7 @@ def main():
         if host['host_id'] == host_id_str:
             continue
 
-        join_ips_list.append(str(host['ips'][0]))# + ':' + str(host['mgmt_port']))
+        join_ips_list.append(str(host['ips'][0]))  # + ':' + str(host['mgmt_port']))
         if len(join_ips_list) > 10:
             break
 
@@ -612,9 +663,7 @@ def main():
 
                     server_info = json.loads(run_shell_command(get_host_id_command))
                     new_drive_host_id = server_info['hostIdValue']
-
-                    scan_disk_command = '/bin/sh -c "weka cluster drive scan {}"'.format(new_drive_host_id)
-                    run_shell_command(scan_disk_command)
+                    safe_drive_scan(new_drive_host_id, current_host_id)
                     logger.info('Done scanning drives')
                     break
 
