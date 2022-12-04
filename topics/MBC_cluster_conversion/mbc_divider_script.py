@@ -99,6 +99,7 @@ class NetDev:
             addr_file = os.path.join(path, dev_name, 'address')
             with open(addr_file) as f:
                 return next(f).strip()
+
         net_suffix = ''
         if self.ips:
             net_suffix = '/' + '+'.join(self.ips) + '/' + str(self.netmask) + '/' + self.gateway
@@ -135,6 +136,7 @@ def check_etcd_health(sudo):
                 etcd_status = json.loads(run_shell_command(etcd_health_cmd, True))
             else:
                 return True
+
 
 def extract_digits(s):
     return "".join(filter(str.isdigit, s))
@@ -186,7 +188,7 @@ def wait_for_s3_container(sudo):
         sleep(5)  # wait for s3 container to start
         ps = json.loads(run_shell_command(local_ps_cmd))
         s3_ready = [container for container in ps if
-                     container["internalStatus"]["display_status"] == 'READY' and container['type'].lower() == 's3']
+                    container["internalStatus"]["display_status"] == 'READY' and container['type'].lower() == 's3']
         if s3_ready:
             break
 
@@ -328,7 +330,8 @@ def main():
         roles = prev_resources['nodes'][slot]['roles']
         coreId = prev_resources['nodes'][slot]['core_id']
         if len(roles) > 1:
-            logger.warning("This script does not support multiple node roles. Please contact costumer support for more information")
+            logger.warning(
+                "This script does not support multiple node roles. Please contact costumer support for more information")
             exit(1)
         if roles[0] == "COMPUTE" and not args.compute_dedicated_cores:
             compute_cores += 1
@@ -356,7 +359,7 @@ def main():
                                       list(set(netDev['ips'])), netDev['net_devices'][0]['mac_address']))
         logger.debug("Adding net devices: {}".format(network_devices[-1].to_cmd()))
 
-    retries = 180 # sleeps should be 1 second each, so this is a "timeout" of 180s
+    retries = 180  # sleeps should be 1 second each, so this is a "timeout" of 180s
     # S3 check
     host_id_str = 'HostId<{}>'.format(current_host_id)
     logger.info('Checking for active protocols on the host')
@@ -421,7 +424,7 @@ def main():
         run_shell_command(drain_s3_cmd)
         s3_drain_grace_period = int(args.s3_drain_gracetime)
         sleep(s3_drain_grace_period)
-        #validate drain
+        # validate drain
         hostname = os.uname()[1]
         s3_drain_timeout = 60
         wait_for_s3_drain(s3_drain_timeout, current_host_id, 1, 10, hostname, args.dont_enforce_drain, sudo=sudo)
@@ -498,7 +501,7 @@ def main():
                 exit(1)
 
     logger.info('Validating no protocols containers are running')
-    sleep(5) # TODO: Why do we sleep?
+    sleep(5)  # TODO: Why do we sleep?
     local_ps_cmd = '/bin/sh -c "{}weka local ps -J"'.format(sudo)
     for i in range(10):
         containers = json.loads(run_shell_command(local_ps_cmd))
@@ -516,7 +519,7 @@ def main():
         if host['host_id'] == host_id_str:
             continue
 
-        join_ips_list.append(str(host['ips'][0]))# + ':' + str(host['mgmt_port']))
+        join_ips_list.append(str(host['ips'][0]))  # + ':' + str(host['mgmt_port']))
         if len(join_ips_list) > 10:
             break
 
