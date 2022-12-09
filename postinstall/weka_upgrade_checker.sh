@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 
-
-#version=1.0.59
+#version=1.0.60
 
 # Colors
 export NOCOLOR="\033[0m"
@@ -17,6 +16,7 @@ LOG="$DIR/weka_upgrade_checker_$(date +"%Y%m%dT%I%M%S").log"
 LARGE_CLUSTER=100 #Total number of hosts and clients in cluster
 HOSTSPACE1=6000 #Minimum Free space on BACKEND in /weka specified in MBs
 HOSTSPACE2=50 #Minimum Free space on BACKEND in /opt/weka/logs specified in MBs
+DATASPACE=10000 #Size of data dir should not be larger then 10GB irrespective of /opt/weka
 HOSTSPACEMIN=25 #Absolute Minimum Free space on BACKEND in /opt/weka/logs specified in MBs "ONLY on small clusters"
 CLIENTSPACE1=5000 #Minimum Free space on CLIENTS in /weka specified in MBs
 CLIENTSPACE2=10 #Minimum Free space on CLIENTS in /opt/weka/logs specified in MBs
@@ -252,7 +252,7 @@ WEKANODES=$(weka cluster nodes --no-header | grep -v UP)
 if [ -z "$WEKANODES" ]; then
   GOOD "Weka Nodes Status OK."
 else
-  WEKANODES=$(weka cluster nodes -o host,ips,status,role | grep -v UP)
+  WEKANODES=$(weka cluster nodes -o id,hostname,status,role | grep -v UP)
   BAD "Failed Weka Nodes Found."
   WARN "\n$WEKANODES\n"
 fi
@@ -568,7 +568,7 @@ function weka_container_disabled() {
   if [ "$1" == "True" ]; then
     BAD " [WEKA CONTAINER DISABLED STATUS] Weka local container is disabled on Host $2, please enable using weka local enable."
   else
-    if [[ ! $XCEPT ]] ; then GOOD " [WEKA CONTAINER STATUS] Weka local container is running Host $2."
+    if [[ ! $XCEPT ]] ; then GOOD " [WEKA CONTAINER DISABLED STATUS] Weka local container is running Host $2."
     fi
   fi
 }
@@ -576,15 +576,15 @@ function weka_container_disabled() {
 # Check for any SMB containers, these may need stopping BEFORE upgrade.
 function smb_check() {
   if [ -z "$1" ]; then
-    if [[ ! $XCEPT ]] ; then GOOD " [CHECKING SMB RESOURCES] NO SMB containers found on Host $2."
+    if [[ ! $XCEPT ]] ; then GOOD " [CHECKING SMB/NFS-W RESOURCES] NO SMB/NFS-W containers found on Host $2."
     fi
   else
-    WARN " [CHECKING SMB RESOURCES] Found SMB resources on Host $2. Recommend stopping SMB container before upgrade on this backend."
+    WARN " [CHECKING SMB/NFS-W RESOURCES] Found SMB/NFS-W resources on Host $2. Recommend stopping SMB/NFS-W container before upgrade on this backend."
   if [ "$3" -gt 10000000 ]; then
     if [[ ! $XCEPT ]] ; then GOOD " [CHECKING AVAILABLE MEMORY] Sufficient memory found on $2."
     fi
   else
-    WARN "  [CHECKING AVAILABLE MEMORY] Insufficient memory found on Host $2 running SMB, minimum required 10GB."
+    WARN "  [CHECKING AVAILABLE MEMORY] Insufficient memory found on Host $2 running SMB/NFS-W, minimum required 10GB."
   fi
 fi
 }
@@ -601,9 +601,10 @@ function upgrade_container() {
 
 LOGSDIR1='/opt/weka'
 LOGSDIR2='/opt/weka/logs'
+DATADIR="${LOGSDIR1}/data/default_${WEKAVERSION}"
 TOTALHOSTS=$(weka cluster host --no-header | wc -l)
 function freespace_backend() {
-  if [ -z "$1" ]; then
+  if [ -z "$1" ] || [ -z "$2" ] || [ -z "$4" ]; then
     BAD " [FREE SPACE CHECK] Unable to determine free space on Host $3."
     return 1
   fi
@@ -627,6 +628,13 @@ function freespace_backend() {
     WARN "  [REDUCE TRACES CAPACITY & INCREASE DIRECTORY SIZE] https://stackoverflow.com/c/weka/questions/1785/1786#1786"
   else
     if [[ ! $XCEPT ]] ; then GOOD " [FREE SPACE CHECK] Host $3 has Recommended Free Space of $2MB in $LOGSDIR2."
+    fi
+  fi
+
+  if [ "$4" -gt "$DATASPACE" ]; then
+    BAD " [FREE SPACE CHECK] Host $3 data directory is too large current size $4MB expected size $DATASPACE."
+  else
+    if [[ ! $XCEPT ]] ; then GOOD " [FREE SPACE CHECK] Host $3 data directory $DATADIR size ok current size $4MB."
     fi
   fi
 }
@@ -754,9 +762,11 @@ local CURHOST REMOTEDATE WEKACONSTATUS RESULTS1 RESULTS2 UPGRADECONT MOUNTWEKA S
   REMOTEDATE=$($SSH "$1" "date --utc '+%s'")
   diffdate "$REMOTEDATE" "$CURHOST"
 
-  RESULTS1=$($SSH "$1" df -m "$LOGSDIR1" | awk '{print $4}' | tail -n +2)
-  RESULTS2=$($SSH "$1" df -m "$LOGSDIR2" | awk '{print $4}' | tail -n +2)
-  freespace_backend "$RESULTS1" "$RESULTS2" "$CURHOST"
+  RESULTS1=$($SSH "$1" df -m "$LOGSDIR1" | awk '{print $4}' | tail -n +2 2>/dev/null)
+  RESULTS2=$($SSH "$1" df -m "$LOGSDIR2" | awk '{print $4}' | tail -n +2 2>/dev/null)
+  RESULTS3=$($SSH "$1" du -sm "$DATADIR" | cut -f1 2>/dev/null)
+
+  freespace_backend "$RESULTS1" "$RESULTS2" "$CURHOST" "$RESULTS3"
 
   MOUNTWEKA=$($SSH "$1" "mount -t wekafs | tail -n +2 | wc -l")
   weka_mount "$MOUNTWEKA" "$CURHOST"
