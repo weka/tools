@@ -73,6 +73,7 @@ CONST_RESOURCES = dict(
     mode="BACKEND",
     net_devices=[],
 )
+HOSTNAME=os.uname().nodename
 
 def is_cloud_env(check_aws=True, check_oci=True):
     req_list = []
@@ -200,6 +201,8 @@ class Container:
         self.nodes = dict()
         self.net_devices = []
         self.resources_json = None
+        self.hostname = HOSTNAME
+        self.failure_domain = HOSTNAME
 
     def prepare_members(self):
         self.nodes = {slot_id: self.nodes[slot_id].as_dict() for slot_id in self.nodes}
