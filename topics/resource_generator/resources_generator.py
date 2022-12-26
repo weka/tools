@@ -200,8 +200,11 @@ class Container:
         self.nodes = dict()
         self.net_devices = []
         self.resources_json = None
-        self.hostname = os.uname().nodename
-        self.failure_domain = self.hostname
+        #self.hostname = os.uname().nodename
+        #self.failure_domain = self.hostname
+        full_hostname = os.uname().nodename
+        self.failure_domain = full_hostname.split('.')[0]    # just in case it's a FQDN
+        self.hostname = full_hostname
 
     def prepare_members(self):
         self.nodes = {slot_id: self.nodes[slot_id].as_dict() for slot_id in self.nodes}
