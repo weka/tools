@@ -203,7 +203,7 @@ class Container:
         #self.hostname = os.uname().nodename
         #self.failure_domain = self.hostname
         full_hostname = os.uname().nodename
-        self.failure_domain = full_hostname.split('.')[0]    # just in case it's a FQDN
+        self.failure_domain = full_hostname.split('.')[0].replace('-','_')    # just in case it's a FQDN
         self.hostname = full_hostname
 
     def prepare_members(self):
