@@ -632,9 +632,9 @@ function freespace_backend() {
   fi
 
   if [ "$4" -gt "$DATASPACE" ]; then
-    BAD " [FREE SPACE CHECK] Host $3 data directory is too large current size $4MB expected size $DATASPACE."
+    BAD " [FREE SPACE CHECK] Host $3 data directory is too large current size ~$(($4 / 1000))GB expected size $(($DATASPACE / 1000))GB."
   else
-    if [[ ! $XCEPT ]] ; then GOOD " [FREE SPACE CHECK] Host $3 data directory $DATADIR size ok current size $4MB."
+    if [[ ! $XCEPT ]] ; then GOOD " [FREE SPACE CHECK] Host $3 data directory $DATADIR size ok current size ~$(($4 / 1000))GB."
     fi
   fi
 }
