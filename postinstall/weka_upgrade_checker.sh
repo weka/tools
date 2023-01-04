@@ -337,7 +337,7 @@ else
 fi
 
 NOTICE "VERIFYING WEKA CLUSTER DRIVE STATUS"
-WEKADRIVE=$(weka cluster drive --no-header -o id,uuid,hostname,status | grep -v ACTIVE)
+WEKADRIVE=$(weka cluster drive --no-header -o id,uuid,hostname,status | grep -vw ACTIVE)
 if [ -z "$WEKADRIVE" ]; then
   GOOD "All drives are in OK status."
 else
