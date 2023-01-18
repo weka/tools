@@ -191,6 +191,22 @@ def wait_for_s3_container(sudo):
                     container["internalStatus"]["display_status"] == 'READY' and container['type'].lower() == 's3']
         if s3_ready:
             break
+def wait_for_container_to_be_ready(container_type, sudo):
+    retries = 30
+    sleep(15)
+    status_command = '/bin/sh -c "{}weka local status -J"'.format(sudo)
+    local_status = {}
+    local_status = json.loads(run_shell_command(status_command))
+    logger.info('Waiting for {} containers to reach READY state, currently:{}'.format(
+        container_type,
+        local_status[container_type.container_name()]['status']['internalStatus']['state']))
+
+    for i in range(retries):
+        sleep(1)
+
+        local_status = json.loads(run_shell_command(status_command))
+        if local_status[container_type.container_name()]['status']['internalStatus']['state'] == 'READY':
+            break
 
 
 def s3_has_active_ios(host_id):
@@ -644,23 +660,15 @@ def main():
         logger.info("Starting container of type {} using the following command: {}".format(
             container_type.name, setup_host_command))
         run_shell_command(setup_host_command)
+        status_command = '/bin/sh -c "{}weka local status -J"'.format(sudo)
         if container_type == ContainerType.DRIVE:
-            # Check if drive container is up
-            sleep(15)
-            status_command = '/bin/sh -c "{}weka local status -J"'.format(sudo)
-            local_status = {}
-            local_status = json.loads(run_shell_command(status_command))
-            logger.info('Waiting for drive containers to reach READY state, currently:{}'.format(
-                local_status[ContainerType.DRIVE.container_name()]['status']['internalStatus']['state']))
-
+            wait_for_container_to_be_ready(ContainerType.DRIVE, sudo)
             for i in range(retries):
                 sleep(1)
-
                 try:
                     local_status = json.loads(run_shell_command(status_command))
                     if local_status[ContainerType.DRIVE.container_name()]['status']['internalStatus']['state'] != 'READY':
                         continue
-
                     server_info = json.loads(run_shell_command(get_host_id_command))
                     new_drive_host_id = server_info['hostIdValue']
                     safe_drive_scan(new_drive_host_id, current_host_id)
@@ -670,7 +678,9 @@ def main():
                 except Exception as e:
                     logger.error("Error querying container status and invoking scan: {}".format(str(e)))
 
+
     if protocols_in_host:
+        wait_for_container_to_be_ready(ContainerType.FRONTEND, sudo)
         fe_container_name = ContainerType.FRONTEND.container_name()
         if args.keep_s3_up:
             fe_container_name = container_name
