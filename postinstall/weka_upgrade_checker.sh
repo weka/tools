@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 
-#version=1.0.60
+#version=1.0.61
 
 # Colors
-export NOCOLOR="\033[0m"
-export CYAN="\033[0;36m"
-export YELLOW="\033[1;33m"
-export RED="\033[0;31m"
-export GREEN="\033[1;32m"
-export BLUE="\033[1;34m"
+export NOCOLOR="\e[0m"
+export CYAN="\e[36m"
+export YELLOW="\e[1;33m"
+export RED="\e[1;91m"
+export GREEN="\e[32m"
+export BLUE="\e[34m"
+export MAGENTA="\e[1;35m"
 
 DIR='/tmp'
 SSHCONF="$DIR/ssh_config"
@@ -92,33 +93,35 @@ function LogRotate () {
 local f="$1"
 local limit="$2"
 # Deletes old log file
-  if [ -f "$f" ] ; then
+  if [ -f "$f" ]; then
     CNT=${limit}
-    let P_CNT=CNT-1
-  if [ -f "${f}"."${limit}" ] ; then
-    rm "${f}"."${limit}"
-  fi
+    ((P_CNT=CNT-1))
+    if [ -f "${f}"."${limit}" ]; then
+      rm "${f}"."${limit}"
+    fi
 
 # Renames logs .1 trough .3
-while [[ $CNT -ne 1 ]] ; do
-  if [ -f "${f}"."${P_CNT}" ] ; then
-    mv "${f}"."${P_CNT}" "${f}"."${CNT}"
-  fi
-  let CNT=CNT-1
-  let P_CNT=P_CNT-1
-done
+    while [[ $CNT -ne 1 ]]; do
+      if [ -f "${f}"."${P_CNT}" ]; then
+      mv "${f}"."${P_CNT}" "${f}"."${CNT}"
+      fi
+      ((CNT=CNT-1))
+      ((P_CNT=P_CNT-1))
+    done
 
 # Renames current log to .1
-mv "$f" "${f}".1
-echo "" > "$f"
-fi
+      echo "" > "$f"
+      mv "$f" "${f}".1
+      LOG="${f}".1
+  fi
 }
 
+echo "" > "$LOG"
 LogRotate "$LOG" 3
 
 function NOTICE() {
-echo -e "\n${CYAN}$1${NOCOLOR}"
-logit "${CYAN}""[$1]""${NOCOLOR}"
+echo -e "\n${MAGENTA}$1${NOCOLOR}"
+logit "${MAGENTA}""[$1]""${NOCOLOR}"
 }
 
 function GOOD() {
@@ -184,7 +187,7 @@ fi
 
 if [[ "$MAJOR" -eq 3 ]] && [[ "$WEKAMINOR1" -eq 13 ]]; then
   NOTICE "VERIFYING UPGRADE ELIGIBILITY"
-  if [ $(weka status -J | awk '/"link_layer"/ {print $2}' | tr -d '"') != ETH ]; then
+  if [ "$(weka status -J | awk '/"link_layer"/ {print $2}' | tr -d '"')" != ETH ]; then
     WARN "Upgrading to 3.14 not supported. Requires Weka to use Ethernet connectivity. Please reach out to customer success on an ETA for IB support."
   else
     WARN "Upgrading to 3.14 requires Minimum OFED 5.1-2.5.8.0."
@@ -193,7 +196,7 @@ fi
 
 if [[ "$MAJOR" -eq 3 && "$WEKAMINOR1" -eq 14 ]] || [[ "$MAJOR" -eq 3 && "$WEKAMINOR1" -eq 14 && "$WEKAMINOR2" -ge 1 ]]; then
   NOTICE "VERIFYING UPGRADE ELIGIBILITY"
-  if [ $(weka status -J | awk '/"link_layer"/ {print $2}' | tr -d '"') != ETH ]; then
+  if [ "$(weka status -J | awk '/"link_layer"/ {print $2}' | tr -d '"')" != ETH ]; then
     WARN "Upgrading to 4.0 not supported. Requires Weka to use Ethernet connectivity and minimum Weka version 3.14.1 or greater."
   else
     GOOD "Cluster is upgrade eligible"
@@ -768,7 +771,7 @@ local CURHOST REMOTEDATE WEKACONSTATUS RESULTS1 RESULTS2 UPGRADECONT MOUNTWEKA S
 
   freespace_backend "$RESULTS1" "$RESULTS2" "$CURHOST" "$RESULTS3"
 
-  MOUNTWEKA=$($SSH "$1" "mount -t wekafs | tail -n +2 | wc -l")
+  MOUNTWEKA=$($SSH "$1" "mount -t wekafs | wc -l")
   weka_mount "$MOUNTWEKA" "$CURHOST"
 
   WEKAAGENTSRV=$($SSH "$1" sudo service weka-agent status > /dev/null ; echo $?)
