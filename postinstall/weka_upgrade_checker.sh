@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 
-#version=1.0.60
+#version=1.0.61
 
 # Colors
-export NOCOLOR="\033[0m"
-export CYAN="\033[0;36m"
-export YELLOW="\033[1;33m"
-export RED="\033[0;31m"
-export GREEN="\033[1;32m"
-export BLUE="\033[1;34m"
+export NOCOLOR="\e[0m"
+export CYAN="\e[36m"
+export YELLOW="\e[1;33m"
+export RED="\e[91m"
+export GREEN="\e[32m"
+export BLUE="\e[34m"
+export MAGENTA="\e[1;35m"
 
 DIR='/tmp'
 SSHCONF="$DIR/ssh_config"
@@ -79,9 +80,9 @@ EOF
 fi
 
 if [ -z "$AWS" ]; then
-  SSH='/usr/bin/ssh'
+  SSH='/usr/bin/ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR -o UserKnownHostsFile=/dev/null'
 else
-  SSH="/usr/bin/ssh -F /tmp/ssh_config -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+  SSH="/usr/bin/ssh -F /tmp/ssh_config -o StrictHostKeyChecking=no -o LogLevel=ERROR -o UserKnownHostsFile=/dev/null"
 fi
 
 function logit() {
@@ -117,8 +118,8 @@ fi
 LogRotate "$LOG" 3
 
 function NOTICE() {
-echo -e "\n${CYAN}$1${NOCOLOR}"
-logit "${CYAN}""[$1]""${NOCOLOR}"
+echo -e "\n${MAGENTA}$1${NOCOLOR}"
+logit "${MAGENTA}""[$1]""${NOCOLOR}"
 }
 
 function GOOD() {
@@ -184,17 +185,25 @@ fi
 
 if [[ "$MAJOR" -eq 3 ]] && [[ "$WEKAMINOR1" -eq 13 ]]; then
   NOTICE "VERIFYING UPGRADE ELIGIBILITY"
-  if [ $(weka status -J | awk '/"link_layer"/ {print $2}' | tr -d '"') != ETH ]; then
-    WARN "Upgrading to 3.14 not supported. Requires Weka to use Ethernet connectivity. Please reach out to customer success on an ETA for IB support."
-  else
-    WARN "Upgrading to 3.14 requires Minimum OFED 5.1-2.5.8.0."
+  if [ "$(weka status -J | awk '/"link_layer"/ {print $2}' | tr -d '"')" != ETH ]; then
+    WARN "Please make sure you are upgrading to 3.14.3."
+  elif sudo command ofed_info -n &> /dev/null; then
+    if [ $? -eq 0 ]; then
+      CUR_OFED_MAJOR=$(sudo ofed_info -n | cut -d'.' -f1)
+      CUR_OFED_MINOR1=$(sudo ofed_info -n | cut -d'.' -f2 | cut -d'-' -f1)
+      CUR_OFED_MINOR2=$(sudo ofed_info -n | cut -d'.' -f2 | cut -d'-' -f2)
+      CUR_OFED_MINOR3=$(ofed_info -n | cut -d'.' -f3)
+        if [[ "$CUR_OFED_MAJOR" -le 5 && "$CUR_OFED_MINOR1" -lt 1 && "$CUR_OFED_MINOR2" -lt 2 && "$CUR_OFED_MINOR3" -lt 6 ]]; then
+          WARN "Upgrading to 3.14 requires Minimum OFED 5.1-2.5.8.0."
+        fi
+    fi
   fi
 fi
 
 if [[ "$MAJOR" -eq 3 && "$WEKAMINOR1" -eq 14 ]] || [[ "$MAJOR" -eq 3 && "$WEKAMINOR1" -eq 14 && "$WEKAMINOR2" -ge 1 ]]; then
   NOTICE "VERIFYING UPGRADE ELIGIBILITY"
-  if [ $(weka status -J | awk '/"link_layer"/ {print $2}' | tr -d '"') != ETH ]; then
-    WARN "Upgrading to 4.0 not supported. Requires Weka to use Ethernet connectivity and minimum Weka version 3.14.1 or greater."
+  if [ "$(weka status -J | awk '/"link_layer"/ {print $2}' | tr -d '"')" != ETH ]; then
+    WARN "Cluster Must upgrade 4.1.1 for Infiniband support."
   else
     GOOD "Cluster is upgrade eligible"
   fi
@@ -420,8 +429,7 @@ VERSION="$3"
 NAME="$4"
 
 if [ "$ID" = 'centos' ]; then
-  VERSION_ID=$(cat /etc/redhat-release)
-  VERSION_ID=${VERSION_ID##*release }
+  VERSION_ID=${VERSION_ID##*release}
   VERSION_ID=${VERSION_ID%.*}
 elif [ "$ID" = 'ubuntu' ]; then
   VERSION_ID=${VERSION%% *}
@@ -610,42 +618,41 @@ function freespace_backend() {
   fi
 
   if [ "$1" -lt "$HOSTSPACE1" ]; then
-    BAD " [FREE SPACE CHECK] Host $3 has less than recommended free space of ~$(($1 / 1000))GB in $LOGSDIR1."
+    BAD " [FREE SPACE CHECK] Host ${3} has less than recommended free space of ~$(($1 / 1000))GB in ${LOGSDIR1}."
     WARN "  [REDUCE TRACES CAPACITY & INCREASE DIRECTORY SIZE] https://stackoverflow.com/c/weka/questions/1785/1786#1786."
   else
-    if [[ ! $XCEPT ]] ; then GOOD " [FREE SPACE CHECK] Host $3 has recommended free space of ~$(($1 / 1000))GB in $LOGSDIR1."
+    if [[ ! $XCEPT ]] ; then GOOD " [FREE SPACE CHECK] Host ${3} has recommended free space of ~$(($1 / 1000))GB in ${LOGSDIR1}."
       fi
   fi
 
   if [[ "$TOTALHOSTS" -ge "$LARGE_CLUSTER" && "$2" -lt "$HOSTSPACE2" ]]; then
-    BAD " [FREE SPACE CHECK] Host $3 has less than recommended free space of $2MB in $LOGSDIR2."
+    BAD " [FREE SPACE CHECK] Host ${3} has less than recommended free space of $2MB in ${LOGSDIR2}."
     WARN "  [REDUCE TRACES CAPACITY & INCREASE DIRECTORY SIZE] https://stackoverflow.com/c/weka/questions/1785/1786#1786."
     return 1
   fi
 
   if [ "$2" -lt "$HOSTSPACEMIN" ]; then
-    BAD " [FREE SPACE CHECK] Host $3 has Less than Recommended Free Space of $2MB in $LOGSDIR2."
+    BAD " [FREE SPACE CHECK] Host ${3} has Less than Recommended Free Space of ${2}MB in ${LOGSDIR2}."
     WARN "  [REDUCE TRACES CAPACITY & INCREASE DIRECTORY SIZE] https://stackoverflow.com/c/weka/questions/1785/1786#1786"
   else
-    if [[ ! $XCEPT ]] ; then GOOD " [FREE SPACE CHECK] Host $3 has Recommended Free Space of $2MB in $LOGSDIR2."
+    if [[ ! $XCEPT ]] ; then GOOD " [FREE SPACE CHECK] Host ${3} has Recommended Free Space of ${2}MB in ${LOGSDIR2}."
     fi
   fi
 
   if [ "$4" -gt "$DATASPACE" ]; then
-    BAD " [FREE SPACE CHECK] Host $3 data directory is too large current size $4MB expected size $DATASPACE."
+    BAD " [FREE SPACE CHECK DATA DIRECTORY] Host ${3} data directory is too large current size ${4}MB expected size ${DATASPACE}MB."
   else
-    if [[ ! $XCEPT ]] ; then GOOD " [FREE SPACE CHECK] Host $3 data directory $DATADIR size ok current size $4MB."
+    if [[ ! $XCEPT ]] ; then GOOD " [FREE SPACE CHECK] Host ${3} data directory ${DATADIR} size ok current size ${4}MB."
     fi
   fi
 }
 
-# Check for any Weka filesystems mountd on /weka
 function weka_mount() {
   if [ "$1" -eq 0 ]; then
-    if [[ ! $XCEPT ]] ; then GOOD " [CHECKING WEKA MOUNT] NO Weka file systems mounted on Host $2."
+    if [[ ! $XCEPT ]] ; then GOOD " [CHECKING WEKA MOUNT] NO Weka file systems mounted on Host ${2}."
     fi
   else
-    BAD " [CHECKING WEKA MOUNT] Weka mounts found on Host $2 unmount prior to upgrade."
+    BAD " [CHECKING WEKA MOUNT] Weka mounts found on Host ${2} unmount prior to upgrade."
   fi
 }
 
@@ -704,7 +711,7 @@ function client_web_test() {
 S3CLUSTERSTATUS=$(weka s3 cluster -J | awk '/"active":/{print $2}' | tr -d ",")
 if [ "$S3CLUSTERSTATUS" == true ]; then
   if [[ "$MAJOR" -lt 4 ]]; then
-  NOTICE "VERIFY ETCD HEALTH"
+    NOTICE "VERIFY ETCD HEALTH"
     S3CLUSTERETCDHEALTH=$(sudo weka local exec -C s3 etcdctl endpoint health --cluster -w table)
     if [ -z $(echo "$S3CLUSTERETCDHEALTH" | grep false) ]; then
       GOOD "ETCD cluster health ok"
@@ -768,10 +775,10 @@ local CURHOST REMOTEDATE WEKACONSTATUS RESULTS1 RESULTS2 UPGRADECONT MOUNTWEKA S
 
   freespace_backend "$RESULTS1" "$RESULTS2" "$CURHOST" "$RESULTS3"
 
-  MOUNTWEKA=$($SSH "$1" "mount -t wekafs | tail -n +2 | wc -l")
+  MOUNTWEKA=$($SSH "$1" "mount -t wekafs | wc -l")
   weka_mount "$MOUNTWEKA" "$CURHOST"
 
-  WEKAAGENTSRV=$($SSH "$1" sudo service weka-agent status > /dev/null ; echo $?)
+  WEKAAGENTSRV=$($SSH "$1" sudo service weka-agent status > /dev/null 2>&1 ; echo $?)
   weka_agent_service "$WEKAAGENTSRV" "$CURHOST" || return
 
   WEKACONSTATUS=$($SSH "$1" weka local ps --no-header -o name,running | awk '/default/ {print $2}')
