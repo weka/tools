@@ -1,9 +1,32 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
+
 import json
 import subprocess
+import sys
+
 
 def main():
-    cfg = json.loads(subprocess.check_output(["weka", "local", "run", "--", "/weka/cfgdump"]))
+    weka_container = []
+    containers = json.loads(subprocess.check_output(["weka", "local", "ps", "-J"]))
+    for wc in containers:
+        if wc["type"] == "weka" and wc["internalStatus"]["state"] == "READY":
+            weka_container += [wc["name"]]
+
+    if not weka_container:
+        print("No ready weka container found")
+        sys.exit(1)
+
+    for name in weka_container:
+        try:
+            cfg = json.loads(
+                subprocess.check_output(["sudo", "weka", "local", "run", "-C", name, "--", "/weka/cfgdump"]))
+            if not cfg:
+                continue
+            else:
+                break
+        except Exception as e:
+            print("Unable able to determine weka container %s" % (e,))
+
     leaderNodeId = cfg["leaderId"]
     print("Leader node is: %s" % (leaderNodeId,))
     leaderHostId = cfg["nodes"][leaderNodeId]["hostId"]
@@ -14,9 +37,10 @@ def main():
     print("To restart leader, use:")
     print("")
     msg = "ssh %s weka local exec /usr/local/bin/supervisorctl restart weka-management" % (ips[0],)
-    print("-"*len(msg))
+    print("-" * len(msg))
     print(msg)
-    print("-"*len(msg))
+    print("-" * len(msg))
+
 
 if __name__ == '__main__':
     main()
