@@ -421,6 +421,7 @@ def change_failure_domains(s3_drain_timeout, s3_drain_grace, s3_drain_interval, 
         wait_for_container_readiness(host)
 
         log("Getting host-id from the current container on %s" % (host.hostname, ))
+        time.sleep(10)
         host_id = json.loads(host.ssh_call_with_output(*shlex.split("weka debug manhole -s 0 getServerInfo")))["hostIdValue"]
 
         log("Waiting for host with %s to become UP in 'weka cluster host'" % (host.hostname, ))
