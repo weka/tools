@@ -403,7 +403,7 @@ if [[ "$MAJOR" -eq 3 ]] && [[ "$WEKAMINOR1" -eq 12 ]]; then
 fi
 
 function check_ssh_connectivity() {
-  if $SSH -o ConnectTimeout=5 "$1" exit &>/dev/null; then
+  if $SSH -o PasswordAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=5 "$1" exit &>/dev/null; then
     if [[ ! $XCEPT ]] ; then GOOD " [SSH PASSWORDLESS CONNECTIVITY CHECK] SSH connectivity test PASSED on Host $2 $1."
     fi
   else
