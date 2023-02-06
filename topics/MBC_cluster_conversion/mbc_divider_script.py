@@ -142,6 +142,7 @@ def extract_digits(s):
     return "".join(filter(str.isdigit, s))
 
 
+# This function scans, moves and verifies that the disks are transferred from old host to current (target) host
 def safe_drive_scan(drives_container_host_id, old_host_id):
     retries = 15
     drives_list = json.loads(run_shell_command('/bin/sh -c "weka cluster drive --host {} -J"'.format(old_host_id)))
@@ -191,6 +192,37 @@ def wait_for_s3_container(sudo):
                     container["internalStatus"]["display_status"] == 'READY' and container['type'].lower() == 's3']
         if s3_ready:
             break
+
+
+def wait_for_nodes_to_be_down(containerId, sudo):
+    retries = 90
+    nodes_command = '/bin/sh -c "{}weka cluster nodes --host {} -J"'.format(sudo, containerId)
+    nodes_output = {}
+    nodes_output = json.loads(run_shell_command(nodes_command))
+    nodes_list = []
+    for node in nodes_output:
+        nodes_list.append(node['node_id'])
+    logger.debug('Waiting for nodes {} to reach DOWN state'.format(
+        nodes_list)) # TODO: strip from NodeId?
+
+    notDownNodes = []
+    for i in range(retries):
+        nodes_output = json.loads(run_shell_command(nodes_command))
+        notDownNodes = []
+        for node in nodes_output:
+            if node['status'] != 'DOWN':
+                logger.debug('{} is {}'.format(node['node_id'], node['status']))
+                notDownNodes.append(node['node_id'])
+
+        if not notDownNodes:
+            logger.debug('all nodes are DOWN')
+            return
+
+        sleep(1)
+
+    raise Exception("nodes were not down after 90 seconds! (not down nodes:{})".format(notDownNodes))
+
+
 def wait_for_container_to_be_ready(container_type, sudo):
     retries = 30
     sleep(15)
@@ -671,6 +703,8 @@ def main():
                         continue
                     server_info = json.loads(run_shell_command(get_host_id_command))
                     new_drive_host_id = server_info['hostIdValue']
+                    wait_for_nodes_to_be_down(current_host_id, sudo)
+                    #safe_drive_scan assumes that all old nodes are down
                     safe_drive_scan(new_drive_host_id, current_host_id)
                     logger.info('Done scanning drives')
                     break
