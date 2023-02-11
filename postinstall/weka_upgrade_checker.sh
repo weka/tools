@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-#version=1.0.61
+#version=1.0.62
 
 # Colors
 export NOCOLOR="\e[0m"
@@ -70,32 +70,21 @@ if [ ! -z "$AWS" ]; then
 cat > $SSHCONF <<EOF
 BatchMode yes
 Compression yes
+CompressionLevel 9
 StrictHostKeyChecking no
 PasswordAuthentication no
 ConnectTimeout 5
-LogLevel=ERROR
 GlobalKnownHostsFile $DIR/global_known_hosts
 IdentityFile /home/ec2-user/.ssh/support_id_rsa.pem
-UserKnownHostsFile=/dev/null
-EOF
-else
-cat > $SSHCONF <<EOF
-BatchMode yes
-Compression yes
-StrictHostKeyChecking no
-PasswordAuthentication no
-ConnectTimeout 5
-LogLevel=ERROR
-GlobalKnownHostsFile $DIR/global_known_hosts
-UserKnownHostsFile=/dev/null
 EOF
 fi
 
 if [ -z "$AWS" ]; then
-  SSH="/usr/bin/ssh -F /tmp/ssh_config "
+  SSH='/usr/bin/ssh'
 else
-  SSH="/usr/bin/ssh -F /tmp/ssh_config"
+  SSH="/usr/bin/ssh -F /tmp/ssh_config -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
 fi
+
 
 function logit() {
   echo -e "[${USER}][$(date)] - ${*}\n" >> "${LOG}"
