@@ -192,7 +192,7 @@ class Core:
 
 
 class Container:
-    def __init__(self, memory=None, base_port=None):
+    def __init__(self, memory=None, base_port=None, failure_domain=""):
         self.allow_protocols = False
         self.base_port = base_port
         self.drives = []
@@ -200,11 +200,8 @@ class Container:
         self.nodes = dict()
         self.net_devices = []
         self.resources_json = None
-        #self.hostname = os.uname().nodename
-        #self.failure_domain = self.hostname
-        full_hostname = os.uname().nodename
-        self.failure_domain = full_hostname.split('.')[0].replace('-','_')    # just in case it's a FQDN
-        self.hostname = full_hostname
+        self.failure_domain = failure_domain
+        self.hostname = os.uname().nodename
 
     def prepare_members(self):
         self.nodes = {slot_id: self.nodes[slot_id].as_dict() for slot_id in self.nodes}
@@ -215,6 +212,11 @@ class Container:
         resources_dict.update(self.__dict__.copy())
         resources_dict.pop("resources_json")
         self.resources_json = dumps(resources_dict, sort_keys=True, indent=1)
+
+
+def get_failure_domain_based_on_nodename():
+    full_hostname = os.uname().nodename
+    return full_hostname.split('.')[0].replace('-', '_')  # just in case it's a FQDN
 
 
 class Numa:
@@ -418,6 +420,8 @@ class ResourcesGenerator:
                             help="Override the default max number of cores per container: %s, if provided - new value must be lower" % DEFAULT_MAX_IO_NODES_PER_CONTAINER)
         parser.add_argument("--no-rdma", action='store_true',
                             help="Don't take RDMA support into account when computing memory requirements, false by default")
+        parser.add_argument("--use-auto-failure-domain", action='store_true',
+                            help="Use auto failure domain. Default is user defined based on node")
         parser.add_argument("--allow-all-disk-types", action='store_true',
                             help="Detect all available (non-rotational) devices. If not specified, only NVME devices will be detected. "
                                  "For allowing rotating disks - please add '--allow-rotational' as well")
@@ -444,6 +448,7 @@ class ResourcesGenerator:
                                  "argument should be value and unit without whitespace (i.e 10GiB, 1024B, 5TiB etc.)")
         parser.add_argument("--path", default=".", type=_validate_path,
                             help="Specify the directory path to which the resources files will be written, default is '.'")
+
         self.args = parser.parse_args()
         self.exclusive_nics_policy = is_cloud_env() or self.args.allocate_nics_exclusively
         _validate_net_dev()
@@ -480,11 +485,12 @@ class ResourcesGenerator:
             nodes = self.drive_nodes[:]
         else:
             nodes = self.compute_nodes[:]
+        failure_domain = "" if self.args.use_auto_failure_domain else get_failure_domain_based_on_nodename()
 
         for i in range(self.num_containers_by_role[role]):
             slot_id = 0
             base_port = self._get_next_base_port(role)
-            container = Container(base_port=base_port)
+            container = Container(base_port=base_port, failure_domain=failure_domain)
             mgmt_node = Node(dedicate_core=False, http_port=base_port, rpc_port=base_port)
             mgmt_node.roles.append(MANAGEMENT_ROLE)
             container.nodes[str(slot_id)] = mgmt_node
