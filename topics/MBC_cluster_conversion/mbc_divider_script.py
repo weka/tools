@@ -607,7 +607,7 @@ def main():
         frontend_cores_cmd += ' --frontend-core-ids '
         for core_id in pinned_frontend_cores:
             frontend_cores_cmd += str(core_id) + ' '
-
+    use_auto_fd = " --use-auto-failure-domain" if not old_failure_domain else ""
     memory_cmd = ' --weka-hugepages-memory ' + str(memory) + 'B' if memory else ''
     resource_generator_command = '/bin/sh -c "/tmp/resources_generator.py --net {}{}{}{}{} -f"'.format(
         all_net,
@@ -615,6 +615,7 @@ def main():
         drive_cores_cmd,
         frontend_cores_cmd,
         memory_cmd,
+        use_auto_fd,
     )
     logger.info('Running resources-generator')
     run_shell_command(resource_generator_command)
