@@ -54,7 +54,7 @@ EOF
 exit
 }
 
-while getopts "hfasd:b:Sl:VC:D:F:m:i:kO" o; do
+while getopts "hfasd:b:Sl:VC:D:F:m:i:kOv" o; do
     case "${o}" in
         f)
             FORCE='--force'
@@ -114,8 +114,12 @@ while getopts "hfasd:b:Sl:VC:D:F:m:i:kO" o; do
             echo "Option -i set ssh identity file to $OPTARG"
             ;;
         O)
-            FORCE_CONTINUE_WITHOUT_REAL_DRAIN="--s3-force-stop-with-failed-drain-check"
+            FORCE_CONTINUE_WITHOUT_REAL_DRAIN="--s3-force-stop-with-failed-drain-check "
             echo "Option -O dont enforce drain"
+            ;;
+        v)
+            FORCE_VF_ON_RG="--allocate-nics-exclusively "
+            echo "Option -v will force resources generator to use nics as VFs"
             ;;
         h)
             usage
@@ -393,8 +397,8 @@ fi
 NOTICE "======================================
 EXECUTING CONVERSION TO MBC ON HOST $1
 ======================================"
-NOTICE "RUNNING COMMAND: $DIR/mbc_divider_script.py $AWS $FORCE $DRAIN_TIMEOUT $DRIVE_CORES $COMPUTE_CORES $FRONTEND_CORES $LIMIT_MEMORY $KEEP_S3_UP_FLAG $FORCE_CONTINUE_WITHOUT_REAL_DRAIN"
-$SSH "$1" "$DIR/mbc_divider_script.py $AWS $FORCE $DRAIN_TIMEOUT $DRIVE_CORES $COMPUTE_CORES $FRONTEND_CORES $LIMIT_MEMORY $KEEP_S3_UP_FLAG $FORCE_CONTINUE_WITHOUT_REAL_DRAIN" 2>&1 | tee -a ${LOG}
+NOTICE "RUNNING COMMAND: $DIR/mbc_divider_script.py $AWS $FORCE $DRAIN_TIMEOUT $DRIVE_CORES $COMPUTE_CORES $FRONTEND_CORES $LIMIT_MEMORY $KEEP_S3_UP_FLAG $FORCE_CONTINUE_WITHOUT_REAL_DRAIN $FORCE_VF_ON_RG"
+$SSH "$1" "$DIR/mbc_divider_script.py $AWS $FORCE $DRAIN_TIMEOUT $DRIVE_CORES $COMPUTE_CORES $FRONTEND_CORES $LIMIT_MEMORY $KEEP_S3_UP_FLAG $FORCE_CONTINUE_WITHOUT_REAL_DRAIN $FORCE_VF_ON_RG" 2>&1 | tee -a ${LOG}
 if [ "${PIPESTATUS[0]}" != "0" ]; then
     BAD "UNABLE TO CONVERT HOST $1"
     return 1
