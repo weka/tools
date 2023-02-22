@@ -303,7 +303,7 @@ def main():
                         help=argparse.SUPPRESS)
     parser.add_argument('--s3-force-stop-with-failed-drain-check', '-c', dest='dont_enforce_drain', action='store_true',
                         help=argparse.SUPPRESS)
-    parser.add_argument("--allocate-nics-exclusively", action='store_true',
+    parser.add_argument("--allocate-nics-exclusively", action='store_true', dest='allocate_nics_exclusively',
                         help="Set one unique net device per each io node, relevant when using virtual functions (VMware, KVM etc.)")
     args = parser.parse_args()
     global dry_run
@@ -609,10 +609,10 @@ def main():
         frontend_cores_cmd += ' --frontend-core-ids '
         for core_id in pinned_frontend_cores:
             frontend_cores_cmd += str(core_id) + ' '
-    allocate_nics_exclusively = " --allocate-nics-exclusively" if args.allocate_nics_exclusively else ""
+    allocate_nics_exclusively = " --allocate-nics-exclusively" if args.allocate_nics_exclusively is True else ""
     use_auto_fd = " --use-auto-failure-domain" if not old_failure_domain else ""
     memory_cmd = ' --weka-hugepages-memory ' + str(memory) + 'B' if memory else ''
-    resource_generator_command = '/bin/sh -c "/tmp/resources_generator.py --net {}{}{}{}{}{} -f"'.format(
+    resource_generator_command = '/bin/sh -c "/tmp/resources_generator.py --net {}{}{}{}{}{}{} -f"'.format(
         all_net,
         compute_cores_cmd,
         drive_cores_cmd,
