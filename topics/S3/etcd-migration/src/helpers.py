@@ -79,6 +79,9 @@ def set_drain_mode(enable, host_num):
 
 
 def wait_for_drain(host):
+    while is_host_ready(global_vars.s3_hosts[host]):
+        time.sleep(0.5)
+    time.sleep(10)
     while True:
         r = send_request(f"http://{host}:9001/minio/drain/status")
         data = r.json()
@@ -186,3 +189,9 @@ def is_etcd_up_and_working():
             print(f"{bcolors.RED}ERROR: Host {host} minIO failed to load all ETCD data. Fix what is needed and re-run script{bcolors.ENDC}")
             exit(1)
     return True
+
+
+def is_host_ready(host_id):
+    output = send_bash_command("weka s3 cluster status -J")
+    hosts_health = json.loads(output)
+    return hosts_health[f'HostId<{host_id}>']
