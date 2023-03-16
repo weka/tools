@@ -4,7 +4,7 @@ import time
 from src.common import bcolors, global_vars, Automode
 from src.helpers import set_drain_mode, get_migration_status, print_errors_dict, wait_for_drain, send_bash_command, \
     send_request, continue_to_next_step, continue_to_next_host, is_client_running_on_host, is_etcd_up_and_working, \
-    validate_set_migration_read_only_mode, validate_host_in_migration_read_only_mode
+    validate_set_migration_read_only_mode, validate_host_in_migration_read_only_mode, is_host_ready
 
 
 def step(step_str, force_lower_auto_mode=False):
@@ -133,9 +133,7 @@ def drain_and_restarts_all_hosts():
                                    f"s3_update_config force_minio_refresh=true")
         while True:
             time.sleep(2)
-            output = send_bash_command("weka s3 cluster status -J")
-            hosts_health = json.loads(output)
-            if hosts_health[f'HostId<{id}>']:
+            if is_host_ready(id):
                 break
         if not validate_host_in_migration_read_only_mode(host, "enter"):
             print(f"{bcolors.RED}ERROR: Host {host} is not in Migration Read Only Mode.{bcolors.ENDC}")
@@ -172,6 +170,7 @@ def exit_migration_mode():
 @step("Stopping ETCD from running, and Changing minIO defaults to KWAS")
 def remove_etcd_internals():
     output = send_bash_command(f"weka s3 cluster update --etcd-enable=off")
+    print(f"{bcolors.CYAN}\tWaiting 20 seconds on each host to make sure ETCD isn't starting.{bcolors.ENDC}")
     for host in global_vars.s3_hosts.keys():
         output = send_bash_command(f"ssh {host} weka local exec -C s3 supervisorctl stop etcd")
         t_end = time.time() + 20
