@@ -50,7 +50,7 @@ Servers - a list of weka servers to connect to via the API, or when combined wit
 
 `-w WORKLOAD` get fio jobfile specifications from a subdirectory of fio-jobfiles.   The default is 'default'.  Currently, there are 2 discributed with wekatester, "default" (4-corners tests), and "mixed", a set of 70/30 RW workloads.  You can add your own directories, and use the with -w.
 
-`-o` will create an output file with all the fio output in it in JSON format.  This is useful for later analysis. (Analysis tools forthcoming)
+`-o` will create an output file with all the fio output in it in JSON format.
 
 `-a` automatically adjust numjobs= to 2x the number of available cores.  Works on all workloads.
 
