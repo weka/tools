@@ -117,7 +117,8 @@ def validate_migration():
 
 
 @step("Draining all S3 hosts and Restarting them into new mode")
-def drain_and_restarts_all_hosts():
+def drain_and_restarts_all_hosts(revert=False):
+    client = "etcd" if revert else "kwas"
     for host, id in global_vars.s3_hosts.items():
         if global_vars.auto_mode < Automode.AUTO.value:
             if not continue_to_next_host():
@@ -138,8 +139,8 @@ def drain_and_restarts_all_hosts():
         if not validate_host_in_migration_read_only_mode(host, "enter"):
             print(f"{bcolors.RED}ERROR: Host {host} is not in Migration Read Only Mode.{bcolors.ENDC}")
             exit(1)
-        if not is_client_running_on_host('kwas', host):
-            print(f"{bcolors.RED}ERROR: Host {host} is not running with kwas. Fix it and run script again.{bcolors.ENDC}")
+        if not is_client_running_on_host(client, host):
+            print(f"{bcolors.RED}ERROR: Host {host} is not running with {client}. Fix it and run script again.{bcolors.ENDC}")
             exit(1)
 
     print(f"{bcolors.GREEN}\tAll hosts are Ready.{bcolors.ENDC}")
@@ -199,7 +200,7 @@ def do_revert():
     print(f"{bcolors.YELLOW}{bcolors.BOLD}Starting Revert{bcolors.ENDC}")
 
     enter_migration_mode(True)
-    drain_and_restarts_all_hosts()
+    drain_and_restarts_all_hosts(True)
     post_revert_validations()
     print(f"{bcolors.GREEN}Revert finished successfully{bcolors.ENDC}")
     exit(0)
