@@ -6,6 +6,9 @@
 # Written by: Vince Fleming, vince@weka.io
 #
 
+echo 'wekareset.sh is now deprecated; please see `wekacleanup --help` instead'
+sleep 5
+
 if [ $# -lt 1 ]; then
 	echo "Usage: $0 <hosts>..."
 	echo "where <hosts> is a space separated list of hosts to reset."
