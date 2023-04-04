@@ -116,9 +116,10 @@ def validate_migration():
     print(f"{bcolors.GREEN}\tAll migrated data was verified successfully{bcolors.ENDC}")
 
 
-@step("Draining all S3 hosts and Restarting them into new mode")
+@step("Draining all S3 hosts and Restarting them into selected mode")
 def drain_and_restarts_all_hosts(revert=False):
     client = "etcd" if revert else "kwas"
+    mode = "old" if revert else "new"
     for host, id in global_vars.s3_hosts.items():
         if global_vars.auto_mode < Automode.AUTO.value:
             if not continue_to_next_host():
@@ -128,7 +129,7 @@ def drain_and_restarts_all_hosts(revert=False):
         print(f"{bcolors.CYAN}\tWaiting for host {host} to be drained. if this takes too long, cancel "
               f"script (^C) fix what is needed and re-run script{bcolors.ENDC}")
         wait_for_drain(host)
-        print(f"{bcolors.DARK_GREEN}\tHost {host} is in Drain Mode, Restarting it into new mode{bcolors.ENDC}")
+        print(f"{bcolors.DARK_GREEN}\tHost {host} is in Drain Mode, Restarting it into {mode} mode{bcolors.ENDC}")
 
         output = send_bash_command(f"weka debug manhole --slot 0 --host {id} "
                                    f"s3_update_config force_minio_refresh=true")
@@ -201,6 +202,7 @@ def do_revert():
 
     enter_migration_mode(True)
     drain_and_restarts_all_hosts(True)
+    exit_migration_mode()
     post_revert_validations()
     print(f"{bcolors.GREEN}Revert finished successfully{bcolors.ENDC}")
     exit(0)
