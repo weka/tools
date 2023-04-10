@@ -159,7 +159,7 @@ def validate_kwas_is_up():
           f"Meaning this is the step after which the S3 cluster is forever KWAS.{bcolors.ENDC}")
 
 
-@step("Exiting S3 cluster from Migration Read Only Mode", True)
+@step("Exiting S3 cluster from Migration Read Only Mode")
 def exit_migration_mode():
     for host, id in global_vars.s3_hosts.items():
         output = send_bash_command(f"weka debug manhole --slot 0 --host {id} s3_exit_kwas_migration_mode")
