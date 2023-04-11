@@ -6,7 +6,7 @@
 # Written by: Vince Fleming, vince@weka.io
 #
 
-echo 'wekareset.sh is now deprecated; please see `wekacleanup --help` instead'
+echo 'wekareset.sh is now deprecated; please see `wekadestroy --help` instead'
 sleep 5
 
 if [ $# -lt 1 ]; then
