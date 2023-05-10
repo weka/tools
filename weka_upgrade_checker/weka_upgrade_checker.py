@@ -22,7 +22,7 @@ if sys.version_info < (3, 8):
     BAD("Must have python version 3.8 or later installed.")
     sys.exit(1)
 
-pg_version = "1.0"
+pg_version = "1.1"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
 
@@ -176,6 +176,7 @@ class Spinner:
             "    ◀◀◁◁ ",
             "   ◀◀◀◁  ",
             "  ◀◀◀◀   ",
+            " ◀◀◀◀    ",
             "◀◀◀◀     ",
             "◀◀◀      ",
             "◀◀       ",
@@ -821,14 +822,16 @@ def weka_cluster_checks():
     for key, value in host_machine_identifiers.items():
         rev_dict.setdefault(value, set()).add(key)
 
-    if duplicate_identifiers := set(
+    duplicate_identifiers = set(
         chain.from_iterable(
             values for key, values in rev_dict.items() if len(values) > 1
         )
-    ):
-        WARN(
-            f'{" " * 5}⚠️  Duplicate machine identifiers found for host {duplicate_identifiers}'
-        )
+    )
+
+    if duplicate_identifiers:
+        WARN(f'{" " * 5}⚠️  Duplicate machine identifiers found for hosts:')
+        for hostname in duplicate_identifiers:
+            WARN(f'{" " * 10}-> {hostname}')
     else:
         GOOD(f'{" " * 5}✅ Machine identifiers check complete')
 
@@ -1943,7 +1946,8 @@ def main():
         sys.exit(0)
 
     elif args.version:
-        print("Weka upgrade checker version: {pg_version}")
+        print("Weka upgrade checker version: %s" % pg_version)
+        sys.exit(0)
 
 
 if __name__ == '__main__':
