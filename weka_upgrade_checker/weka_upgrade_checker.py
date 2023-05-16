@@ -19,10 +19,10 @@ from itertools import chain
 import tarfile
 
 if sys.version_info < (3, 8):
-    BAD("Must have python version 3.8 or later installed.")
+    print("Must have python version 3.8 or later installed.")
     sys.exit(1)
 
-pg_version = "1.1"
+pg_version = "1.2.5"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
 
@@ -45,9 +45,10 @@ except UnicodeEncodeError:
     unicode_test = False
 
 if not unicode_test:
-    [FAIL] = u'\u274C'
-    [PASS] = u'\u2705'
-    [WARN] = u'\u26A0'
+    [FAIL] = '\u274C'
+    [PASS] = '\u2705'
+    [WARN] = '\u26A0'
+    [BAD] = '\u274C'
 
 
 logger = logging.getLogger(__name__)
@@ -181,6 +182,7 @@ class Spinner:
             "◀◀◀      ",
             "◀◀       ",
             "◀        ",
+            "         ",
         ]
         self.spinner_length = len(self.spinner_chars)
 
@@ -829,9 +831,9 @@ def weka_cluster_checks():
     )
 
     if duplicate_identifiers:
-        WARN(f'{" " * 5}⚠️  Duplicate machine identifiers found for hosts:')
+        BAD(f'{" " * 5}❌ Duplicate machine identifiers found for hosts:')
         for hostname in duplicate_identifiers:
-            WARN(f'{" " * 10}-> {hostname}')
+            BAD(f'{" " * 10}-> {hostname}')
     else:
         GOOD(f'{" " * 5}✅ Machine identifiers check complete')
 
@@ -1345,7 +1347,7 @@ def check_os_release(host_name, result, weka_version, check_version, backend=Tru
         if dict_info['ID'] == "ubuntu":
             version = re.search(r'\b\d+\.\d+\.\d+\b',
                                 dict_info['VERSION']).group()
-        elif dict_info['ID'] == "rocky":
+        elif dict_info['ID'] == "rocky" or "rhel":
             version = dict_info['VERSION_ID']
         else:
             version = dict_info['VERSION']
@@ -1896,12 +1898,12 @@ def main():
                         default=False, help='Run check on entire cluster including backend hosts and client hosts')
     parser.add_argument('-i', '--ssh_identity', default=None,
                         type=str, help='Path to identity file for SSH')
-    parser.add_argument('-v', '--version', dest='version',
-                        action='store_true', help='weka_upgrade_check.py version info')
+    parser.add_argument('-v', '--version', dest='version', action='store_true',
+                        default=False, help='weka_upgrade_check.py version info')
 
     args = parser.parse_args()
 
-    ssh_identity = args.ssh_identity if args.ssh_identity else None
+    ssh_identity = args.ssh_identity or None
 
     if args.run_all_checks:
         weka_cluster_results = weka_cluster_checks()
@@ -1917,6 +1919,7 @@ def main():
                             weka_version, check_version, backend_ips, ssh_identity)
         client_hosts_checks(weka_version, ssh_cl_hosts,
                             check_version, ssh_identity)
+        INFO(f"Cluster upgrade checks complete!")
         sys.exit(0)
     elif args.check_specific_backend_hosts:
         weka_cluster_results = weka_cluster_checks()
@@ -1930,6 +1933,7 @@ def main():
         backend_ips = weka_cluster_results[6]
         backend_host_checks(backend_hosts, args.check_specific_backend_hosts,
                             weka_version, check_version, backend_ips, ssh_identity)
+        INFO(f"Cluster upgrade checks complete!")
         sys.exit(0)
     elif args.skip_client_checks:
         weka_cluster_results = weka_cluster_checks()
@@ -1943,8 +1947,8 @@ def main():
         backend_ips = weka_cluster_results[6]
         backend_host_checks(backend_hosts, ssh_bk_hosts,
                             weka_version, check_version, backend_ips, ssh_identity)
+        INFO(f"Cluster upgrade checks complete!")
         sys.exit(0)
-
     elif args.version:
         print("Weka upgrade checker version: %s" % pg_version)
         sys.exit(0)
