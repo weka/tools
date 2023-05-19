@@ -22,7 +22,7 @@ if sys.version_info < (3, 8):
     print("Must have python version 3.8 or later installed.")
     sys.exit(1)
 
-pg_version = "1.2.5"
+pg_version = "1.2.7"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
 
@@ -841,7 +841,13 @@ def weka_cluster_checks():
 
     s3_cluster_status = json.loads(
         subprocess.check_output(["weka", "s3", "cluster", "-J"]))
-    if s3_cluster_status['active']:
+    
+    if V(weka_version) <= V("3.12"):
+        s3_enabled = s3_cluster_status['status']
+    else:
+        s3_enabled = s3_cluster_status['active']
+    
+    if s3_enabled:
         bad_s3_hosts = []
         failed_s3host = []
         INFO("CHECKING WEKA S3 CLUSTER HEALTH")
@@ -1277,7 +1283,9 @@ supported_os = {
                 "20.04.0",
                 "20.04.1",
                 "20.04.2",
-                "20.04.3"
+                "20.04.3",
+                "20.04.4",
+                "20.04.5"
             ],
             "amzn": [
                 "17.09",
@@ -1793,7 +1801,7 @@ def backend_host_checks(backend_hosts, ssh_bk_hosts, weka_version, check_version
     results = parallel_execution(
         ssh_bk_hosts,
         [
-            f'for name in $(weka local ps --no-header -o name| egrep -v "samba|smbw|s3|ganesha|envoy"); do du -sm {data_dir}"$name"_{weka_version}; done'
+            f'for name in $(weka local ps --no-header -o name,versionName| egrep -v "samba|smbw|s3|ganesha|envoy" | tr -s " " "_"); do du -sm {data_dir}"$name"; done'
         ],
         use_check_output=True, ssh_identity=ssh_identity
     )
