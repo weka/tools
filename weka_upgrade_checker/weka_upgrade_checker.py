@@ -22,7 +22,7 @@ if sys.version_info < (3, 8):
     print("Must have python version 3.8 or later installed.")
     sys.exit(1)
 
-pg_version = "1.2.6"
+pg_version = "1.2.7"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
 
@@ -841,7 +841,13 @@ def weka_cluster_checks():
 
     s3_cluster_status = json.loads(
         subprocess.check_output(["weka", "s3", "cluster", "-J"]))
-    if s3_cluster_status['active']:
+    
+    if V(weka_version) <= V("3.12"):
+        s3_enabled = s3_cluster_status['status']
+    else:
+        s3_enabled = s3_cluster_status['active']
+    
+    if s3_enabled:
         bad_s3_hosts = []
         failed_s3host = []
         INFO("CHECKING WEKA S3 CLUSTER HEALTH")
