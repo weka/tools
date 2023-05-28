@@ -74,7 +74,7 @@ CONST_RESOURCES = dict(
     net_devices=[],
 )
 
-def is_cloud_env(check_aws=True, check_oci=True):
+def is_cloud_env(check_aws=True, check_oci=False):
     req_list = []
     if check_aws:
         req_list.append(request.Request("http://169.254.169.254/2016-09-02/meta-data/"))
