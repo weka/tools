@@ -627,7 +627,7 @@ def main():
     path_to_huge = '/opt/weka/data/agent/containers/state/{}/huge'.format(container_name)
     path_to_huge1g = '/opt/weka/data/agent/containers/state/{}/huge1G'.format(container_name)
     if os.path.exists(path_to_huge) or os.path.exists(path_to_huge1g):
-        find_and_remove_cmd = '/bin/sh -c "{}find {}* -name weka_* -delete"'.format(sudo, path_to_huge)
+        find_and_remove_cmd = '/bin/sh -c "{}find {}* -name weka_\* -delete"'.format(sudo, path_to_huge)
         run_shell_command(find_and_remove_cmd)
     logger.info('Starting new containers')
 
