@@ -395,9 +395,9 @@ class ResourcesGenerator:
         parser = ArgumentParser(description="Generates weka resources files",
                                 usage='\n%(prog)s --net <net-devices> [options]',
                                 formatter_class=SortingHelpFormatter)
-        parser.add_argument("--net", nargs="+", type=str.lower, metavar="net-devices",
+        parser.add_argument("--net", nargs="+", type=str, metavar="net-devices",
                             help="Specify net devices to be used separated by whitespaces")
-        parser.add_argument("--drives", nargs="+", type=str.lower,
+        parser.add_argument("--drives", nargs="+", type=str,
                             help="Specify drives to be used separated by whitespaces (override automatic detection)")
         parser.add_argument("-v", "--verbose", action="count", default=0,
                             help="Sets console log level to DEBUG")
