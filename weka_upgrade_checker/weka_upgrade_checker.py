@@ -22,7 +22,7 @@ if sys.version_info < (3, 8):
     print("Must have python version 3.8 or later installed.")
     sys.exit(1)
 
-pg_version = "1.2.7"
+pg_version = "1.2.8"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
 
