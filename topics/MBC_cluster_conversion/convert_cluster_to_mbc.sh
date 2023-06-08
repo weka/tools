@@ -40,7 +40,7 @@ This script allow the conversion of regular weka architecture to multiple backen
 OPTIONS:
   -f force override of backup resources file if exist
   -a run with active alerts
-  -s skip failed hosts
+  -s skip failed hosts (this is a dangerous flag, use with caution! )
   -d override drain grace period for s3 in seconds
   -b to perform conversion on a single host
   -l log file will be saved to this location instead of current dir
@@ -203,6 +203,8 @@ function BAD() {
 echo -e "${RED}$1${NOCOLOR}"
 logit [ FAILED ] "$1"
 }
+
+MOTICE "WE ARE RUNNING THE FOLO"
 
 if [ "$EUID" -ne 0 ]; then
   SUDO="sudo "
@@ -468,6 +470,14 @@ if [ -z "$BACKEND" ]; then
       if [ "$SKIP_FAILED" -ne '1' ]; then
         WARN "FAILED converting $HOST, exiting. For more information refer to the log at $LOG"
         exit 1
+      else
+        weka status
+        WARN "FAILED converting $HOST"
+        read -p "do you wish to continue? (yes/no)" CONTINUE
+        if [ "$CONTINUE" != "yes" ]; then
+          WARN "EXITING"
+          exit 1
+        fi
       fi
     fi
   done
@@ -479,6 +489,14 @@ else
     if [ "$SKIP_FAILED" -ne '1' ]; then
       WARN "FAILED converting $BACKEND, exiting. For more information refer to the log at $LOG"
       exit 1
+    else
+      weka status
+      WARN "FAILED converting $HOST"
+      read -p "do you wish to continue? (yes/no)" CONTINUE
+      if [ "$CONTINUE" != "yes" ]; then
+        WARN "EXITING"
+        exit 1
+      fi
     fi
   fi
   NOTICE "Done converting $BACKEND to MBC"
