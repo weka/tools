@@ -144,7 +144,7 @@ class NetDevice:
     def __init__(self, name, **kwargs):
         extract_pci_cmd = "/sbin/ethtool -i {nic} | grep bus-info".format(nic=name)
         pci_address = os.popen(extract_pci_cmd).read().strip().split(": ")[-1]
-        self.device = pci_address if _is_pci_address(pci_address) else name
+        self.device = pci_address if _is_pci_address(pci_address) and not kwargs.get('use_only_nic_identifier', False) else name
         self.gateway = kwargs.get('gateway', "")
         self.identifier = kwargs.get('identifier', self.device)
         self.ips = kwargs.get('ips', [])
@@ -448,6 +448,8 @@ class ResourcesGenerator:
                                  "argument should be value and unit without whitespace (i.e 10GiB, 1024B, 5TiB etc.)")
         parser.add_argument("--path", default=".", type=_validate_path,
                             help="Specify the directory path to which the resources files will be written, default is '.'")
+        parser.add_argument("--use-only-nic-identifier", action='store_true', dest='use_only_nic_identifier',
+                            help="use only the nic identifier when allocating the nics")
 
         self.args = parser.parse_args()
         self.exclusive_nics_policy = is_cloud_env() or self.args.allocate_nics_exclusively
@@ -611,6 +613,7 @@ class ResourcesGenerator:
                 gateway = arg_parts.pop(0)
                 _validate_ips(gateway)
                 kwargs['gateway'] = gateway
+            kwargs['use_only_nic_identifier'] = self.args.use_only_nic_identifier
             net_dev = NetDevice(name=name, **kwargs)
             logger.debug("Added net device: %s", net_dev.__dict__)
             self.net_devices.append(net_dev)

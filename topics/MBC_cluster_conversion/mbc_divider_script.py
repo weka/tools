@@ -320,6 +320,9 @@ def main():
                         help=argparse.SUPPRESS)
     parser.add_argument("--allocate-nics-exclusively", action='store_true', dest='allocate_nics_exclusively',
                         help="Set one unique net device per each io node, relevant when using virtual functions (VMware, KVM etc.)")
+    parser.add_argument("--use-only-nic-identifier", action='store_true', dest='use_only_nic_identifier',
+                        help="use only the nic identifier when allocating the nics")
+
     args = parser.parse_args()
     global dry_run
     dry_run = args.dry_run
@@ -624,17 +627,19 @@ def main():
         frontend_cores_cmd += ' --frontend-core-ids '
         for core_id in pinned_frontend_cores:
             frontend_cores_cmd += str(core_id) + ' '
-    allocate_nics_exclusively = " --allocate-nics-exclusively" if args.allocate_nics_exclusively is True else ""
-    use_auto_fd = " --use-auto-failure-domain" if not old_failure_domain else ""
+    allocate_nics_exclusively = ' --allocate-nics-exclusively' if args.allocate_nics_exclusively is True else ''
+    use_auto_fd = ' --use-auto-failure-domain' if not old_failure_domain else ''
     memory_cmd = ' --weka-hugepages-memory ' + str(memory) + 'B' if memory else ''
-    resource_generator_command = '/bin/sh -c "/tmp/resources_generator.py --net {}{}{}{}{}{}{} -f"'.format(
+    use_only_identifier = ' --use-only-nic-identifier' if args.use_only_nic_identifier else ''
+    resource_generator_command = '/bin/sh -c "/tmp/resources_generator.py --net {}{}{}{}{}{}{}{} -f"'.format(
         all_net,
         compute_cores_cmd,
         drive_cores_cmd,
         frontend_cores_cmd,
         memory_cmd,
         use_auto_fd,
-        allocate_nics_exclusively
+        allocate_nics_exclusively,
+        use_only_identifier
     )
     logger.info('Running resources-generator with cmd: {}'.format(resource_generator_command))
     run_shell_command(resource_generator_command)
