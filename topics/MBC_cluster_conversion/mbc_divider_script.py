@@ -241,6 +241,21 @@ def wait_for_container_to_be_ready(container_type, sudo):
             break
 
 
+def wait_for_buckets_redistribution():
+    get_buckets_status_cmd = '/bin/sh -c "weka status -J"'
+    retries = 60
+    logger.info('Waiting for buckets redistribution')
+    for i in range(retries):
+        weka_status = json.loads(run_shell_command(get_buckets_status_cmd))
+        buckets = weka_status["buckets"]
+        if buckets["active"] == buckets["total"]:
+            return
+        sleep(2)
+
+    logger.info('Some buckets have not redistributed yet')
+    exit(1)
+
+
 def s3_has_active_ios(host_id):
     validate_drain_s3_cmd = '/bin/sh -c "weka debug jrpc container_get_drain_status hostId={}"'.format(host_id)
     s3_drain_status = json.loads(run_shell_command(validate_drain_s3_cmd))
@@ -305,6 +320,9 @@ def main():
                         help=argparse.SUPPRESS)
     parser.add_argument("--allocate-nics-exclusively", action='store_true', dest='allocate_nics_exclusively',
                         help="Set one unique net device per each io node, relevant when using virtual functions (VMware, KVM etc.)")
+    parser.add_argument("--use-only-nic-identifier", action='store_true', dest='use_only_nic_identifier',
+                        help="use only the nic identifier when allocating the nics")
+
     args = parser.parse_args()
     global dry_run
     dry_run = args.dry_run
@@ -609,17 +627,19 @@ def main():
         frontend_cores_cmd += ' --frontend-core-ids '
         for core_id in pinned_frontend_cores:
             frontend_cores_cmd += str(core_id) + ' '
-    allocate_nics_exclusively = " --allocate-nics-exclusively" if args.allocate_nics_exclusively is True else ""
-    use_auto_fd = " --use-auto-failure-domain" if not old_failure_domain else ""
+    allocate_nics_exclusively = ' --allocate-nics-exclusively' if args.allocate_nics_exclusively is True else ''
+    use_auto_fd = ' --use-auto-failure-domain' if not old_failure_domain else ''
     memory_cmd = ' --weka-hugepages-memory ' + str(memory) + 'B' if memory else ''
-    resource_generator_command = '/bin/sh -c "/tmp/resources_generator.py --net {}{}{}{}{}{}{} -f"'.format(
+    use_only_identifier = ' --use-only-nic-identifier' if args.use_only_nic_identifier else ''
+    resource_generator_command = '/bin/sh -c "/tmp/resources_generator.py --net {}{}{}{}{}{}{}{} -f"'.format(
         all_net,
         compute_cores_cmd,
         drive_cores_cmd,
         frontend_cores_cmd,
         memory_cmd,
         use_auto_fd,
-        allocate_nics_exclusively
+        allocate_nics_exclusively,
+        use_only_identifier
     )
     logger.info('Running resources-generator with cmd: {}'.format(resource_generator_command))
     run_shell_command(resource_generator_command)
@@ -761,17 +781,22 @@ def main():
                     if ig[2]:
                         nfs_legacy = True
 
-    logger.info('Starting cleanup: The old container will be removed locally and from the cluster')
+    wait_for_buckets_redistribution()
+    container_enable_command = '/bin/sh -c "{}weka local enable"'.format(sudo)
+    run_shell_command(container_enable_command)
+
+    logger.info('Starting cleanup: The old container will be removed locally and removed from the cluster')
     if not args.keep_s3_up:
-        container_delete_command = '/bin/sh -c "{}weka local rm {} -f"'.format(sudo, container_name)
-        run_shell_command(container_delete_command)
+        container_disable_command = '/bin/sh -c "{}weka local disable {} "'.format(sudo, container_name)
+        run_shell_command(container_disable_command)
         host_deactivate_command = '/bin/sh -c "weka cluster host deactivate {}"'.format(current_host_id)
         run_shell_command(host_deactivate_command)
         host_remove_command = '/bin/sh -c "weka cluster host remove {} --no-unimprint"'.format(current_host_id)
         run_shell_command(host_remove_command)
+        container_disable_command = '/bin/sh -c "{}weka local rm {} -f"'.format(sudo, container_name)
+        run_shell_command(container_disable_command)
 
-    container_enable_command = '/bin/sh -c "{}weka local enable"'.format(sudo)
-    run_shell_command(container_enable_command)
+
     for ct in ContainerType:
         if os.path.exists(ct.json_name()):
             os.remove(ct.json_name())
