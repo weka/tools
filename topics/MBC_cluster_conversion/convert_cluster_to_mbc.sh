@@ -210,7 +210,7 @@ echo -e "${RED}$1${NOCOLOR}"
 logit [ FAILED ] "$1"
 }
 
-MOTICE "WE ARE RUNNING THE FOLO"
+NOTICE "WE ARE RUNNING THE FOLO"
 
 if [ "$EUID" -ne 0 ]; then
   SUDO="sudo "
