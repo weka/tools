@@ -22,7 +22,7 @@ if sys.version_info < (3, 8):
     print("Must have python version 3.8 or later installed.")
     sys.exit(1)
 
-pg_version = "1.2.7"
+pg_version = "1.3.0"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
 
@@ -556,14 +556,16 @@ def weka_cluster_checks():
             "5.1-2.5.8.0",
             "5.1-2.6.2.0",
             "5.6-1.0.3.3",
-            "5.6-2.0.9.0"
+            "5.6-2.0.9.0",
+            "5.8-1.1.2.1"
         ],
         "3.14": [
             "5.1-2.5.8.0",
             "5.1-2.6.2.0",
             "5.4-3.4.0.0",
             "5.6-1.0.3.3",
-            "5.6-2.0.9.0"
+            "5.6-2.0.9.0",
+            "5.8-1.1.2.1"
         ],
         "4.0": [
             "5.1-2.5.8.0",
@@ -583,7 +585,76 @@ def weka_cluster_checks():
             "5.7-1.0.2.0",
             "5.8-1.1.2.1"
         ],
+        "4.2": [
+            "5.1-2.5.8.0",
+            "5.1-2.6.2.0",
+            "5.4-3.4.0.0",
+            "5.4-3.5.8.0",
+            "5.6-1.0.3.3",
+            "5.6-2.0.9.0",
+            "5.7-1.0.2.0",
+            "5.8-1.1.2.1",
+            "5.9-0.5.6.0"
+        ],
     }
+
+    INFO("VALIDATING BACKEND SUPPORTED NIC DRIVERS INSTALLED")
+    spinner = Spinner('  Processing Data   ', color=colors.OKCYAN)
+    spinner.start()
+
+    backend_ips = [*{bkhost.ip for bkhost in backend_hosts}]
+
+    backend_host_names = [*{bkhost.hostname for bkhost in backend_hosts}]
+
+    hostname_from_api = []
+
+    cmd = ["weka", "cluster", "host", "info-hw", "-J"]
+
+    host_hw_info = json.loads(subprocess.check_output(cmd + backend_ips))
+
+    ofed_downlevel = []
+    current_version = {}
+
+    for key, val in host_hw_info.items():
+        if host_hw_info.get(key) is not None:
+            try:
+                if 'Mellanox Technologies' not in (str(val['eths'])):
+                    break
+                key = [
+                    *{bkhost.hostname for bkhost in backend_hosts if key == bkhost.ip}][0]
+                current_version[key] = []
+                result = (val['ofed']['host'])
+                current_version[key].append(result)
+                hostname_from_api += [key]
+                if (V(result)) < (V("5.1-2.5.8.0")):
+                    ofed_downlevel += (key, result)
+                if result not in supported_ofed[check_version]:
+                    BAD(
+                        f'{" " * 5}❌ Host: {key} on weka version {weka_version} does not support OFED version {result}'
+                    )
+                else:
+                    GOOD(
+                        f'{" " * 5}✅ Host: {key} on weka version {weka_version} is running supported OFED version {result}'
+                    )
+            except Exception as e:
+                pass
+
+    for bkhostnames in hostname_from_api:
+        if bkhostnames in backend_host_names:
+            backend_host_names.remove(bkhostnames)
+
+    if not current_version:
+        GOOD(f'{" " * 5}✅ Mellanox nics not found')
+    elif backend_host_names != []:
+        for bkhostname in backend_host_names:
+            WARN(
+                f'{" " * 5}⚠️ Unable to determine Host: {bkhostname} OFED version'
+            )
+    elif (len(set(current_version)) == 1):
+        WARN(f'\n{" " * 5}⚠️  Mismatch ofed version found on backend hosts\n')
+        printlist(printlist, 1)
+
+    spinner.stop()
 
     if V(weka_version) == V("3.12"):
         INFO("VERIFYING RAID REDUCTION SETTINGS")
@@ -868,64 +939,6 @@ def weka_cluster_checks():
                                           bkhost.ip, bkhost.sw_version, bkhost.mode]
 
         printlist(failed_s3host, 5)
-
-    INFO("VALIDATING BACKEND SUPPORTED NIC DRIVERS INSTALLED")
-    spinner = Spinner('  Processing Data   ', color=colors.OKCYAN)
-    spinner.start()
-
-    backend_ips = [*{bkhost.ip for bkhost in backend_hosts}]
-
-    backend_host_names = [*{bkhost.hostname for bkhost in backend_hosts}]
-
-    hostname_from_api = []
-
-    cmd = ["weka", "cluster", "host", "info-hw", "-J"]
-
-    host_hw_info = json.loads(subprocess.check_output(cmd + backend_ips))
-
-    ofed_downlevel = []
-    current_version = {}
-
-    for key, val in host_hw_info.items():
-        if host_hw_info.get(key) is not None:
-            try:
-                if 'Mellanox Technologies' not in (str(val['eths'])):
-                    break
-                key = [
-                    *{bkhost.hostname for bkhost in backend_hosts if key == bkhost.ip}][0]
-                current_version[key] = []
-                result = (val['ofed']['host'])
-                current_version[key].append(result)
-                hostname_from_api += [key]
-                if (V(result)) < (V("5.1-2.5.8.0")):
-                    ofed_downlevel += (key, result)
-                if result not in supported_ofed[check_version]:
-                    BAD(
-                        f'{" " * 5}❌ Host: {key} on weka version {weka_version} does not support OFED version {result}'
-                    )
-                else:
-                    GOOD(
-                        f'{" " * 5}✅ Host: {key} on weka version {weka_version} is running supported OFED version {result}'
-                    )
-            except Exception as e:
-                pass
-
-    for bkhostnames in hostname_from_api:
-        if bkhostnames in backend_host_names:
-            backend_host_names.remove(bkhostnames)
-
-    if not current_version:
-        GOOD(f'{" " * 5}✅ Mellanox nics not found')
-    elif backend_host_names != []:
-        for bkhostname in backend_host_names:
-            WARN(
-                f'{" " * 5}⚠️ Unable to determine Host: {bkhostname} OFED version'
-            )
-    elif (len(set(current_version)) == 1):
-        WARN(f'\n{" " * 5}⚠️  Mismatch ofed version found on backend hosts\n')
-        printlist(printlist, 1)
-
-    spinner.stop()
 
     # need to understand how to handle exception.
     if s3_cluster_status['active']:
@@ -1301,6 +1314,77 @@ supported_os = {
             ],
         },
     },
+    "4.2": {
+        "backends_clients": {
+            "centos": [
+                "7.2",
+                "7.3",
+                "7.4",
+                "7.5",
+                "7.6",
+                "7.7",
+                "7.8",
+                "7.9",
+                "8.0",
+                "8.1",
+                "8.2",
+                "8.3",
+                "8.4",
+                "8.5"
+            ],
+            "rhel": [
+                "7.2",
+                "7.3",
+                "7.4",
+                "7.5",
+                "7.6",
+                "7.7",
+                "7.8",
+                "7.9",
+                "8.0",
+                "8.1",
+                "8.2",
+                "8.3",
+                "8.4",
+                "8.5",
+                "8.6",
+                "8.7"
+            ],
+            "rocky": [
+                "8.6",
+                "8.7",
+                "9.1"
+            ],
+            "sles": [],
+            "ubuntu": [
+                "18.04.0",
+                "18.04.1",
+                "18.04.2",
+                "18.04.3",
+                "18.04.4",
+                "18.04.5",
+                "18.04.6",
+                "20.04.0",
+                "20.04.1",
+                "20.04.2",
+                "20.04.3",
+                "20.04.4",
+                "20.04.5"
+            ],
+            "amzn": [
+                "17.09",
+                "17.12",
+                "18.03",
+                "2"
+            ],
+        },
+        "clients_only": {
+            "sles": [
+                "12.5",
+                "15.2"
+            ],
+        },
+    },
 }
 
 
@@ -1592,7 +1676,7 @@ def client_web_test(results):
 
 def invalid_endpoints(host_name, result, backend_ips):
     result = result.replace(', ]}]', ']}]').replace('container', '"container"').replace(
-        'ip', '"ip"').replace(' {', ' "').replace('},', '",')
+        'ip', '"ip":').replace(' {', ' "').replace('},', '",')
     result = result.split('\n')[:]
 
     def ip_by_containers(result):
