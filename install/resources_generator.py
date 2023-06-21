@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 import logging
 import os
 import re
@@ -77,7 +78,8 @@ CONST_RESOURCES = dict(
 def is_cloud_env(check_aws=True, check_oci=True):
     req_list = []
     if check_aws:
-        req_list.append(request.Request("http://169.254.169.254/2016-09-02/meta-data/"))
+        headers = {"X-aws-ec2-metadata-token-ttl-seconds": "1"}
+        req_list.append(request.Request("http://169.254.169.254/latest/api/token", headers=headers, method='PUT'))
     if check_oci:
         req_list.append(request.Request('http://169.254.169.254/opc/v2/instance/', headers={"Authorization": "Bearer Oracle"}))
 
@@ -144,7 +146,7 @@ class NetDevice:
     def __init__(self, name, **kwargs):
         extract_pci_cmd = "/sbin/ethtool -i {nic} | grep bus-info".format(nic=name)
         pci_address = os.popen(extract_pci_cmd).read().strip().split(": ")[-1]
-        self.device = pci_address if _is_pci_address(pci_address) else name
+        self.device = pci_address if _is_pci_address(pci_address) and not kwargs.get('use_only_nic_identifier', False) else name
         self.gateway = kwargs.get('gateway', "")
         self.identifier = kwargs.get('identifier', self.device)
         self.ips = kwargs.get('ips', [])
@@ -395,9 +397,9 @@ class ResourcesGenerator:
         parser = ArgumentParser(description="Generates weka resources files",
                                 usage='\n%(prog)s --net <net-devices> [options]',
                                 formatter_class=SortingHelpFormatter)
-        parser.add_argument("--net", nargs="+", type=str.lower, metavar="net-devices",
+        parser.add_argument("--net", nargs="+", type=str, metavar="net-devices",
                             help="Specify net devices to be used separated by whitespaces")
-        parser.add_argument("--drives", nargs="+", type=str.lower,
+        parser.add_argument("--drives", nargs="+", type=str,
                             help="Specify drives to be used separated by whitespaces (override automatic detection)")
         parser.add_argument("-v", "--verbose", action="count", default=0,
                             help="Sets console log level to DEBUG")
@@ -440,6 +442,9 @@ class ResourcesGenerator:
         parser.add_argument("--spare-memory", default=0, type=_validate_memory_size,
                             help="Specify how much memory should be reserved for non-weka requirements, "
                                  "argument should be value and unit without whitespace (i.e 10GiB, 1024B, 5TiB etc.)")
+        parser.add_argument("--protocols-memory", default=0, type=_validate_memory_size,
+                            help="Specify how much memory should be reserved for Protocols requirements, "
+                                 "argument should be value and unit without whitespace (i.e 10GiB, 1024B, 5TiB etc.)")
         parser.add_argument("--compute-memory", default=0, type=_validate_memory_size,
                             help="Specify how much total memory should be allocated for COMPUTE, "
                                  "argument should be value and unit without whitespace (i.e 10GiB, 1024B, 5TiB etc.)")
@@ -448,6 +453,8 @@ class ResourcesGenerator:
                                  "argument should be value and unit without whitespace (i.e 10GiB, 1024B, 5TiB etc.)")
         parser.add_argument("--path", default=".", type=_validate_path,
                             help="Specify the directory path to which the resources files will be written, default is '.'")
+        parser.add_argument("--use-only-nic-identifier", action='store_true', dest='use_only_nic_identifier',
+                            help="use only the nic identifier when allocating the nics")
 
         self.args = parser.parse_args()
         self.exclusive_nics_policy = is_cloud_env() or self.args.allocate_nics_exclusively
@@ -611,6 +618,7 @@ class ResourcesGenerator:
                 gateway = arg_parts.pop(0)
                 _validate_ips(gateway)
                 kwargs['gateway'] = gateway
+            kwargs['use_only_nic_identifier'] = self.args.use_only_nic_identifier
             net_dev = NetDevice(name=name, **kwargs)
             logger.debug("Added net device: %s", net_dev.__dict__)
             self.net_devices.append(net_dev)
@@ -800,32 +808,39 @@ class ResourcesGenerator:
         mgmt_count = len(self.num_containers_by_role)
         logger.debug("_estimate_nodes_resident_memory_size: compute_count=%s, drive_count=%s, frontend=%s, mgmt_count=%s",
                      compute_count, drive_count, frontend_count, mgmt_count)
-        return compute_count * WEKANODE_BUCKET_PROCESS_MEMORY + drive_count * WEKANODE_SSD_PROCESS_MEMORY +\
-               frontend_count * WEKANODE_FRONTEND_PROCESS_MEMORY + mgmt_count * WEKANODE_MANAGER_PROCESS_MEMORY / len(self.numa_nodes_info)
+        return (compute_count * WEKANODE_BUCKET_PROCESS_MEMORY) + (drive_count * WEKANODE_SSD_PROCESS_MEMORY) + \
+            (frontend_count * WEKANODE_FRONTEND_PROCESS_MEMORY) + \
+            (mgmt_count * WEKANODE_MANAGER_PROCESS_MEMORY / len(self.numa_nodes_info))
 
     def _get_reserved_memory(self):
         """Return how many bytes cannot be allocated for wekanodes' hugepages"""
-        protocols_reserved_memory = 8 * GiB
+        #protocols_reserved_memory = 8 * GiB  # vince - This should be a parameter? (it's too small)
         RDMA_reserved_memory = 2 * GiB
-        max_reserved_portion_denom = 5  # 20% of total memory
+        # max_reserved_portion_denom = 5  # 20% of total memory  (huh?)
         total_memory_bytes = self._get_total_memory_bytes()
         logger.debug("Total memory: %s MiB", total_memory_bytes / MiB)
-        os_reserved_memory = auto_os_reserved_memory = self._get_os_reserved_memory(total_memory_bytes)
+        # total_reserve = auto_os_reserved_memory = self._get_os_reserved_memory(total_memory_bytes)
+        total_reserve = auto_os_reserved_memory = MIN_OS_RESERVED_MEMORY
         if self.args.spare_memory:
             if self.args.spare_memory < auto_os_reserved_memory:
                 logger.warning("The spare-memory requested: %s bytes is lower than the minimum recommended memory for this "
                                "machine: %s bytes", self.args.spare_memory, auto_os_reserved_memory)
                 self.check_if_should_continue()
-            os_reserved_memory = self.args.spare_memory
-        total_reserve = os_reserved_memory + protocols_reserved_memory
+            total_reserve += self.args.spare_memory
+        if self.args.protocols_memory:
+            total_reserve += self.args.protocols_memory
+            logger.debug(f'_get_reserved_memory: protocols memory {round(self.args.protocols_memory / GiB, 1)} GiB')
+
+        #total_reserve = os_reserved_memory
         if not self.args.no_rdma:
             total_reserve += RDMA_reserved_memory
             logger.debug("_get_reserved_memory: reserving %s MiB for RDMA", RDMA_reserved_memory / MiB)
-        if not self.args.spare_memory and total_reserve > total_memory_bytes / max_reserved_portion_denom:
-            fixed_total_reserve = total_memory_bytes / max_reserved_portion_denom
-            logger.warning("we need reserves of %s GiB which is too much (host has %s GiB), we'll settle with %s GiB reserved"
-                           , total_reserve / GiB, total_memory_bytes / GiB, fixed_total_reserve / GiB)
-            total_reserve = fixed_total_reserve
+        #if not self.args.spare_memory and total_reserve > total_memory_bytes / max_reserved_portion_denom:
+        #    fixed_total_reserve = total_memory_bytes / max_reserved_portion_denom   # vince- WRONG!  High-mem systems this is ok
+        #    logger.warning("we need reserves of %s GiB which is too much (host has %s GiB), we'll settle with %s GiB reserved"
+        #                   , total_reserve / GiB, total_memory_bytes / GiB, fixed_total_reserve / GiB)
+        #    total_reserve = fixed_total_reserve
+        logger.debug(f'_get_reserved_memory: total reserved memory {round(total_reserve / GiB, 1)} GiB')
         return total_reserve
 
     def _get_hugepages_memory_per_compute_node(self, numa_total_memory, io_nodes):
@@ -836,7 +851,7 @@ class ResourcesGenerator:
             logger.debug("_get_hugepages_memory_per_compute_node no compute nodes, will return 0")
             return 0
         wekanodes_memory = self._estimate_nodes_resident_memory_size(io_nodes) * wekanodes_memory_factor
-        logger.debug("_get_hugepages_memory_per_compute_node WEKANODES MEMORY: %s GiB", wekanodes_memory / GiB)
+        logger.debug("_get_hugepages_memory_per_compute_node WEKANODES RSS MEMORY: %s GiB", round(wekanodes_memory / GiB, 2))
         available = numa_total_memory - wekanodes_memory
         if available <= 0:
             logger.warning("_get_hugepages_memory_per_compute_node not enough available memory, will set memory to the minimal")
@@ -924,22 +939,22 @@ class ResourcesGenerator:
                 if self.args.compute_memory:
                     logger.error("minimal-memory and compute-memory cannot be specified together")
                     quit(1)
-                compute_node_hugaepages_memory = DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES
+                compute_node_hugepages_memory = DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES
             elif self.args.weka_hugepages_memory:
                 compute_memory = self._get_compute_mem_from_specified_total()
-                compute_node_hugaepages_memory = self._get_validated_compute_memory_arg(compute_memory)
+                compute_node_hugepages_memory = self._get_validated_compute_memory_arg(compute_memory)
             else:
-                compute_node_hugaepages_memory = self._get_compute_slot_memory_requirement()
+                compute_node_hugepages_memory = self._get_compute_slot_memory_requirement()
                 if self.args.compute_memory:  # user specified compute-memory
-                    compute_node_hugaepages_memory = self._get_validated_compute_memory_arg(self.args.compute_memory)
+                    compute_node_hugepages_memory = self._get_validated_compute_memory_arg(self.args.compute_memory)
 
         for role in self.containers:
             for container in self.containers[role]:
                 if role == COMPUTE_ROLE:
-                    compute_nodes_cound = len(list(filter(lambda n: n.is_compute(), container.nodes.values())))
-                    memory = compute_node_hugaepages_memory * compute_nodes_cound
+                    compute_nodes_count = len(list(filter(lambda n: n.is_compute(), container.nodes.values())))
+                    memory = compute_node_hugepages_memory * compute_nodes_count
                     container.memory = memory
-                    logger.info("allocating %s GiB for %s container, (%s nodes)", memory / GiB, role, compute_nodes_cound)
+                    logger.info("allocating %s GiB for %s container, (%s nodes)", memory / GiB, role, compute_nodes_count)
                 else:
                     container.memory = 0
 

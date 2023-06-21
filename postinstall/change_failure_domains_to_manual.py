@@ -1,4 +1,4 @@
-#!/usr/bin/env python2.7
+#!/usr/bin/env python3
 
 import argparse
 import re
@@ -20,7 +20,7 @@ def get_timestamp_prefix():
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 def log(msg):
-    print("%s LOG: %s" % (get_timestamp_prefix(), msg))
+    print(("%s LOG: %s" % (get_timestamp_prefix(), msg)))
 
 def prompt_user_input():
     # Portable python2/3 input
@@ -334,7 +334,7 @@ def wait_for_container_readiness(host, timeout_secs=180):
                 raise Exception("Timed out waiting for the container to become READY on %s" % host.hostname)
 
             local_status = json.loads(host.ssh_call_with_output(*shlex.split("weka local status -J")))
-            state = str(local_status['default']['internalStatus']['state'].decode('utf-8'))
+            state = str(local_status['default']['internalStatus']['state'])
             if state == 'READY':
                 log("Container on %s is now ready" % (host.hostname))
                 return
@@ -429,7 +429,7 @@ def change_failure_domains(s3_drain_timeout, s3_drain_grace, s3_drain_interval, 
         while True:
             try:
                 host_entry = json.loads(host.ssh_call_with_output(*shlex.split("weka cluster host -J -F id=%s" % host_id)))[0]
-                host_status = str(host_entry['status'].decode('utf-8'))
+                host_status = str(host_entry['status'])
                 if host_status == "UP":
                     break
 
@@ -440,9 +440,9 @@ def change_failure_domains(s3_drain_timeout, s3_drain_grace, s3_drain_interval, 
                 log("Error getting host information from cluster's hosts list")
                 time.sleep(1)
 
-        last_failure = str(host_entry['last_failure'].decode('utf-8'))
-        failure_domain_from_hosts_list = str(host_entry['failure_domain'].decode('utf-8'))
-        if str(host_entry['failure_domain'].decode('utf-8')) != new_failure_domain_name:
+        last_failure = str(host_entry['last_failure'])
+        failure_domain_from_hosts_list = str(host_entry['failure_domain'])
+        if str(host_entry['failure_domain']) != new_failure_domain_name:
             raise Exception("The failure domain that appears in 'weka cluster host' for host ID %s is %s, we expected %s (last failure: %s)"
                 % (host_id, failure_domain_from_hosts_list, new_failure_domain_name, last_failure))
 

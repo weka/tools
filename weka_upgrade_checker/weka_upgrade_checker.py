@@ -1690,6 +1690,7 @@ def client_web_test(results):
 def invalid_endpoints(host_name, result, backend_ips):
     result = result.replace(', ]}]', ']}]').replace('container', '"container"').replace(
         'ip', '"ip"').replace(' {', ' "').replace('},', '",')
+
     result = result.split('\n')[:]
 
     def ip_by_containers(result):
