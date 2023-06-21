@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 import logging
 import os
 import re
@@ -77,7 +78,8 @@ CONST_RESOURCES = dict(
 def is_cloud_env(check_aws=True, check_oci=True):
     req_list = []
     if check_aws:
-        req_list.append(request.Request("http://169.254.169.254/2016-09-02/meta-data/"))
+        headers = {"X-aws-ec2-metadata-token-ttl-seconds": "1"}
+        req_list.append(request.Request("http://169.254.169.254/latest/api/token", headers=headers, method='PUT'))
     if check_oci:
         req_list.append(request.Request('http://169.254.169.254/opc/v2/instance/', headers={"Authorization": "Bearer Oracle"}))
 
