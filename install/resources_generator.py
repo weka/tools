@@ -10,7 +10,7 @@ from json import dumps
 from ipaddress import ip_address
 from math import ceil
 from urllib import request, error
-
+from socket import timeout
 logging.basicConfig()
 logger = logging.getLogger('resources generator')
 
@@ -91,6 +91,8 @@ def is_cloud_env(check_aws=True, check_oci=True):
                 request.urlopen(req, timeout=i * init_timeout).read()
                 return True
             except error.URLError:
+                pass
+            except timeout:
                 pass
         return False
 

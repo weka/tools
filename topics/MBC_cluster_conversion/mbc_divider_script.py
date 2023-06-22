@@ -11,6 +11,7 @@ import argparse
 from time import sleep, time
 import re
 from urllib import request, error
+from socket import timeout
 from concurrent.futures import ThreadPoolExecutor
 from resources_generator import GiB
 
@@ -55,6 +56,8 @@ def is_aws():
                 request.urlopen("http://169.254.169.254/2016-09-02/meta-data/", timeout=(1 + i) * init_timeout).read()
                 return True
             except error.URLError:
+                pass
+            except timeout:
                 pass
             return False
 

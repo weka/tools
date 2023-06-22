@@ -210,8 +210,6 @@ echo -e "${RED}$1${NOCOLOR}"
 logit [ FAILED ] "$1"
 }
 
-NOTICE "WE ARE RUNNING THE FOLO"
-
 if [ "$EUID" -ne 0 ]; then
   SUDO="sudo "
   NOTICE "WE ARE NOT ROOT, VERIFYING PASSWORDLESS SUDO"
@@ -234,8 +232,8 @@ if [ -w $LOG ]; then
 fi
 
 NOTICE "VERIFYING WEKA AGENT"
-WEKAVERIFY=$($SUDO lsmod | grep -i weka)
-if [ -z "$WEKAVERIFY" ]; then
+if ! command -v weka &> /dev/null
+then
   BAD "Weka is NOT installed on host or the container is down, cannot continue."
   exit 1
 fi
