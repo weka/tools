@@ -206,7 +206,7 @@ def wait_for_nodes_to_be_down(containerId, sudo):
     for node in nodes_output:
         nodes_list.append(node['node_id'])
     logger.debug('Waiting for nodes {} to reach DOWN state'.format(
-        nodes_list)) # TODO: strip from NodeId?
+        nodes_list))  # TODO: strip from NodeId?
 
     notDownNodes = []
     for i in range(retries):
@@ -249,7 +249,7 @@ def wait_for_host_deactivate(host_id):
     retries = 60
     for i in range(retries):
         host_row = json.loads(run_shell_command(get_host_from_hosts_list_cmd))
-        if host_row['status'] == 'INACTIVE':
+        if host_row[0]['status'] == 'INACTIVE':
             return
         sleep(1)
 
@@ -367,12 +367,13 @@ def main():
     else:
         logger.warning("Weka is not installed on this server, skipping")
         exit(0)
+    #  TODO: maybe: check mounts for every container
     local_status_cmd = '/bin/sh -c "{}weka local status -J"'.format(sudo)
     status = json.loads(run_shell_command(local_status_cmd))
     if status[container_name]['mount_points']:
         logger.warning("This server has an active WekaFS mount, please unmount before continuing")
         exit(1)
-
+    # TODO: for new script generate backup with datetime
     backup_file_name = os.path.abspath('resources.json.backup')
     if os.path.exists(backup_file_name) and not args.force:
         logger.warning("Backup resources file {} already exists, will not override it".format(backup_file_name))
@@ -397,6 +398,8 @@ def main():
     frontend_cores = args.frontend_dedicated_cores
     drive_cores = args.drive_dedicated_cores
     old_failure_domain = prev_resources['failure_domain']
+    # TODO: new script convert to manual FD
+    # TODO: add enforcement for manual FD
     memory = prev_resources['memory']
     if args.limit_maximum_memory:
         memory = int(args.limit_maximum_memory * GiB)
@@ -439,6 +442,7 @@ def main():
         network_devices.append(NetDev(netDev['name'], netDev['identifier'], netDev['gateway'], netDev['netmask_bits'],
                                       list(set(netDev['ips'])), netDev['net_devices'][0]['mac_address']))
         logger.debug("Adding net devices: {}".format(network_devices[-1].to_cmd()))
+    # TODO: not lose network label
 
     retries = 180  # sleeps should be 1 second each, so this is a "timeout" of 180s
     # S3 check
@@ -803,9 +807,9 @@ def main():
     if not args.keep_s3_up:
         container_disable_command = '/bin/sh -c "{}weka local disable {} "'.format(sudo, container_name)
         run_shell_command(container_disable_command)
-        wait_for_host_deactivate(current_host_id)
         host_deactivate_command = '/bin/sh -c "weka cluster host deactivate {}"'.format(current_host_id)
         run_shell_command(host_deactivate_command)
+        wait_for_host_deactivate(current_host_id)
         host_remove_command = '/bin/sh -c "weka cluster host remove {} --no-unimprint"'.format(current_host_id)
         run_shell_command(host_remove_command)
         logger.info('the old container {} is disabled and stop, please remove it after the conversion is done'.format(container_name))

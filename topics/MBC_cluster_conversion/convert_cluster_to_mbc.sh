@@ -272,7 +272,6 @@ NOTICE "VERIFYING WEKA LOCAL CONTAINER STATUS"
 CONSTATUS=$($SUDO weka local ps --no-header -o name,running | grep -i default | awk '{print $2}')
 if [ "$CONSTATUS" == "False" ]; then
   BAD "Weka local container is down cannot continue."
-  exit
 else
   GOOD "Weka local container is running."
 fi
