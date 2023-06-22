@@ -22,7 +22,7 @@ if sys.version_info < (3, 8):
     print("Must have python version 3.8 or later installed.")
     sys.exit(1)
 
-pg_version = "1.3.0"
+pg_version = "1.3.1"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
 
@@ -131,9 +131,21 @@ class Host:
             if "kernel_release" in host_json
             else None
         )
-        self.aws_zone = str(host_json["aws"]["availability_zone"])
-        self.aws_id = str(host_json["aws"]["instance_id"])
-        self.aws_type = str(host_json["aws"]["instance_type"])
+        self.aws_zone = (
+            str(host_json["aws"]["availability_zone"])
+            if "availability_zone" in host_json
+            else None
+        )
+        self.aws_id = (
+            str(host_json["aws"]["instance_id"])
+            if "instance_id" in host_json
+            else None
+        )
+        self.aws_type = (
+            str(host_json["aws"]["instance_type"])
+            if "instance_type" in host_json
+            else None
+        )
 
 
 class Machine:
@@ -913,7 +925,7 @@ def weka_cluster_checks():
     s3_cluster_status = json.loads(
         subprocess.check_output(["weka", "s3", "cluster", "-J"]))
     
-    if V(weka_version) <= V("3.12"):
+    if V(weka_version) < V("3.13"):
         s3_enabled = s3_cluster_status['status']
     else:
         s3_enabled = s3_cluster_status['active']
@@ -941,7 +953,7 @@ def weka_cluster_checks():
         printlist(failed_s3host, 5)
 
     # need to understand how to handle exception.
-    if s3_cluster_status['active']:
+    if s3_enabled:
         if V(weka_version) < V("4.1"):
             INFO("CHECKING ETCD ENDPOINT HEALTH")
             spinner = Spinner('  Retrieving Data  ', color=colors.OKCYAN)
@@ -986,7 +998,7 @@ def weka_cluster_checks():
 
             spinner.stop()
 
-    return backend_hosts, ssh_bk_hosts, client_hosts, ssh_cl_hosts, weka_info, check_version, backend_ips
+    return backend_hosts, ssh_bk_hosts, client_hosts, ssh_cl_hosts, weka_info, check_version, backend_ips, s3_enabled
 
 
 supported_os = {
@@ -1595,12 +1607,13 @@ def frontend_check(host_name, result):
         GOOD(f'{" " * 5}✅ Weka Frontend Process OK on host: {host_name}')
 
 
-def protocol_host(backend_hosts):
+def protocol_host(backend_hosts, s3_enabled):
     S3 = []
-    if s3_cluster_status := json.loads(
+    
+    if s3_enabled := json.loads(
         subprocess.check_output(["weka", "s3", "cluster", "-J"])
     ):
-        if s3_cluster_status['active']:
+        if s3_enabled:
             weka_s3 = json.loads(subprocess.check_output(
                 ["weka", "s3", "cluster", "status", "-J"]))
             if weka_s3 != []:
@@ -1676,7 +1689,8 @@ def client_web_test(results):
 
 def invalid_endpoints(host_name, result, backend_ips):
     result = result.replace(', ]}]', ']}]').replace('container', '"container"').replace(
-        'ip:', '"ip":').replace(' {', ' "').replace('},', '",')
+        'ip', '"ip"').replace(' {', ' "').replace('},', '",')
+
     result = result.split('\n')[:]
 
     def ip_by_containers(result):
@@ -1775,7 +1789,7 @@ def parallel_execution(hosts, commands, use_check_output=True, use_json=False, u
 
 
 # backend checks
-def backend_host_checks(backend_hosts, ssh_bk_hosts, weka_version, check_version, backend_ips, ssh_identity):
+def backend_host_checks(backend_hosts, ssh_bk_hosts, weka_version, check_version, backend_ips, ssh_identity, s3_enabled):
     INFO("CHECKING PASSWORDLESS SSH CONNECTIVITY")
     results = parallel_execution(
         ssh_bk_hosts, ['/bin/true'], use_check_output=False, use_call=True, ssh_identity=ssh_identity)
@@ -1869,7 +1883,7 @@ def backend_host_checks(backend_hosts, ssh_bk_hosts, weka_version, check_version
             WARN(f"Unable to determine frontend status on Host: {host_name}")
 
     INFO("CHECKING NUMBER OF RUNNING PROTOCOLS ON BACKENDS")
-    protocol_host(backend_hosts)
+    protocol_host(backend_hosts, s3_enabled)
 
     INFO("CHECKING FOR INVALID ENDPOINT IPS ON BACKENDS")
     results = parallel_execution(ssh_bk_hosts, [
@@ -2007,8 +2021,9 @@ def main():
         weka_version = weka_info['release']
         check_version = weka_cluster_results[5]
         backend_ips = weka_cluster_results[6]
+        s3_enabled = weka_cluster_results[7]
         backend_host_checks(backend_hosts, ssh_bk_hosts,
-                            weka_version, check_version, backend_ips, ssh_identity)
+                            weka_version, check_version, backend_ips, ssh_identity, s3_enabled)
         client_hosts_checks(weka_version, ssh_cl_hosts,
                             check_version, ssh_identity)
         INFO(f"Cluster upgrade checks complete!")
@@ -2023,8 +2038,9 @@ def main():
         weka_version = weka_info['release']
         check_version = weka_cluster_results[5]
         backend_ips = weka_cluster_results[6]
+        s3_enabled = weka_cluster_results[7]
         backend_host_checks(backend_hosts, args.check_specific_backend_hosts,
-                            weka_version, check_version, backend_ips, ssh_identity)
+                            weka_version, check_version, backend_ips, ssh_identity, s3_enabled)
         INFO(f"Cluster upgrade checks complete!")
         sys.exit(0)
     elif args.skip_client_checks:
@@ -2037,8 +2053,9 @@ def main():
         weka_version = weka_info['release']
         check_version = weka_cluster_results[5]
         backend_ips = weka_cluster_results[6]
+        s3_enabled = weka_cluster_results[7]
         backend_host_checks(backend_hosts, ssh_bk_hosts,
-                            weka_version, check_version, backend_ips, ssh_identity)
+                            weka_version, check_version, backend_ips, ssh_identity, s3_enabled)
         INFO(f"Cluster upgrade checks complete!")
         sys.exit(0)
     elif args.version:
