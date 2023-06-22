@@ -485,7 +485,7 @@ if [ -z "$BACKEND" ]; then
       fi
     fi
   done
-  NOTICE "Done converting cluster to MBC"
+  NOTICE "Done converting cluster to MBC, please clean up the unconnected default container"
 else
   _distribute "$BACKEND"
   ret_val=$?

@@ -243,6 +243,17 @@ def wait_for_container_to_be_ready(container_type, sudo):
         if local_status[container_type.container_name()]['status']['internalStatus']['state'] == 'READY':
             break
 
+def wait_for_host_deactivate(host_id):
+    get_host_from_hosts_list_cmd = '/bin/sh -c "weka cluster host {} -J"'.format(host_id)
+    logger.info('Waiting for host to deactivate')
+    retries = 60
+    for i in range(retries):
+        host_row = json.loads(run_shell_command(get_host_from_hosts_list_cmd))
+        if host_row['status'] == 'INACTIVE':
+            return
+        sleep(1)
+
+    logger.error('host {} did not reach inactive status'.format(host_id))
 
 def wait_for_buckets_redistribution():
     get_buckets_status_cmd = '/bin/sh -c "weka status -J"'
@@ -792,12 +803,11 @@ def main():
     if not args.keep_s3_up:
         container_disable_command = '/bin/sh -c "{}weka local disable {} "'.format(sudo, container_name)
         run_shell_command(container_disable_command)
+        wait_for_host_deactivate(current_host_id)
         host_deactivate_command = '/bin/sh -c "weka cluster host deactivate {}"'.format(current_host_id)
         run_shell_command(host_deactivate_command)
         host_remove_command = '/bin/sh -c "weka cluster host remove {} --no-unimprint"'.format(current_host_id)
         run_shell_command(host_remove_command)
-        container_disable_command = '/bin/sh -c "{}weka local rm {} -f"'.format(sudo, container_name)
-        run_shell_command(container_disable_command)
 
 
     for ct in ContainerType:
