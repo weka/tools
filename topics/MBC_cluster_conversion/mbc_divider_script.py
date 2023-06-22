@@ -430,10 +430,9 @@ def main():
     if len(prev_resources['backend_endpoints']) < 1:
         logger.warning('The host\'s resources are missing the backend endpoints, is this host part of a Weka cluster?')
         exit(1)
+
     network_devices = []
 
-    get_host_list = '/bin/sh -c "weka cluster host -b -J"'
-    weka_hosts_list = json.loads(run_shell_command(get_host_list))
     get_net_cmd = '/bin/sh -c "weka cluster host net {} -J"'.format(current_host_id)
     net_devs = json.loads(run_shell_command(get_net_cmd))
     for netDev in net_devs:
@@ -595,6 +594,8 @@ def main():
             break
         sleep(1)
 
+    get_host_list = '/bin/sh -c "weka cluster host -b -J"'
+    weka_hosts_list = json.loads(run_shell_command(get_host_list))
     join_ips_list = []
     for host in weka_hosts_list:
         # If this is the host we're currently open, skip adding it to join-ips
@@ -665,13 +666,12 @@ def main():
         run_shell_command(find_and_remove_cmd)
     logger.info('Starting new containers')
 
-    # TODO: We should start container in order: drives, compute, frontend
     for container_type in ContainerType:
         if container_type == ContainerType.FRONTEND:
             if frontend_cores == 0:
                 continue
             elif args.keep_s3_up:
-                logger.info("Appling resources of type {} on container {}".format(container_type, container_name))
+                logger.info("Applying resources of type {} on container {}".format(container_type, container_name))
                 import_resources_command = '/bin/sh -c "{}weka local resources import {} -C {} -f"'.format(
                     sudo,
                     container_type.json_name(),
@@ -808,6 +808,7 @@ def main():
         run_shell_command(host_deactivate_command)
         host_remove_command = '/bin/sh -c "weka cluster host remove {} --no-unimprint"'.format(current_host_id)
         run_shell_command(host_remove_command)
+        logger.info('the old container {} is disabled and stop, please remove it after the conversion is done'.format(container_name))
 
 
     for ct in ContainerType:
