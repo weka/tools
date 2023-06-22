@@ -210,8 +210,6 @@ echo -e "${RED}$1${NOCOLOR}"
 logit [ FAILED ] "$1"
 }
 
-NOTICE "WE ARE RUNNING THE FOLO"
-
 if [ "$EUID" -ne 0 ]; then
   SUDO="sudo "
   NOTICE "WE ARE NOT ROOT, VERIFYING PASSWORDLESS SUDO"
@@ -234,8 +232,8 @@ if [ -w $LOG ]; then
 fi
 
 NOTICE "VERIFYING WEKA AGENT"
-WEKAVERIFY=$($SUDO lsmod | grep -i weka)
-if [ -z "$WEKAVERIFY" ]; then
+if ! command -v weka &> /dev/null
+then
   BAD "Weka is NOT installed on host or the container is down, cannot continue."
   exit 1
 fi
@@ -274,7 +272,6 @@ NOTICE "VERIFYING WEKA LOCAL CONTAINER STATUS"
 CONSTATUS=$($SUDO weka local ps --no-header -o name,running | grep -i default | awk '{print $2}')
 if [ "$CONSTATUS" == "False" ]; then
   BAD "Weka local container is down cannot continue."
-  exit
 else
   GOOD "Weka local container is running."
 fi
@@ -487,7 +484,7 @@ if [ -z "$BACKEND" ]; then
       fi
     fi
   done
-  NOTICE "Done converting cluster to MBC"
+  NOTICE "Done converting cluster to MBC, please clean up the unconnected default container"
 else
   _distribute "$BACKEND"
   ret_val=$?

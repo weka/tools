@@ -11,6 +11,7 @@ import argparse
 from time import sleep, time
 import re
 from urllib import request, error
+from socket import timeout
 from concurrent.futures import ThreadPoolExecutor
 from resources_generator import GiB
 
@@ -55,6 +56,8 @@ def is_aws():
                 request.urlopen("http://169.254.169.254/2016-09-02/meta-data/", timeout=(1 + i) * init_timeout).read()
                 return True
             except error.URLError:
+                pass
+            except timeout:
                 pass
             return False
 
@@ -203,7 +206,7 @@ def wait_for_nodes_to_be_down(containerId, sudo):
     for node in nodes_output:
         nodes_list.append(node['node_id'])
     logger.debug('Waiting for nodes {} to reach DOWN state'.format(
-        nodes_list)) # TODO: strip from NodeId?
+        nodes_list))  # TODO: strip from NodeId?
 
     notDownNodes = []
     for i in range(retries):
@@ -240,6 +243,17 @@ def wait_for_container_to_be_ready(container_type, sudo):
         if local_status[container_type.container_name()]['status']['internalStatus']['state'] == 'READY':
             break
 
+def wait_for_host_deactivate(host_id):
+    get_host_from_hosts_list_cmd = '/bin/sh -c "weka cluster host {} -J"'.format(host_id)
+    logger.info('Waiting for host to deactivate')
+    retries = 60
+    for i in range(retries):
+        host_row = json.loads(run_shell_command(get_host_from_hosts_list_cmd))
+        if host_row[0]['status'] == 'INACTIVE':
+            return
+        sleep(1)
+
+    logger.error('host {} did not reach inactive status'.format(host_id))
 
 def wait_for_buckets_redistribution():
     get_buckets_status_cmd = '/bin/sh -c "weka status -J"'
@@ -353,12 +367,13 @@ def main():
     else:
         logger.warning("Weka is not installed on this server, skipping")
         exit(0)
+    #  TODO: maybe: check mounts for every container
     local_status_cmd = '/bin/sh -c "{}weka local status -J"'.format(sudo)
     status = json.loads(run_shell_command(local_status_cmd))
     if status[container_name]['mount_points']:
         logger.warning("This server has an active WekaFS mount, please unmount before continuing")
         exit(1)
-
+    # TODO: for new script generate backup with datetime
     backup_file_name = os.path.abspath('resources.json.backup')
     if os.path.exists(backup_file_name) and not args.force:
         logger.warning("Backup resources file {} already exists, will not override it".format(backup_file_name))
@@ -383,6 +398,8 @@ def main():
     frontend_cores = args.frontend_dedicated_cores
     drive_cores = args.drive_dedicated_cores
     old_failure_domain = prev_resources['failure_domain']
+    # TODO: new script convert to manual FD
+    # TODO: add enforcement for manual FD
     memory = prev_resources['memory']
     if args.limit_maximum_memory:
         memory = int(args.limit_maximum_memory * GiB)
@@ -416,16 +433,16 @@ def main():
     if len(prev_resources['backend_endpoints']) < 1:
         logger.warning('The host\'s resources are missing the backend endpoints, is this host part of a Weka cluster?')
         exit(1)
+
     network_devices = []
 
-    get_host_list = '/bin/sh -c "weka cluster host -b -J"'
-    weka_hosts_list = json.loads(run_shell_command(get_host_list))
     get_net_cmd = '/bin/sh -c "weka cluster host net {} -J"'.format(current_host_id)
     net_devs = json.loads(run_shell_command(get_net_cmd))
     for netDev in net_devs:
         network_devices.append(NetDev(netDev['name'], netDev['identifier'], netDev['gateway'], netDev['netmask_bits'],
                                       list(set(netDev['ips'])), netDev['net_devices'][0]['mac_address']))
         logger.debug("Adding net devices: {}".format(network_devices[-1].to_cmd()))
+    # TODO: not lose network label
 
     retries = 180  # sleeps should be 1 second each, so this is a "timeout" of 180s
     # S3 check
@@ -581,6 +598,8 @@ def main():
             break
         sleep(1)
 
+    get_host_list = '/bin/sh -c "weka cluster host -b -J"'
+    weka_hosts_list = json.loads(run_shell_command(get_host_list))
     join_ips_list = []
     for host in weka_hosts_list:
         # If this is the host we're currently open, skip adding it to join-ips
@@ -651,13 +670,12 @@ def main():
         run_shell_command(find_and_remove_cmd)
     logger.info('Starting new containers')
 
-    # TODO: We should start container in order: drives, compute, frontend
     for container_type in ContainerType:
         if container_type == ContainerType.FRONTEND:
             if frontend_cores == 0:
                 continue
             elif args.keep_s3_up:
-                logger.info("Appling resources of type {} on container {}".format(container_type, container_name))
+                logger.info("Applying resources of type {} on container {}".format(container_type, container_name))
                 import_resources_command = '/bin/sh -c "{}weka local resources import {} -C {} -f"'.format(
                     sudo,
                     container_type.json_name(),
@@ -791,10 +809,10 @@ def main():
         run_shell_command(container_disable_command)
         host_deactivate_command = '/bin/sh -c "weka cluster host deactivate {}"'.format(current_host_id)
         run_shell_command(host_deactivate_command)
+        wait_for_host_deactivate(current_host_id)
         host_remove_command = '/bin/sh -c "weka cluster host remove {} --no-unimprint"'.format(current_host_id)
         run_shell_command(host_remove_command)
-        container_disable_command = '/bin/sh -c "{}weka local rm {} -f"'.format(sudo, container_name)
-        run_shell_command(container_disable_command)
+        logger.info('the old container {} is disabled and stop, please remove it after the conversion is done'.format(container_name))
 
 
     for ct in ContainerType:
