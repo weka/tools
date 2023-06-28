@@ -238,28 +238,27 @@ def upgrade_flow(target_version, ssh_identity=None, container_name=None, skip_he
             ssh_unchecked_call("weka", "version", "set", target_version,)
         else:
             ssh_unchecked_call("weka", "version", "set", target_version, "-C", container_name,)
-        try:
-            ssh_call("weka", "local", "start")
-        except Exception:
-            log("Failed to weka version start, renaming back, starting back up and bailing out...")
-            ssh_call("mv",
-                     "/opt/weka/data/%s_%s" % (container_name, target_version,),
-                     "/opt/weka/data/%s_%s" % (container_name, source_version,))
-            if container_name == 'default':
-                ssh_unchecked_call(("weka", "version", "set", source_version,))
-            else:
-                ssh_unchecked_call("weka", "version", "set", source_version, "-C", container_name, )
-
-            if not skip_local_start:
-                ssh_call("weka", "local", "start", container_name,)
-            raise
-
         if skip_local_start:
-            log("NOT starting containers on %s because --skip-local-start" % (hostname, ))
+            log("NOT starting containers on %s because --skip-local-start" % (hostname,))
         else:
-            log("Starting containers on %s" % (hostname, ))
-            ssh_call("weka", "local", "start", container_name,)
-            log("Started containers on %s" % (hostname, ))
+            try:
+                log("Starting containers on %s" % (hostname,))
+                ssh_call("weka", "local", "start", container_name, )
+                log("Started containers on %s" % (hostname,))
+            except Exception:
+                log("Failed to weka version start, renaming back, starting back up and bailing out...")
+                ssh_call("mv",
+                         "/opt/weka/data/%s_%s" % (container_name, target_version,),
+                         "/opt/weka/data/%s_%s" % (container_name, source_version,))
+                if container_name == 'default':
+                    ssh_unchecked_call(("weka", "version", "set", source_version,))
+                else:
+                    ssh_unchecked_call("weka", "version", "set", source_version, "-C", container_name, )
+
+                if not skip_local_start:
+                    ssh_call("weka", "local", "start", container_name,)
+                raise
+
 
         upgraded_hosts += 1
         if not skip_health_checks:
