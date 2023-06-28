@@ -724,7 +724,7 @@ def main():
                     run_shell_command(undrain_s3_cmd)
                 continue
 
-        setup_host_command = '/bin/sh -c "{}weka local setup host --name={} --resources-path={} {} {} {} --disable"'.format(
+        setup_host_command = '/bin/sh -c "{}weka local setup host --timeout 10m --name={} --resources-path={} {} {} {} --disable"'.format(
             sudo,
             container_type.container_name(),
             container_type.json_name(),
