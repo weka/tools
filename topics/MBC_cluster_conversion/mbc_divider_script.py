@@ -336,6 +336,8 @@ def main():
                         help="Set one unique net device per each io node, relevant when using virtual functions (VMware, KVM etc.)")
     parser.add_argument("--use-only-nic-identifier", action='store_true', dest='use_only_nic_identifier',
                         help="use only the nic identifier when allocating the nics")
+    parser.add_argument("--remove-old-container", action='store_true', dest='remove_old_container',
+                        help=argparse.SUPPRESS)
 
     args = parser.parse_args()
     global dry_run
@@ -813,7 +815,9 @@ def main():
         host_remove_command = '/bin/sh -c "weka cluster host remove {} --no-unimprint"'.format(current_host_id)
         run_shell_command(host_remove_command)
         logger.info('the old container {} is disabled and stop, please remove it after the conversion is done'.format(container_name))
-
+        if args.remove_old_container:
+            container_rm_command = '/bin/sh -c "{}weka local rm {} -f"'.format(sudo, container_name)
+            run_shell_command(container_rm_command)
 
     for ct in ContainerType:
         if os.path.exists(ct.json_name()):
