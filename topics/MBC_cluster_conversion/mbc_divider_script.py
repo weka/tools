@@ -641,7 +641,7 @@ def main():
         drive_cores_cmd += ' --drive-core-ids '
         for core_id in pinned_drive_cores:
             drive_cores_cmd += str(core_id) + ' '
-    frontend_cores_cmd = ' --frontend-dedicated-cores {}'.format(frontend_cores) if (frontend_cores > 0) else ''
+    frontend_cores_cmd = ' --frontend-dedicated-cores {}'.format(frontend_cores)
     if len(pinned_frontend_cores):
         frontend_cores_cmd += ' --frontend-core-ids '
         for core_id in pinned_frontend_cores:
