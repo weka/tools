@@ -814,7 +814,7 @@ def main():
         wait_for_host_deactivate(current_host_id)
         host_remove_command = '/bin/sh -c "weka cluster host remove {} --no-unimprint"'.format(current_host_id)
         run_shell_command(host_remove_command)
-        logger.info('the old container {} is disabled and stop, please remove it after the conversion is done'.format(container_name))
+        logger.info('the old container {} is disabled and stopped, please remove it after the conversion is done'.format(container_name))
         if args.remove_old_container:
             container_rm_command = '/bin/sh -c "{}weka local rm {} -f"'.format(sudo, container_name)
             run_shell_command(container_rm_command)
