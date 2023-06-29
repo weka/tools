@@ -56,7 +56,7 @@ EOF
 exit
 }
 
-while getopts "hfasd:b:Sl:VC:D:F:m:i:kOvp" o; do
+while getopts "hfasd:b:Sl:VC:D:F:m:i:kOvpr" o; do
     case "${o}" in
         f)
             FORCE='--force'
@@ -126,6 +126,9 @@ while getopts "hfasd:b:Sl:VC:D:F:m:i:kOvp" o; do
         p)
             USE_ONLY_NIC_IDENTIFIER="--use-only-nic-identifier "
             echo  "-p use only the the nic identifier and don't resolve pci address."
+            ;;
+        r)
+            REMOVE_DEFAULT_CONTAINER="--remove-old-container"
             ;;
         h)
             usage
@@ -402,8 +405,8 @@ fi
 NOTICE "======================================
 EXECUTING CONVERSION TO MBC ON HOST $1
 ======================================"
-NOTICE "RUNNING COMMAND: $DIR/mbc_divider_script.py $AWS $FORCE $DRAIN_TIMEOUT $DRIVE_CORES $COMPUTE_CORES $FRONTEND_CORES $LIMIT_MEMORY $KEEP_S3_UP_FLAG $FORCE_CONTINUE_WITHOUT_REAL_DRAIN $FORCE_VF_ON_RG $USE_ONLY_NIC_IDENTIFIER"
-$SSH "$1" "$DIR/mbc_divider_script.py $AWS $FORCE $DRAIN_TIMEOUT $DRIVE_CORES $COMPUTE_CORES $FRONTEND_CORES $LIMIT_MEMORY $KEEP_S3_UP_FLAG $FORCE_CONTINUE_WITHOUT_REAL_DRAIN $FORCE_VF_ON_RG $USE_ONLY_NIC_IDENTIFIER" 2>&1 | tee -a ${LOG}
+NOTICE "RUNNING COMMAND: $DIR/mbc_divider_script.py $AWS $FORCE $DRAIN_TIMEOUT $DRIVE_CORES $COMPUTE_CORES $FRONTEND_CORES $LIMIT_MEMORY $KEEP_S3_UP_FLAG $FORCE_CONTINUE_WITHOUT_REAL_DRAIN $FORCE_VF_ON_RG $USE_ONLY_NIC_IDENTIFIER $REMOVE_DEFAULT_CONTAINER"
+$SSH "$1" "$DIR/mbc_divider_script.py $AWS $FORCE $DRAIN_TIMEOUT $DRIVE_CORES $COMPUTE_CORES $FRONTEND_CORES $LIMIT_MEMORY $KEEP_S3_UP_FLAG $FORCE_CONTINUE_WITHOUT_REAL_DRAIN $FORCE_VF_ON_RG $USE_ONLY_NIC_IDENTIFIER $REMOVE_DEFAULT_CONTAINER" 2>&1 | tee -a ${LOG}
 if [ "${PIPESTATUS[0]}" != "0" ]; then
     BAD "UNABLE TO CONVERT HOST $1"
     return 1
