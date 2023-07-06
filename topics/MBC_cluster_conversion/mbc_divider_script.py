@@ -30,10 +30,7 @@ def setup_logger():
 
 
 def run_shell_command(command, no_fail=False):
-    if dry_run:
-        logger.warning('dry_run, not running: {}'.format(command))
-        return 0
-
+    logger.info('running: {}'.format(command))
     process = subprocess.Popen(shlex.split(command), stdout=subprocess.PIPE)
     output, stderr = process.communicate()
     if process.returncode != 0:
