@@ -194,9 +194,9 @@ def wait_for_s3_container(sudo):
             break
 
 
-def wait_for_nodes_to_be_down(containerId, sudo):
+def wait_for_nodes_to_be_down(container_id,):
     retries = 90
-    nodes_command = '/bin/sh -c "{}weka cluster nodes --host {} -J"'.format(sudo, containerId)
+    nodes_command = '/bin/sh -c "weka cluster nodes --host {} -J"'.format(container_id)
     nodes_output = {}
     nodes_output = json.loads(run_shell_command(nodes_command))
     nodes_list = []
