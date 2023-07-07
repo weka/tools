@@ -30,10 +30,7 @@ def setup_logger():
 
 
 def run_shell_command(command, no_fail=False):
-    if dry_run:
-        logger.warning('dry_run, not running: {}'.format(command))
-        return 0
-
+    logger.info('running: {}'.format(command))
     process = subprocess.Popen(shlex.split(command), stdout=subprocess.PIPE)
     output, stderr = process.communicate()
     if process.returncode != 0:
@@ -197,9 +194,9 @@ def wait_for_s3_container(sudo):
             break
 
 
-def wait_for_nodes_to_be_down(containerId, sudo):
+def wait_for_nodes_to_be_down(container_id,):
     retries = 90
-    nodes_command = '/bin/sh -c "{}weka cluster nodes --host {} -J"'.format(sudo, containerId)
+    nodes_command = '/bin/sh -c "weka cluster nodes --host {} -J"'.format(container_id)
     nodes_output = {}
     nodes_output = json.loads(run_shell_command(nodes_command))
     nodes_list = []
