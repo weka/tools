@@ -745,7 +745,7 @@ def main():
                         continue
                     server_info = json.loads(run_shell_command(get_host_id_command))
                     new_drive_host_id = server_info['hostIdValue']
-                    wait_for_nodes_to_be_down(current_host_id, sudo)
+                    wait_for_nodes_to_be_down(current_host_id)
                     #safe_drive_scan assumes that all old nodes are down
                     safe_drive_scan(new_drive_host_id, current_host_id)
                     logger.info('Done scanning drives')
