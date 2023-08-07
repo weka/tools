@@ -114,6 +114,9 @@ def wait_for_healthy_cluster(print_healthy=True):
         if not check_active_equals_total(status["hosts"]["backends"]):
             log("Not all backend hosts are active")
             continue
+        if not check_active_equals_total(status["buckets"]):
+            log("Not all backend buckets are up")
+            continue
 
         if print_healthy:
             wait_end = datetime.now()
