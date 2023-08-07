@@ -30,10 +30,10 @@ DEFAULT_SPARE_CPU_ID = 0
 IS_NUMA_PARTITION = len(os.popen("cat /sys/devices/system/node/possible").read().split("-")) > 1
 IS_SINGLE_CORE = int(os.popen("nproc").read().strip()) == 1  # TODO: validate condition sufficiency
 # Memory consts (from hugepages.d):
-WEKANODE_BUCKET_PROCESS_MEMORY = 3.2 * GiB
-WEKANODE_SSD_PROCESS_MEMORY = 1.9 * GiB
-WEKANODE_FRONTEND_PROCESS_MEMORY = 2.1 * GiB
-WEKANODE_MANAGER_PROCESS_MEMORY = 2.1 * GiB
+WEKANODE_BUCKET_PROCESS_MEMORY = 3.9 * GiB
+WEKANODE_SSD_PROCESS_MEMORY = 2.2 * GiB
+WEKANODE_FRONTEND_PROCESS_MEMORY = 2.5 * GiB
+WEKANODE_MANAGER_PROCESS_MEMORY = 3.1 * GiB
 
 OVERHEAD_PER_MBUF = 202 + 72 + 16 + 30  # GenericBaseBlock + QueuedBlock + Cache entries + unknown respectively
 MBUFS_IN_HUGEPAGE = 481  # max N such that `align4K(256*N) + 4096*N <= 2MB
