@@ -269,7 +269,7 @@ def upgrade_flow(target_version, ssh_identity=None, container_name=None, skip_he
             if not skip_unhealthy_checks:
                 wait_for_unhealthy_cluster()
             else:
-                sleep(10)
+                time.sleep(10)
 
             wait_for_healthy_cluster()
 
