@@ -1,0 +1,211 @@
+#!/bin/bash
+
+script_name=$(basename "$0")
+
+usage() {
+	cat <<- EOF
+	Usage: $script_name [ -a ARCHITECTURE ] [ -d DISTRIBUTION -v DISTRIBUTION_VERSION ] OFED_VERSION
+
+	With options, will download the specified OFED version. This is particularly
+	useful to run the script on unsupported platforms (e.g. macOS).
+
+	Note that "alternate" releases as sometimes seen on NVIDIA's website (e.g.
+	"RHEL/CentOS 7.5alternate") are not supported; behaviour is undefined if these
+	are specified.
+
+	To download 5.8-1.1.2.1 for the currently running machine, if compatible:
+
+	    $script_name 5.8-1.1.2.1
+
+	To download 5.8-1.1.2.1 for Ubuntu 20.04:
+
+	    $script_name -d ubuntu -v 20.04 5.8-1.1.2.1
+
+	Options:
+	    -a ARCHITECTURE, --architecture ARCHITECTURE
+	        Default: x86_64
+	        Specify the system architecture. Can be one of:
+	            aarch64
+	            ppc64le
+	            x86_64
+
+	    -d DISTRIBUTION, --dist DISTRIBUTION
+	        Default: running distribution
+	        Mandatory if specifying -v/--dist-vers. Specify the Linux
+	        distribution. Can be one of:
+	            centos
+	            rhel
+	            rocky
+	            sles
+	            ubuntu
+
+	    -v DISTRIBUTION_VERSION, --dist-vers DISTRIBUTION_VERSION
+	        Default: running distribution
+	        Mandatory if specifying -d/--dist. Specify the Linux distribution
+	        version, in the following formats for the following distributions:
+	            centos rhel rocky    8.7
+	            sles                 15sp4 OR 15.4
+	            ubuntu               20.04
+	        Alternate releases, e.g. "RHEL/CentOS 7.5alternate", are unsupported
+	        and behaviour is undefined.
+
+	    -h, --help
+	        Show this help/usage message.
+	EOF
+}
+
+download() {
+	if ! cmd=$(which wget 2> /dev/null); then
+		>&2 echo 'wget not found, trying curl...'
+		if ! cmd=$(which curl 2> /dev/null); then
+			>&2 echo 'wget and curl not found, exiting'
+			exit 1
+		else
+			cmd="$cmd -LO"
+		fi
+	fi
+	$cmd "$1"
+}
+
+set_dist() {
+	case $1 in
+		centos|rhel|rocky) echo 'rhel' ;;
+		sles|ubuntu) echo "$1" ;;
+		*) >&2 echo "$ID is not supported by WEKA" && exit 1
+	esac
+}
+
+get_running_dist() {
+	source /etc/os-release
+
+	if [ "${ID:-}" = '']; then
+		>&2 echo 'Failed to detect Linux distribution'
+		exit 1
+	fi
+
+	set_dist "$ID"
+}
+
+get_running_dist_vers() {
+	source /etc/os-release
+
+	if [ "${VERSION_ID:-}" = '']; then
+		>&2 echo 'Failed to detect Linux distribution version'
+		exit 1
+	fi
+}
+
+main() {
+	arch='x86_64'
+
+	arg_error=0
+	print_usage=0
+
+	raw_mode_support=0
+	raw=0
+
+	# Check for raw mode, remove it from $@
+	# We require --raw as the first argument:
+	# - To avoid future clashes with "<UNDERLYING_UTILITY>" options
+	# - As we don't parse further input
+	# - As parsing further input would require knowing if an opt takes args
+	# $arg will get passed directly through to "<UNDERLYING_UTILITY>" later
+	if [ "$1" = '--raw' ] && [ "$raw_mode_support" -ne 0 ]; then
+		raw=1
+		shift
+	fi
+
+	# Raw mode
+	if [ "$raw" -eq 1 ]; then
+		if [ -z "$@" ]; then
+			echo 'Raw mode. No further opts/args provided.'
+		else
+			echo "Raw mode. Input provided: $@"
+		fi
+
+	# Normal mode
+	else
+		# Convert long options to short options, stick them back on the end of $@
+		for arg in $@; do
+			case $arg in
+				--architecture) set -- "$@" '-a' ;;
+				--dist) set -- "$@" '-d' ;;
+				--dist-vers) set -- "$@" '-v' ;;
+				--help) set -- "$@" '-h' ;;
+				--raw)
+					if [ "$raw_mode_support" -eq 0 ]; then
+						>&2 echo "$0: --raw must be first argument"
+					else
+						>&2 echo "$0: illegal long option -- ${arg:2}"
+					fi
+					arg_error=1
+					;;
+				--*)
+					>&2 echo "$0: illegal long option -- ${arg:2}"
+					arg_error=1
+					;;
+				*) set -- "$@" "$arg" ;;
+			esac
+			shift
+		done
+
+		# Cycle through options, setting corresponding variables as options are
+		# found
+		while getopts 'a:d:v:h' opts; do
+			case $opts in
+				a) arch=$OPTARG ;;
+				d) dist=$OPTARG ;;
+				v) dist_vers=$OPTARG ;;
+				h) print_usage=1 ;;
+				?) arg_error=1 ;;
+			esac
+		done
+		shift $((OPTIND - 1))
+
+		# If distribution specified but version missing, and vice versa
+		if [ "${dist:-}" = '' ] && [ "${dist_vers:-}" != '' ]; then
+			arg_error=1
+			>&2 echo "$0: -v/--dist-vers specified without -d/--dist"
+		elif [ "${dist:-}" != '' ] && [ "${dist_vers:-}" = '' ]; then
+			arg_error=1
+			>&2 echo "$0: -d/--dist specified without -v/--dist-vers"
+		fi
+
+		[ "$arg_error" -eq 1 ] && >&2 usage && exit 1
+		[ "$print_usage" -eq 1 ] && usage && exit 0
+
+		# If not at least one argument; using $@ instead results in `binary
+		# operator expected` errors if an option is used (e.g. `-f`)
+		#
+		# If no arguments (i.e. no OFED version specified) return usage error
+		if [ -z "$1" ]; then
+			>&2 echo "$0: No OFED version specified"
+			>&2 usage
+			exit 1
+		else
+			ofed_vers=$1
+		fi
+
+		# If distribution and distribution version not specified
+		if [ "${dist:-}" = '' ] && [ "${dist_vers:-}" = '' ]; then
+			dist=$(get_running_dist)
+			dist_vers=$(get_running_dist_vers)
+		else
+			dist=$(set_dist "$dist")
+		fi
+
+		# If SLES, convert e.g. 12.5 to 12sp5
+		[ "$dist" = 'sles' ] && dist_vers=${dist_vers/./sp}
+
+		url="https://content.mellanox.com/ofed/MLNX_OFED-$ofed_vers/MLNX_OFED_LINUX-$ofed_vers-${dist}${dist_vers}-$arch.tgz"
+		if download "$url"; then
+			echo "Downloaded to $(readlink -f ${url##*/})"
+		else
+			"Failed to download $url"
+		fi
+	fi
+}
+
+main "$@"
+
+# vim: set filetype=sh:
