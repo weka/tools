@@ -1574,11 +1574,9 @@ def client_web_test(results):
         client_name = item[0]
         http_status_code = (item[1])
         if http_status_code == "200":
-            GOOD(
-                f'{" " * 5}✅ Client web connectivity check passed on host: {client_name}')
+            GOOD(f'{" " * 5}✅ Client web connectivity check passed on host: {client_name}')
         else:
-            WARN(
-                f'{" " * 5}⚠️  Client web connectivity check failed on host: {client_name}')
+            WARN(f'{" " * 5}⚠️  Client web connectivity check failed on host: {client_name}')
 
 
 def invalid_endpoints(host_name, result, backend_ips):
@@ -1882,6 +1880,26 @@ def client_hosts_checks(weka_version, ssh_cl_hosts, check_version, ssh_identity)
     if results != []:
         weka_container_status(results, weka_version)
 
+    INFO("CHECKING IOMMU STATUS ON CLIENTS")
+    results = parallel_execution(
+        ssh_cl_hosts, [ """
+            iommuclass=`ls /sys/class/iommu | wc -l`
+            iommugroups=`ls /sys/kernel/iommu_groups | wc -l`
+            if [ $iommuclass -eq "0" ] && [ $iommugroups -eq "0" ]; then 
+                exit 0
+            else
+                exit 1
+            fi
+            """],
+        use_check_output=False, use_json=False, ssh_identity=ssh_identity)
+    for host_name, result in results:
+        if result is None:
+            WARN(f"Unable to determine Host: {host_name} IOMMU status")
+        elif result.returncode == 0:
+            GOOD(f'{" " * 5}✅ IOMMU is not enabled on host: {host_name}')
+        else:
+            WARN(f'{" " * 5}⚠️  IOMMU is enabled on host: {host_name}')
+
 
 create_tar_file(log_file_path, "./weka_upgrade_checker.tar.gz")
 
@@ -1916,10 +1934,9 @@ def main():
         check_version = weka_cluster_results[5]
         backend_ips = weka_cluster_results[6]
         s3_enabled = weka_cluster_results[7]
-        backend_host_checks(backend_hosts, ssh_bk_hosts,
-                            weka_version, check_version, backend_ips, ssh_identity, s3_enabled)
-        client_hosts_checks(weka_version, ssh_cl_hosts,
-                            check_version, ssh_identity)
+        backend_host_checks(backend_hosts, ssh_bk_hosts, weka_version, check_version, backend_ips,
+                            ssh_identity, s3_enabled)
+        client_hosts_checks(weka_version, ssh_cl_hosts, check_version, ssh_identity)
         INFO(f"Cluster upgrade checks complete!")
         sys.exit(0)
     elif args.check_specific_backend_hosts:
@@ -1933,8 +1950,8 @@ def main():
         check_version = weka_cluster_results[5]
         backend_ips = weka_cluster_results[6]
         s3_enabled = weka_cluster_results[7]
-        backend_host_checks(backend_hosts, args.check_specific_backend_hosts,
-                            weka_version, check_version, backend_ips, ssh_identity, s3_enabled)
+        backend_host_checks(backend_hosts, args.check_specific_backend_hosts, weka_version, check_version,
+                            backend_ips, ssh_identity, s3_enabled)
         INFO(f"Cluster upgrade checks complete!")
         sys.exit(0)
     elif args.skip_client_checks:
@@ -1948,8 +1965,8 @@ def main():
         check_version = weka_cluster_results[5]
         backend_ips = weka_cluster_results[6]
         s3_enabled = weka_cluster_results[7]
-        backend_host_checks(backend_hosts, ssh_bk_hosts,
-                            weka_version, check_version, backend_ips, ssh_identity, s3_enabled)
+        backend_host_checks(backend_hosts, ssh_bk_hosts, weka_version, check_version, backend_ips,
+                            ssh_identity, s3_enabled)
         INFO(f"Cluster upgrade checks complete!")
         sys.exit(0)
     elif args.version:
