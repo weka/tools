@@ -1,13 +1,20 @@
 #!/bin/bash
 
 script_name=$(basename "$0")
+error_indent=$(for i in $(seq 1 "${#0}"); do printf ' '; done)
 
 usage() {
 	cat <<- EOF
 	Usage: $script_name [ -a ARCHITECTURE ] [ -d DISTRIBUTION -v DISTRIBUTION_VERSION ] OFED_VERSION
 
-	With options, will download the specified OFED version. This is particularly
-	useful to run the script on unsupported platforms (e.g. macOS).
+	Without options, will detect and download the specified OFED version on
+	compatible Linux distributions.
+
+	With options, will download the specified OFED version for the specified
+	Linux distribution/version. This allows the script to be used on unsupported
+	platforms (e.g. macOS).
+
+	This script *does not* install OFED; it only downloads it.
 
 	Note that "alternate" releases as sometimes seen on NVIDIA's website (e.g.
 	"RHEL/CentOS 7.5alternate") are not supported; behaviour is undefined if these
@@ -61,7 +68,7 @@ download() {
 			>&2 echo 'wget and curl not found, exiting'
 			exit 1
 		else
-			cmd="$cmd -LO"
+			cmd="$cmd -LO --fail"
 		fi
 	fi
 	$cmd "$1"
@@ -71,29 +78,27 @@ set_dist() {
 	case $1 in
 		centos|rhel|rocky) echo 'rhel' ;;
 		sles|ubuntu) echo "$1" ;;
-		*) >&2 echo "$ID is not supported by WEKA" && exit 1
+		*) return 1 ;;
 	esac
 }
 
-get_running_dist() {
-	source /etc/os-release
-
-	if [ "${ID:-}" = '']; then
-		>&2 echo 'Failed to detect Linux distribution'
-		exit 1
-	fi
-
-	set_dist "$ID"
-}
-
-get_running_dist_vers() {
-	source /etc/os-release
-
-	if [ "${VERSION_ID:-}" = '']; then
-		>&2 echo 'Failed to detect Linux distribution version'
-		exit 1
-	fi
-}
+# get_running_dist() {
+# 	source /etc/os-release
+#
+# 	[ "${ID:-}" = '' ] || return 1
+#
+# 	set_dist "$ID"
+# }
+#
+# get_running_dist_vers() {
+# 	source /etc/os-release
+#
+# 	if [ "${VERSION_ID:-}" = '' ]; then
+# 		return 1
+# 	else
+# 		echo "$VERSION_ID"
+# 	fi
+# }
 
 main() {
 	arch='x86_64'
@@ -162,17 +167,53 @@ main() {
 		done
 		shift $((OPTIND - 1))
 
+		[ "$print_usage" -eq 1 ] && usage && exit 0
+
 		# If distribution specified but version missing, and vice versa
 		if [ "${dist:-}" = '' ] && [ "${dist_vers:-}" != '' ]; then
-			arg_error=1
 			>&2 echo "$0: -v/--dist-vers specified without -d/--dist"
-		elif [ "${dist:-}" != '' ] && [ "${dist_vers:-}" = '' ]; then
 			arg_error=1
+		elif [ "${dist:-}" != '' ] && [ "${dist_vers:-}" = '' ]; then
 			>&2 echo "$0: -d/--dist specified without -v/--dist-vers"
+			arg_error=1
 		fi
 
-		[ "$arg_error" -eq 1 ] && >&2 usage && exit 1
-		[ "$print_usage" -eq 1 ] && usage && exit 0
+		# If running on Linux and -d/--dist and -v/--dist-vers not specified,
+		# detect Linux distribution
+		if [ "${dist:-}" = '' ] && [ "${dist_vers:-}" = '' ]; then
+			case $(uname) in
+				Linux)
+					source /etc/os-release
+
+					if [ "${ID:-}" = '' ]; then
+						>&2 echo "$0: Failed to detect running Linux distribution"
+						>&2 echo "$error_indent  -d/--dist and --v/--dist-vers required"
+						arg_error=1
+					elif ! dist=$(set_dist "$ID"); then
+						>&2 echo "$0: $ID not supported by WEKA"
+						arg_error=1
+					fi
+
+					if [ "${VERSION_ID:-}" = '' ]; then
+						>&2 echo "$0: Failed to detect running Linux distribution version"
+						>&2 echo "$error_indent  -d/--dist and --v/--dist-vers required"
+						arg_error=1
+					else
+						dist_vers=$VERSION_ID
+					fi
+					;;
+
+				*)
+					>&2 echo "$0: Not running Linux; -d/--dist and --v/--dist-vers required"
+					arg_error=1
+					;;
+			esac
+		else
+			if ! dist=$(set_dist "$dist"); then
+				>&2 echo "$0: Distribution not supported by WEKA"
+				arg_error=1
+			fi
+		fi
 
 		# If not at least one argument; using $@ instead results in `binary
 		# operator expected` errors if an option is used (e.g. `-f`)
@@ -180,28 +221,22 @@ main() {
 		# If no arguments (i.e. no OFED version specified) return usage error
 		if [ -z "$1" ]; then
 			>&2 echo "$0: No OFED version specified"
-			>&2 usage
-			exit 1
+			arg_error=1
 		else
 			ofed_vers=$1
 		fi
 
-		# If distribution and distribution version not specified
-		if [ "${dist:-}" = '' ] && [ "${dist_vers:-}" = '' ]; then
-			dist=$(get_running_dist)
-			dist_vers=$(get_running_dist_vers)
-		else
-			dist=$(set_dist "$dist")
-		fi
+		[ "$arg_error" -eq 1 ] && >&2 echo && >&2 usage && exit 1
+		[ "$arg_error" -eq 1 ] && exit 1
 
 		# If SLES, convert e.g. 12.5 to 12sp5
 		[ "$dist" = 'sles' ] && dist_vers=${dist_vers/./sp}
 
 		url="https://content.mellanox.com/ofed/MLNX_OFED-$ofed_vers/MLNX_OFED_LINUX-$ofed_vers-${dist}${dist_vers}-$arch.tgz"
 		if download "$url"; then
-			echo "Downloaded to $(readlink -f ${url##*/})"
+			echo "$0: Downloaded to $(readlink -f $(dirname "${url##*/}"))"
 		else
-			"Failed to download $url"
+			>&2 echo "$0: Failed to download $url"
 		fi
 	fi
 }
