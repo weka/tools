@@ -171,7 +171,16 @@ def exit_migration_mode():
 
 @step("Stopping ETCD from running, and Changing minIO defaults to KWAS")
 def remove_etcd_internals():
+    print(f"{bcolors.CYAN}\tSetting etcd-enable configuration to false.{bcolors.ENDC}")
     output = send_bash_command(f"weka s3 cluster update --etcd-enable=off")
+
+    print(f"{bcolors.CYAN}\tValidating etcd-enable configuration is false.{bcolors.ENDC}")
+    output = send_bash_command("weka debug config show s3ClusterInfo.etcdEnabled").decode("utf-8")
+
+    if output.find("false") == -1:
+        print(f"{bcolors.RED}ERROR: s3ClusterInfo.etcdEnabled was not set properly to false.{bcolors.ENDC}")
+        exit(1)
+
     print(f"{bcolors.CYAN}\tWaiting 20 seconds on each host to make sure ETCD isn't starting.{bcolors.ENDC}")
     for host in global_vars.s3_hosts.keys():
         output = send_bash_command(f"ssh {host} weka local exec -C s3 supervisorctl stop etcd")
