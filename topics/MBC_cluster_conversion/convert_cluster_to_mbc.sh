@@ -29,9 +29,10 @@ usage()
 cat <<EOF
 Usage: [-f will allow script run even if backup resource file exists.]
 Usage: [-a will allow to run the script with active alerts.]
-Usage: [-s skip failed hosts.]
+Usage: [-s skip failed hosts. (this is a dangerous flag, use with caution!)]
 Usage: [-d override drain grace period in seconds.]
 Usage: [-b to perform conversion on a single host, input should be a valid ip.]
+Usage: [-p use only the the nic identifier and don't resolve pci address.]
 Usage: [-l log file will be saved to this location instead of current dir.]
 Usage: [-i path to ssh identity file.]
 Usage: [-h show this help string.]
@@ -40,9 +41,10 @@ This script allow the conversion of regular weka architecture to multiple backen
 OPTIONS:
   -f force override of backup resources file if exist
   -a run with active alerts
-  -s skip failed hosts
+  -s skip failed hosts (this is a dangerous flag, use with caution! )
   -d override drain grace period for s3 in seconds
   -b to perform conversion on a single host
+  -p use only the the nic identifier and don't resolve pci address.
   -l log file will be saved to this location instead of current dir
   -D assign drive dedicated cores (use only for on-prem deployment, this will override pinned cores)
   -F assign frontend dedicated cores (use only for on-prem deployment, this will override pinned cores)
@@ -54,7 +56,7 @@ EOF
 exit
 }
 
-while getopts "hfasd:b:Sl:VC:D:F:m:i:kOv" o; do
+while getopts "hfasd:b:Sl:VC:D:F:m:i:kOvpr" o; do
     case "${o}" in
         f)
             FORCE='--force'
@@ -120,6 +122,13 @@ while getopts "hfasd:b:Sl:VC:D:F:m:i:kOv" o; do
         v)
             FORCE_VF_ON_RG="--allocate-nics-exclusively "
             echo "Option -v will force resources generator to use nics as VFs"
+            ;;
+        p)
+            USE_ONLY_NIC_IDENTIFIER="--use-only-nic-identifier "
+            echo  "-p use only the the nic identifier and don't resolve pci address."
+            ;;
+        r)
+            REMOVE_DEFAULT_CONTAINER="--remove-old-container"
             ;;
         h)
             usage
@@ -226,8 +235,8 @@ if [ -w $LOG ]; then
 fi
 
 NOTICE "VERIFYING WEKA AGENT"
-WEKAVERIFY=$($SUDO lsmod | grep -i weka)
-if [ -z "$WEKAVERIFY" ]; then
+if ! command -v weka &> /dev/null
+then
   BAD "Weka is NOT installed on host or the container is down, cannot continue."
   exit 1
 fi
@@ -266,7 +275,6 @@ NOTICE "VERIFYING WEKA LOCAL CONTAINER STATUS"
 CONSTATUS=$($SUDO weka local ps --no-header -o name,running | grep -i default | awk '{print $2}')
 if [ "$CONSTATUS" == "False" ]; then
   BAD "Weka local container is down cannot continue."
-  exit
 else
   GOOD "Weka local container is running."
 fi
@@ -397,8 +405,8 @@ fi
 NOTICE "======================================
 EXECUTING CONVERSION TO MBC ON HOST $1
 ======================================"
-NOTICE "RUNNING COMMAND: $DIR/mbc_divider_script.py $AWS $FORCE $DRAIN_TIMEOUT $DRIVE_CORES $COMPUTE_CORES $FRONTEND_CORES $LIMIT_MEMORY $KEEP_S3_UP_FLAG $FORCE_CONTINUE_WITHOUT_REAL_DRAIN $FORCE_VF_ON_RG"
-$SSH "$1" "$DIR/mbc_divider_script.py $AWS $FORCE $DRAIN_TIMEOUT $DRIVE_CORES $COMPUTE_CORES $FRONTEND_CORES $LIMIT_MEMORY $KEEP_S3_UP_FLAG $FORCE_CONTINUE_WITHOUT_REAL_DRAIN $FORCE_VF_ON_RG" 2>&1 | tee -a ${LOG}
+NOTICE "RUNNING COMMAND: $DIR/mbc_divider_script.py $AWS $FORCE $DRAIN_TIMEOUT $DRIVE_CORES $COMPUTE_CORES $FRONTEND_CORES $LIMIT_MEMORY $KEEP_S3_UP_FLAG $FORCE_CONTINUE_WITHOUT_REAL_DRAIN $FORCE_VF_ON_RG $USE_ONLY_NIC_IDENTIFIER $REMOVE_DEFAULT_CONTAINER"
+$SSH "$1" "$DIR/mbc_divider_script.py $AWS $FORCE $DRAIN_TIMEOUT $DRIVE_CORES $COMPUTE_CORES $FRONTEND_CORES $LIMIT_MEMORY $KEEP_S3_UP_FLAG $FORCE_CONTINUE_WITHOUT_REAL_DRAIN $FORCE_VF_ON_RG $USE_ONLY_NIC_IDENTIFIER $REMOVE_DEFAULT_CONTAINER" 2>&1 | tee -a ${LOG}
 if [ "${PIPESTATUS[0]}" != "0" ]; then
     BAD "UNABLE TO CONVERT HOST $1"
     return 1
@@ -468,10 +476,18 @@ if [ -z "$BACKEND" ]; then
       if [ "$SKIP_FAILED" -ne '1' ]; then
         WARN "FAILED converting $HOST, exiting. For more information refer to the log at $LOG"
         exit 1
+      else
+        weka status
+        WARN "FAILED converting $HOST"
+        read -p "do you wish to continue? (yes/no)" CONTINUE
+        if [ "$CONTINUE" != "yes" ]; then
+          WARN "EXITING"
+          exit 1
+        fi
       fi
     fi
   done
-  NOTICE "Done converting cluster to MBC"
+  NOTICE "Done converting cluster to MBC, please clean up the unconnected default container"
 else
   _distribute "$BACKEND"
   ret_val=$?
@@ -479,6 +495,14 @@ else
     if [ "$SKIP_FAILED" -ne '1' ]; then
       WARN "FAILED converting $BACKEND, exiting. For more information refer to the log at $LOG"
       exit 1
+    else
+      weka status
+      WARN "FAILED converting $HOST"
+      read -p "do you wish to continue? (yes/no)" CONTINUE
+      if [ "$CONTINUE" != "yes" ]; then
+        WARN "EXITING"
+        exit 1
+      fi
     fi
   fi
   NOTICE "Done converting $BACKEND to MBC"

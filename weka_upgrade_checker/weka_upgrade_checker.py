@@ -23,6 +23,7 @@ if sys.version_info < (3, 8):
 
 pg_version = "1.3.3"
 
+
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
 
 logging.basicConfig(handlers=[logging.FileHandler(filename=log_file_path, encoding='utf-8', mode='w')],
@@ -1582,6 +1583,7 @@ def client_web_test(results):
 def invalid_endpoints(host_name, result, backend_ips):
     result = result.replace(', ]}]', ']}]').replace('container', '"container"').replace(
             ' ip:', '"ip":').replace(' {', ' "').replace('},', '",')
+
 
     result = result.split('\n')[:]
 

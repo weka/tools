@@ -114,6 +114,9 @@ def wait_for_healthy_cluster(print_healthy=True):
         if not check_active_equals_total(status["hosts"]["backends"]):
             log("Not all backend hosts are active")
             continue
+        if not check_active_equals_total(status["buckets"]):
+            log("Not all backend buckets are up")
+            continue
 
         if print_healthy:
             wait_end = datetime.now()
@@ -123,7 +126,7 @@ def wait_for_healthy_cluster(print_healthy=True):
         break
 
 
-def upgrade_flow(target_version, ssh_identity=None, container_name=None, skip_health_checks=False, skip_prepare_upgrade=False, skip_local_start=False):
+def upgrade_flow(target_version, ssh_identity=None, container_name=None, skip_health_checks=False, skip_unhealthy_checks=False, skip_prepare_upgrade=False, skip_local_start=False):
     # TODO: Ask the user if we distributed the version
 
     timestamp = get_timestamp()
@@ -238,33 +241,36 @@ def upgrade_flow(target_version, ssh_identity=None, container_name=None, skip_he
             ssh_unchecked_call("weka", "version", "set", target_version,)
         else:
             ssh_unchecked_call("weka", "version", "set", target_version, "-C", container_name,)
-        try:
-            ssh_call("weka", "local", "start")
-        except Exception:
-            log("Failed to weka version start, renaming back, starting back up and bailing out...")
-            ssh_call("mv",
-                     "/opt/weka/data/%s_%s" % (container_name, target_version,),
-                     "/opt/weka/data/%s_%s" % (container_name, source_version,))
-            if container_name == 'default':
-                ssh_unchecked_call(("weka", "version", "set", source_version,))
-            else:
-                ssh_unchecked_call("weka", "version", "set", source_version, "-C", container_name, )
-
-            if not skip_local_start:
-                ssh_call("weka", "local", "start", container_name,)
-            raise
-
         if skip_local_start:
-            log("NOT starting containers on %s because --skip-local-start" % (hostname, ))
+            log("NOT starting containers on %s because --skip-local-start" % (hostname,))
         else:
-            log("Starting containers on %s" % (hostname, ))
-            ssh_call("weka", "local", "start", container_name,)
-            log("Started containers on %s" % (hostname, ))
+            try:
+                log("Starting containers on %s" % (hostname,))
+                ssh_call("weka", "local", "start", container_name, )
+                log("Started containers on %s" % (hostname,))
+            except Exception:
+                log("Failed to weka version start, renaming back, starting back up and bailing out...")
+                ssh_call("mv",
+                         "/opt/weka/data/%s_%s" % (container_name, target_version,),
+                         "/opt/weka/data/%s_%s" % (container_name, source_version,))
+                if container_name == 'default':
+                    ssh_unchecked_call(("weka", "version", "set", source_version,))
+                else:
+                    ssh_unchecked_call("weka", "version", "set", source_version, "-C", container_name, )
+
+                if not skip_local_start:
+                    ssh_call("weka", "local", "start", container_name,)
+                raise
+
 
         upgraded_hosts += 1
         if not skip_health_checks:
         # We first want to see the cluster as unhealthy before we wait for it to become healthy
-            wait_for_unhealthy_cluster()
+            if not skip_unhealthy_checks:
+                wait_for_unhealthy_cluster()
+            else:
+                time.sleep(10)
+
             wait_for_healthy_cluster()
 
         wait_end = datetime.now()
@@ -280,21 +286,25 @@ def main():
     parser.add_argument('target_version', type=str, help='The target version')
     parser.add_argument('-i', dest='ssh_identity', type=str, help='SSH identity to pass to ssh -i')
     parser.add_argument('-c', dest='container_name', type=str, help='in order to rolling upgrade just one container')
-    parser.add_argument('-s', dest='skip_health_checks', type=bool, default=False,
+    parser.add_argument('-s', dest='skip_health_checks', action='store_true',
                         help='WARNING: DON\'T USE THIS OPTION UNLESS YOU REALLY NEED TO. '
                              'if cluster is unhealthy, don\'t wait for rebuilds, and health checks')
-    parser.add_argument('--skip-prepare-upgrade', dest='skip_prepare_upgrade', type=bool, default=False,
+    parser.add_argument('--skip-unhealthy-checks', dest='skip_unhealthy_checks', action='store_true',
+                        help='WARNING: DON\'T USE THIS OPTION UNLESS YOU REALLY NEED TO. '
+                             'don\'t wait for cluster to become unhealthy before waiting for cluster to become ready'
+                             'this is useful for compute rolling upgrade')
+    parser.add_argument('--skip-prepare-upgrade', dest='skip_prepare_upgrade', action='store_true',
                         help='Do not ask the driver to prepare for the upgrade and wait for in-flight ops')
-    parser.add_argument('--skip-local-start', dest='skip_local_start', type=bool, default=False,
+    parser.add_argument('--skip-local-start', dest='skip_local_start', action='store_true',
                         help='Do not "weka local start" in the new version')
 
 
     args = parser.parse_args()
-    upgrade(args.target_version, args.ssh_identity, args.container_name, args.skip_health_checks, args.skip_prepare_upgrade, args.skip_local_start)
+    upgrade(args.target_version, args.ssh_identity, args.container_name, args.skip_health_checks, args.skip_unhealthy_checks, args.skip_prepare_upgrade, args.skip_local_start)
 
-def upgrade(target_version, ssh_identity=None, container_name=None, skip_health_checks=False, skip_prepare_upgrade=False, skip_local_start=False):
+def upgrade(target_version, ssh_identity=None, container_name=None, skip_health_checks=False, skip_unhealthy_checks=False, skip_prepare_upgrade=False, skip_local_start=False):
     wait_start = datetime.now()
-    upgraded_hosts, skipped_hosts = upgrade_flow(target_version, ssh_identity, container_name, skip_health_checks, skip_prepare_upgrade, skip_local_start)
+    upgraded_hosts, skipped_hosts = upgrade_flow(target_version, ssh_identity, container_name, skip_health_checks, skip_unhealthy_checks, skip_prepare_upgrade, skip_local_start)
 
     wait_end = datetime.now()
     wait_delta = wait_end - wait_start

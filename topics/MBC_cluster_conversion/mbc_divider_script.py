@@ -11,6 +11,7 @@ import argparse
 from time import sleep, time
 import re
 from urllib import request, error
+from socket import timeout
 from concurrent.futures import ThreadPoolExecutor
 from resources_generator import GiB
 
@@ -29,10 +30,7 @@ def setup_logger():
 
 
 def run_shell_command(command, no_fail=False):
-    if dry_run:
-        logger.warning('dry_run, not running: {}'.format(command))
-        return 0
-
+    logger.info('running: {}'.format(command))
     process = subprocess.Popen(shlex.split(command), stdout=subprocess.PIPE)
     output, stderr = process.communicate()
     if process.returncode != 0:
@@ -55,6 +53,8 @@ def is_aws():
                 request.urlopen("http://169.254.169.254/2016-09-02/meta-data/", timeout=(1 + i) * init_timeout).read()
                 return True
             except error.URLError:
+                pass
+            except timeout:
                 pass
             return False
 
@@ -194,16 +194,16 @@ def wait_for_s3_container(sudo):
             break
 
 
-def wait_for_nodes_to_be_down(containerId, sudo):
+def wait_for_nodes_to_be_down(container_id,):
     retries = 90
-    nodes_command = '/bin/sh -c "{}weka cluster nodes --host {} -J"'.format(sudo, containerId)
+    nodes_command = '/bin/sh -c "weka cluster nodes --host {} -J"'.format(container_id)
     nodes_output = {}
     nodes_output = json.loads(run_shell_command(nodes_command))
     nodes_list = []
     for node in nodes_output:
         nodes_list.append(node['node_id'])
     logger.debug('Waiting for nodes {} to reach DOWN state'.format(
-        nodes_list)) # TODO: strip from NodeId?
+        nodes_list))  # TODO: strip from NodeId?
 
     notDownNodes = []
     for i in range(retries):
@@ -239,6 +239,32 @@ def wait_for_container_to_be_ready(container_type, sudo):
         local_status = json.loads(run_shell_command(status_command))
         if local_status[container_type.container_name()]['status']['internalStatus']['state'] == 'READY':
             break
+
+def wait_for_host_deactivate(host_id):
+    get_host_from_hosts_list_cmd = '/bin/sh -c "weka cluster host {} -J"'.format(host_id)
+    logger.info('Waiting for host to deactivate')
+    retries = 60
+    for i in range(retries):
+        host_row = json.loads(run_shell_command(get_host_from_hosts_list_cmd))
+        if host_row[0]['status'] == 'INACTIVE':
+            return
+        sleep(1)
+
+    logger.error('host {} did not reach inactive status'.format(host_id))
+
+def wait_for_buckets_redistribution():
+    get_buckets_status_cmd = '/bin/sh -c "weka status -J"'
+    retries = 60
+    logger.info('Waiting for buckets redistribution')
+    for i in range(retries):
+        weka_status = json.loads(run_shell_command(get_buckets_status_cmd))
+        buckets = weka_status["buckets"]
+        if buckets["active"] == buckets["total"]:
+            return
+        sleep(2)
+
+    logger.info('Some buckets have not redistributed yet')
+    exit(1)
 
 
 def s3_has_active_ios(host_id):
@@ -305,6 +331,11 @@ def main():
                         help=argparse.SUPPRESS)
     parser.add_argument("--allocate-nics-exclusively", action='store_true', dest='allocate_nics_exclusively',
                         help="Set one unique net device per each io node, relevant when using virtual functions (VMware, KVM etc.)")
+    parser.add_argument("--use-only-nic-identifier", action='store_true', dest='use_only_nic_identifier',
+                        help="use only the nic identifier when allocating the nics")
+    parser.add_argument("--remove-old-container", action='store_true', dest='remove_old_container',
+                        help=argparse.SUPPRESS)
+
     args = parser.parse_args()
     global dry_run
     dry_run = args.dry_run
@@ -335,12 +366,13 @@ def main():
     else:
         logger.warning("Weka is not installed on this server, skipping")
         exit(0)
+    #  TODO: maybe: check mounts for every container
     local_status_cmd = '/bin/sh -c "{}weka local status -J"'.format(sudo)
     status = json.loads(run_shell_command(local_status_cmd))
     if status[container_name]['mount_points']:
         logger.warning("This server has an active WekaFS mount, please unmount before continuing")
         exit(1)
-
+    # TODO: for new script generate backup with datetime
     backup_file_name = os.path.abspath('resources.json.backup')
     if os.path.exists(backup_file_name) and not args.force:
         logger.warning("Backup resources file {} already exists, will not override it".format(backup_file_name))
@@ -365,6 +397,8 @@ def main():
     frontend_cores = args.frontend_dedicated_cores
     drive_cores = args.drive_dedicated_cores
     old_failure_domain = prev_resources['failure_domain']
+    # TODO: new script convert to manual FD
+    # TODO: add enforcement for manual FD
     memory = prev_resources['memory']
     if args.limit_maximum_memory:
         memory = int(args.limit_maximum_memory * GiB)
@@ -398,16 +432,16 @@ def main():
     if len(prev_resources['backend_endpoints']) < 1:
         logger.warning('The host\'s resources are missing the backend endpoints, is this host part of a Weka cluster?')
         exit(1)
+
     network_devices = []
 
-    get_host_list = '/bin/sh -c "weka cluster host -b -J"'
-    weka_hosts_list = json.loads(run_shell_command(get_host_list))
     get_net_cmd = '/bin/sh -c "weka cluster host net {} -J"'.format(current_host_id)
     net_devs = json.loads(run_shell_command(get_net_cmd))
     for netDev in net_devs:
         network_devices.append(NetDev(netDev['name'], netDev['identifier'], netDev['gateway'], netDev['netmask_bits'],
                                       list(set(netDev['ips'])), netDev['net_devices'][0]['mac_address']))
         logger.debug("Adding net devices: {}".format(network_devices[-1].to_cmd()))
+    # TODO: not lose network label
 
     retries = 180  # sleeps should be 1 second each, so this is a "timeout" of 180s
     # S3 check
@@ -563,6 +597,8 @@ def main():
             break
         sleep(1)
 
+    get_host_list = '/bin/sh -c "weka cluster host -b -J"'
+    weka_hosts_list = json.loads(run_shell_command(get_host_list))
     join_ips_list = []
     for host in weka_hosts_list:
         # If this is the host we're currently open, skip adding it to join-ips
@@ -604,22 +640,24 @@ def main():
         drive_cores_cmd += ' --drive-core-ids '
         for core_id in pinned_drive_cores:
             drive_cores_cmd += str(core_id) + ' '
-    frontend_cores_cmd = ' --frontend-dedicated-cores {}'.format(frontend_cores) if (frontend_cores > 0) else ''
+    frontend_cores_cmd = ' --frontend-dedicated-cores {}'.format(frontend_cores)
     if len(pinned_frontend_cores):
         frontend_cores_cmd += ' --frontend-core-ids '
         for core_id in pinned_frontend_cores:
             frontend_cores_cmd += str(core_id) + ' '
-    allocate_nics_exclusively = " --allocate-nics-exclusively" if args.allocate_nics_exclusively is True else ""
-    use_auto_fd = " --use-auto-failure-domain" if not old_failure_domain else ""
+    allocate_nics_exclusively = ' --allocate-nics-exclusively' if args.allocate_nics_exclusively is True else ''
+    use_auto_fd = ' --use-auto-failure-domain' if not old_failure_domain else ''
     memory_cmd = ' --weka-hugepages-memory ' + str(memory) + 'B' if memory else ''
-    resource_generator_command = '/bin/sh -c "/tmp/resources_generator.py --net {}{}{}{}{}{}{} -f"'.format(
+    use_only_identifier = ' --use-only-nic-identifier' if args.use_only_nic_identifier else ''
+    resource_generator_command = '/bin/sh -c "/tmp/resources_generator.py --net {}{}{}{}{}{}{}{} -f"'.format(
         all_net,
         compute_cores_cmd,
         drive_cores_cmd,
         frontend_cores_cmd,
         memory_cmd,
         use_auto_fd,
-        allocate_nics_exclusively
+        allocate_nics_exclusively,
+        use_only_identifier
     )
     logger.info('Running resources-generator with cmd: {}'.format(resource_generator_command))
     run_shell_command(resource_generator_command)
@@ -627,17 +665,16 @@ def main():
     path_to_huge = '/opt/weka/data/agent/containers/state/{}/huge'.format(container_name)
     path_to_huge1g = '/opt/weka/data/agent/containers/state/{}/huge1G'.format(container_name)
     if os.path.exists(path_to_huge) or os.path.exists(path_to_huge1g):
-        find_and_remove_cmd = '/bin/sh -c "{}find {}* -name weka_* -delete"'.format(sudo, path_to_huge)
+        find_and_remove_cmd = '/bin/sh -c "{}find {}* -name weka_\* -delete"'.format(sudo, path_to_huge)
         run_shell_command(find_and_remove_cmd)
     logger.info('Starting new containers')
 
-    # TODO: We should start container in order: drives, compute, frontend
     for container_type in ContainerType:
         if container_type == ContainerType.FRONTEND:
             if frontend_cores == 0:
                 continue
             elif args.keep_s3_up:
-                logger.info("Appling resources of type {} on container {}".format(container_type, container_name))
+                logger.info("Applying resources of type {} on container {}".format(container_type, container_name))
                 import_resources_command = '/bin/sh -c "{}weka local resources import {} -C {} -f"'.format(
                     sudo,
                     container_type.json_name(),
@@ -686,7 +723,7 @@ def main():
                     run_shell_command(undrain_s3_cmd)
                 continue
 
-        setup_host_command = '/bin/sh -c "{}weka local setup host --name={} --resources-path={} {} {} {} --disable"'.format(
+        setup_host_command = '/bin/sh -c "{}weka local setup host --timeout 10m --name={} --resources-path={} {} {} {} --disable"'.format(
             sudo,
             container_type.container_name(),
             container_type.json_name(),
@@ -708,7 +745,7 @@ def main():
                         continue
                     server_info = json.loads(run_shell_command(get_host_id_command))
                     new_drive_host_id = server_info['hostIdValue']
-                    wait_for_nodes_to_be_down(current_host_id, sudo)
+                    wait_for_nodes_to_be_down(current_host_id)
                     #safe_drive_scan assumes that all old nodes are down
                     safe_drive_scan(new_drive_host_id, current_host_id)
                     logger.info('Done scanning drives')
@@ -761,17 +798,24 @@ def main():
                     if ig[2]:
                         nfs_legacy = True
 
-    logger.info('Starting cleanup: The old container will be removed locally and from the cluster')
-    if not args.keep_s3_up:
-        container_delete_command = '/bin/sh -c "{}weka local rm {} -f"'.format(sudo, container_name)
-        run_shell_command(container_delete_command)
-        host_deactivate_command = '/bin/sh -c "weka cluster host deactivate {}"'.format(current_host_id)
-        run_shell_command(host_deactivate_command)
-        host_remove_command = '/bin/sh -c "weka cluster host remove {} --no-unimprint"'.format(current_host_id)
-        run_shell_command(host_remove_command)
-
+    wait_for_buckets_redistribution()
     container_enable_command = '/bin/sh -c "{}weka local enable"'.format(sudo)
     run_shell_command(container_enable_command)
+
+    logger.info('Starting cleanup: The old container will be removed locally and removed from the cluster')
+    if not args.keep_s3_up:
+        container_disable_command = '/bin/sh -c "{}weka local disable {} "'.format(sudo, container_name)
+        run_shell_command(container_disable_command)
+        host_deactivate_command = '/bin/sh -c "weka cluster host deactivate {}"'.format(current_host_id)
+        run_shell_command(host_deactivate_command)
+        wait_for_host_deactivate(current_host_id)
+        host_remove_command = '/bin/sh -c "weka cluster host remove {} --no-unimprint"'.format(current_host_id)
+        run_shell_command(host_remove_command)
+        logger.info('the old container {} is disabled and stopped, please remove it after the conversion is done'.format(container_name))
+        if args.remove_old_container:
+            container_rm_command = '/bin/sh -c "{}weka local rm {} -f"'.format(sudo, container_name)
+            run_shell_command(container_rm_command)
+
     for ct in ContainerType:
         if os.path.exists(ct.json_name()):
             os.remove(ct.json_name())
