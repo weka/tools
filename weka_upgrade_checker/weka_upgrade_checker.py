@@ -766,6 +766,26 @@ def weka_cluster_checks():
         WARN(f'The following Drives are not Active\n')
         printlist(bad_drive, 5)
 
+    if V("4.0") <= V(weka_version) < V("4.2.1"):
+        INFO("VERIFYING DRIVES CONFIGURATION")
+        weka_drives = json.loads(subprocess.check_output(["weka", "debug", "config", "show", "disks"]))
+        fake_drives = []
+        for disk_id, drive in weka_drives.items():
+            target_state = drive['_targetState']['state']
+            committed_state = drive['_committedState']['state']
+            lastPhaseoutGeneration = drive['lastPhaseOutGeneration']
+            lastPhaseOutSizeB = drive['lastPhaseOutSizeB']
+            sizeB = drive['sizeB']
+            if target_state == "INACTIVE" and lastPhaseoutGeneration == "ConfigGeneration<1>" and lastPhaseOutSizeB != sizeB:
+                fake_drives.append(dict(disk_id=disk_id, committed_state=committed_state, target_state=target_state, lastPhaseOutSizeB=lastPhaseOutSizeB, sizeB=sizeB))
+
+        if not fake_drives:
+            GOOD(f'✅ All drives configurations are valid')
+        else:
+            WARN(f'The following Drives have an invalid configuration, which requires addressing before upgrading to V4.2\n')
+            for fake_drive in fake_drives:
+                WARN("⚠️  {disk_id} {committed_state}=>{target_state} lastPhaseOutSizeB={lastPhaseOutSizeB} sizeB={sizeB}".format(**fake_drive))
+
     INFO("VERIFYING WEKA TRACES STATUS")
     if V(weka_version) >= V("3.10"):
         weka_traces = json.loads(subprocess.check_output(["weka", "debug", "traces", "status", "-J"]))
