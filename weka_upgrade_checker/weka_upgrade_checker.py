@@ -1375,7 +1375,9 @@ def check_os_release(host_name, result, weka_version, check_version, backend=Tru
         else:
             version = dict_info['VERSION']
 
-        if backend:
+        if dict_info['ID'] not in supported_os[check_version]['backends_clients']:
+            BAD(f'{" " * 5}❌ Host {host_name} OS {dict_info["ID"]} is not recognized')
+        elif backend:
             if version not in supported_os[check_version]['backends_clients'][dict_info['ID']]:
                 BAD(f'{" " * 5}❌ Host {host_name} OS {dict_info["ID"]} {version} is not supported with ' +
                     f'weka version {weka_version}')
