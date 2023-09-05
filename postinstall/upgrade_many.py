@@ -193,6 +193,39 @@ def upgrade_flow(target_version, ssh_identity=None, container_name=None, skip_he
             log("Running '%s' on %s via ssh (allow failure)" % (' '.join(str(x) for x in args), ip))
             subprocess.call(ssh_args(args))
 
+        def ssh_call_with_output(*args):
+            log("Running '%s' on %s (%s) via ssh, capturing output" % (
+            ' '.join(str(x) for x in args), hostname, ip))
+            return subprocess.check_output(ssh_args(args))
+
+        def container_has_drives():
+            try:
+                resources = json.loads(ssh_call_with_output("weka", "local", "resources", "-C", container_name, "-J"))
+                for slot in resources['nodes']:
+                    if "DRIVES" in resources['nodes'][slot]['roles']:
+                        return True
+            except subprocess.CalledProcessError as ex:
+                log("Couldn't query resources of %s:%s, assuming there are no drive nodes on it, %s" %
+                    (hostname, container_name, ex.__str__()))
+            return False
+
+        def set_agent_version_if_all_container_are_in_target_version():
+            try:
+                containers = json.loads(ssh_call_with_output("weka", "local", "ps", "-J"))
+                all_weka_containers_are_in_target_version = True
+                for container in containers:
+                    if container["type"] == "weka" and container["versionName"] != target_version:
+                        all_weka_containers_are_in_target_version = False
+
+                if all_weka_containers_are_in_target_version:
+                    log("All weka containers are in the target version, setting agent version")
+                    ssh_unchecked_call("weka", "version", "set", target_version, "--allow-running-containers")
+                else:
+                    log("Not all weka containers are in the target version, not setting agent version")
+            except subprocess.CalledProcessError as ex:
+                log("Failed setting agent version %s for host %s, with error: %s" % (target_version, hostname, ex.__str__(), ))
+
+
         wait_start = datetime.now()
 
         # This yields incorrect versions in MBC, when each container runs different versions
@@ -262,11 +295,12 @@ def upgrade_flow(target_version, ssh_identity=None, container_name=None, skip_he
                     ssh_call("weka", "local", "start", container_name,)
                 raise
 
+        set_agent_version_if_all_container_are_in_target_version()
 
         upgraded_hosts += 1
         if not skip_health_checks:
         # We first want to see the cluster as unhealthy before we wait for it to become healthy
-            if not skip_unhealthy_checks:
+            if not skip_unhealthy_checks and container_has_drives():
                 wait_for_unhealthy_cluster()
             else:
                 time.sleep(10)
