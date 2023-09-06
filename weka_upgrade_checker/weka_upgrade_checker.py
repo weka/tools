@@ -21,7 +21,7 @@ if sys.version_info < (3, 7):
     print("Must have python version 3.7 or later installed.")
     sys.exit(1)
 
-pg_version = "1.3.3"
+pg_version = "1.3.4"
 
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
