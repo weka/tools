@@ -26,6 +26,7 @@ def main():
     print(f"  {', '.join(drive['disk_id'] for drive in fake_drives)}", file=sys.stderr)
     print()
     print(f"Make sure to back up the configuration json file before running the following commands", file=sys.stderr)
+    print(f"To backup weka config use sudo weka local run --container drives0 /weka/cfgdump > weka_config", file=sys.stderr)
     for drive in fake_drives:
         disk_id = parse_disk_id(drive["disk_id"])
         print(f"weka debug config override disks[{disk_id}].lastPhaseOutSizeB {drive['sizeB']}")
