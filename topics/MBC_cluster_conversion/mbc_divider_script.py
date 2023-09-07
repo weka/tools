@@ -266,6 +266,33 @@ def wait_for_buckets_redistribution():
     logger.info('Some buckets have not redistributed yet')
     exit(1)
 
+def prompt_user_input():
+    # Portable python2/3 input
+    try:
+        get_input = raw_input
+    except NameError:
+        get_input = input
+
+    return get_input().strip().lower()
+def interactive_mode_wait_for_input(should_wait_for_input, step):
+    # This is for whitebox testing of the script, in each step we will wait until the user ask to continue
+    if should_wait_for_input:
+        logger.info("")
+        logger.info("===============================================================================================")
+        logger.info("==========   INTERACTIVE MODE STOPPED AT STEP: {} =============".format(step))
+        logger.info("===============================================================================================")
+        logger.info("")
+        while True:
+            logger.info("Do you wish to continue? [y]es, [n]o")
+            input = prompt_user_input()
+            if input in ("y", "yes",):
+                break
+            elif input in ("n", "no",):
+                logger.warning("Exiting due to user request")
+                exit(1)
+            else:
+                logger.info("Invalid input, please try again")
+
 
 def s3_has_active_ios(host_id):
     validate_drain_s3_cmd = '/bin/sh -c "weka debug jrpc container_get_drain_status hostId={}"'.format(host_id)
@@ -335,6 +362,8 @@ def main():
                         help="use only the nic identifier when allocating the nics")
     parser.add_argument("--remove-old-container", action='store_true', dest='remove_old_container',
                         help=argparse.SUPPRESS)
+    parser.add_argument("--interactive", "-i", action='store_true', dest='interactive',
+                        help=argparse.SUPPRESS)
 
     args = parser.parse_args()
     global dry_run
@@ -347,6 +376,8 @@ def main():
     sudo = ''
     if not is_root:
         sudo = 'sudo '
+
+    interactive_mode_wait_for_input(args.interactive, "PRECONVERSION CHECKS")
 
     local_ps_cmd = '/bin/sh -c "{}weka local ps -J"'.format(sudo)
     ps = json.loads(run_shell_command(local_ps_cmd))
@@ -489,6 +520,8 @@ def main():
                         .format(len(ig['ports'])))
                     exit(1)
 
+    interactive_mode_wait_for_input(args.interactive and len(protocols_in_host) > 0, "PROTOCOLS REMOVAL")
+
     # S3 drain and removal
     if host_id_str in s3_status:
         if not all(status for status in s3_status.values()):
@@ -622,6 +655,9 @@ def main():
             mgmt_ips_list = host['ips']
     management_ips = '--management-ips=' + ','.join(mgmt_ips_list)
     logger.info('Management IPs selected: {}'.format(management_ips))
+
+    interactive_mode_wait_for_input(args.interactive, "STOPPING CONTAINER")
+
     logger.info('Stopping old container')
     stop_container_cmd = '/bin/sh -c "{}weka local stop"'.format(sudo)
     run_shell_command(stop_container_cmd)
@@ -649,6 +685,9 @@ def main():
     use_auto_fd = ' --use-auto-failure-domain' if not old_failure_domain else ''
     memory_cmd = ' --weka-hugepages-memory ' + str(memory) + 'B' if memory else ''
     use_only_identifier = ' --use-only-nic-identifier' if args.use_only_nic_identifier else ''
+
+    interactive_mode_wait_for_input(args.interactive, "RUNNING RESOURCES GENERATOR")
+
     resource_generator_command = '/bin/sh -c "/tmp/resources_generator.py --net {}{}{}{}{}{}{}{} -f"'.format(
         all_net,
         compute_cores_cmd,
@@ -664,12 +703,16 @@ def main():
     logger.info('Releasing old hugepages allocation')
     path_to_huge = '/opt/weka/data/agent/containers/state/{}/huge'.format(container_name)
     path_to_huge1g = '/opt/weka/data/agent/containers/state/{}/huge1G'.format(container_name)
+
+    interactive_mode_wait_for_input(args.interactive, "RELEASING HUGEPAGES")
+
     if os.path.exists(path_to_huge) or os.path.exists(path_to_huge1g):
         find_and_remove_cmd = '/bin/sh -c "{}find {}* -name weka_\* -delete"'.format(sudo, path_to_huge)
         run_shell_command(find_and_remove_cmd)
     logger.info('Starting new containers')
 
     for container_type in ContainerType:
+        interactive_mode_wait_for_input(args.interactive, "STARTING CONTAINER {}".format(container_type.name))
         if container_type == ContainerType.FRONTEND:
             if frontend_cores == 0:
                 continue
@@ -736,6 +779,7 @@ def main():
         run_shell_command(setup_host_command)
         status_command = '/bin/sh -c "{}weka local status -J"'.format(sudo)
         if container_type == ContainerType.DRIVE:
+            interactive_mode_wait_for_input(args.interactive, "MOVE DISKS TO NEW DRIVES CONTAINER")
             wait_for_container_to_be_ready(ContainerType.DRIVE, sudo)
             for i in range(retries):
                 sleep(1)
@@ -754,6 +798,7 @@ def main():
                 except Exception as e:
                     logger.error("Error querying container status and invoking scan: {}".format(str(e)))
 
+    interactive_mode_wait_for_input(args.interactive, "ADD PROTOCOLS TO NEW FRONTEND CONTAINER")
 
     if protocols_in_host:
         wait_for_container_to_be_ready(ContainerType.FRONTEND, sudo)
@@ -802,6 +847,7 @@ def main():
     container_enable_command = '/bin/sh -c "{}weka local enable"'.format(sudo)
     run_shell_command(container_enable_command)
 
+    interactive_mode_wait_for_input(args.interactive, "CLEANUP")
     logger.info('Starting cleanup: The old container will be removed locally and removed from the cluster')
     if not args.keep_s3_up:
         container_disable_command = '/bin/sh -c "{}weka local disable {} "'.format(sudo, container_name)

@@ -51,12 +51,13 @@ OPTIONS:
   -C assign compute dedicated cores (use only for on-prem deployment, this will override pinned cores)
   -m override max memory memory assignment after conversion (value should be given in GiB
   -i path to ssh identity file.
+  -I interactive mode (only for testing)
   -h show this help string
 EOF
 exit
 }
 
-while getopts "hfasd:b:Sl:VC:D:F:m:i:kOvpr" o; do
+while getopts "hfasd:b:Sl:VC:D:F:m:i:kOvprI" o; do
     case "${o}" in
         f)
             FORCE='--force'
@@ -126,6 +127,10 @@ while getopts "hfasd:b:Sl:VC:D:F:m:i:kOvpr" o; do
         p)
             USE_ONLY_NIC_IDENTIFIER="--use-only-nic-identifier "
             echo  "-p use only the the nic identifier and don't resolve pci address."
+            ;;
+        I)
+            INTERACTIVE_MODE="--interactive "
+            echo  "-I interactive mode (only for testing) will stop at every conversion step and wait for user input"
             ;;
         r)
             REMOVE_DEFAULT_CONTAINER="--remove-old-container"
@@ -405,8 +410,8 @@ fi
 NOTICE "======================================
 EXECUTING CONVERSION TO MBC ON HOST $1
 ======================================"
-NOTICE "RUNNING COMMAND: $DIR/mbc_divider_script.py $AWS $FORCE $DRAIN_TIMEOUT $DRIVE_CORES $COMPUTE_CORES $FRONTEND_CORES $LIMIT_MEMORY $KEEP_S3_UP_FLAG $FORCE_CONTINUE_WITHOUT_REAL_DRAIN $FORCE_VF_ON_RG $USE_ONLY_NIC_IDENTIFIER $REMOVE_DEFAULT_CONTAINER"
-$SSH "$1" "$DIR/mbc_divider_script.py $AWS $FORCE $DRAIN_TIMEOUT $DRIVE_CORES $COMPUTE_CORES $FRONTEND_CORES $LIMIT_MEMORY $KEEP_S3_UP_FLAG $FORCE_CONTINUE_WITHOUT_REAL_DRAIN $FORCE_VF_ON_RG $USE_ONLY_NIC_IDENTIFIER $REMOVE_DEFAULT_CONTAINER" 2>&1 | tee -a ${LOG}
+NOTICE "RUNNING COMMAND: $DIR/mbc_divider_script.py $AWS $FORCE $DRAIN_TIMEOUT $DRIVE_CORES $COMPUTE_CORES $FRONTEND_CORES $LIMIT_MEMORY $KEEP_S3_UP_FLAG $FORCE_CONTINUE_WITHOUT_REAL_DRAIN $FORCE_VF_ON_RG $USE_ONLY_NIC_IDENTIFIER $REMOVE_DEFAULT_CONTAINER $INTERACTIVE_MODE"
+$SSH "$1" "$DIR/mbc_divider_script.py $AWS $FORCE $DRAIN_TIMEOUT $DRIVE_CORES $COMPUTE_CORES $FRONTEND_CORES $LIMIT_MEMORY $KEEP_S3_UP_FLAG $FORCE_CONTINUE_WITHOUT_REAL_DRAIN $FORCE_VF_ON_RG $USE_ONLY_NIC_IDENTIFIER $REMOVE_DEFAULT_CONTAINER $INTERACTIVE_MODE" 2>&1 | tee -a ${LOG}
 if [ "${PIPESTATUS[0]}" != "0" ]; then
     BAD "UNABLE TO CONVERT HOST $1"
     return 1
