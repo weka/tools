@@ -21,7 +21,7 @@ if sys.version_info < (3, 7):
     print("Must have python version 3.7 or later installed.")
     sys.exit(1)
 
-pg_version = "1.3.3"
+pg_version = "1.3.4"
 
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
@@ -782,7 +782,7 @@ def weka_cluster_checks():
         if not fake_drives:
             GOOD(f'✅ All drives configurations are valid')
         else:
-            WARN(f'The following Drives have an invalid configuration, which requires addressing before upgrading to V4.2\n')
+            WARN(f'The following Drives have an invalid configuration, please contact Weka Support prior to upgrading to V4.2\n')
             for fake_drive in fake_drives:
                 WARN("⚠️  {disk_id} {committed_state}=>{target_state} lastPhaseOutSizeB={lastPhaseOutSizeB} sizeB={sizeB}".format(**fake_drive))
 
