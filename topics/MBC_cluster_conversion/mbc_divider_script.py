@@ -659,7 +659,11 @@ def main():
     interactive_mode_wait_for_input(args.interactive, "STOPPING CONTAINER")
 
     logger.info('Stopping old container')
-    stop_container_cmd = '/bin/sh -c "{}weka local stop"'.format(sudo)
+    if args.keep_s3_up:
+        stop_container_cmd = '/bin/sh -c "{}weka local stop s3"'.format(sudo)
+        run_shell_command(stop_container_cmd)
+
+    stop_container_cmd = '/bin/sh -c "{}weka local stop {}"'.format(sudo, container_name)
     run_shell_command(stop_container_cmd)
 
     all_net = ' '
