@@ -17,11 +17,11 @@ from distutils.version import LooseVersion as V
 from itertools import chain
 from subprocess import run
 
-if sys.version_info < (3, 8):
-    print("Must have python version 3.8 or later installed.")
+if sys.version_info < (3, 7):
+    print("Must have python version 3.7 or later installed.")
     sys.exit(1)
 
-pg_version = "1.3.3"
+pg_version = "1.3.5"
 
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
@@ -30,11 +30,11 @@ logging.basicConfig(handlers=[logging.FileHandler(filename=log_file_path, encodi
                     format="%(asctime)s %(name)s:%(levelname)s:%(message)s", datefmt="%F %A %T", level=logging.INFO)
 
 if sys.stdout.encoding != 'UTF-8':
-    if sys.version_info >= (3, 8):
+    if sys.version_info >= (3, 7):
         sys.stdout.reconfigure(encoding='utf-8')
         sys.stdin.reconfigure(encoding="utf-8")
     else:
-        print("must run script using python3.8")
+        print("must run script using python3.7")
         sys.exit(1)
 
 try:
@@ -666,8 +666,7 @@ def weka_cluster_checks():
         INFO("VERIFYING UPGRADE ELIGIBILITY")
         link_type = weka_info['net']['link_layer']
         if link_type != "ETH":
-            BAD(f'❌ Upgrading to 3.14 not supported. Requires Weka to use Ethernet connectivity. Please reach ' +
-                'out to customer success on an ETA for IB support')
+            WARN(f'⚠️ Must upgrade to 3.14.3.16')
         elif ofed_downlevel:
             WARN(f'Upgrading to 3.14 requires Minimum OFED 5.1-2.5.8.0, following hosts need ofed updating\n')
             printlist(ofed_downlevel, 2)
@@ -766,6 +765,26 @@ def weka_cluster_checks():
         WARN(f'The following Drives are not Active\n')
         printlist(bad_drive, 5)
 
+    if V("4.0") <= V(weka_version) < V("4.2.1"):
+        INFO("VERIFYING DRIVES CONFIGURATION")
+        weka_drives = json.loads(subprocess.check_output(["weka", "debug", "config", "show", "disks"]))
+        fake_drives = []
+        for disk_id, drive in weka_drives.items():
+            target_state = drive['_targetState']['state']
+            committed_state = drive['_committedState']['state']
+            lastPhaseoutGeneration = drive['lastPhaseOutGeneration']
+            lastPhaseOutSizeB = drive['lastPhaseOutSizeB']
+            sizeB = drive['sizeB']
+            if target_state == "INACTIVE" and lastPhaseoutGeneration == "ConfigGeneration<1>" and lastPhaseOutSizeB != sizeB:
+                fake_drives.append(dict(disk_id=disk_id, committed_state=committed_state, target_state=target_state, lastPhaseOutSizeB=lastPhaseOutSizeB, sizeB=sizeB))
+
+        if not fake_drives:
+            GOOD(f'✅ All drives configurations are valid')
+        else:
+            WARN(f'The following Drives have an invalid configuration, please contact Weka Support prior to upgrading to V4.2\n')
+            for fake_drive in fake_drives:
+                WARN("⚠️  {disk_id} {committed_state}=>{target_state} lastPhaseOutSizeB={lastPhaseOutSizeB} sizeB={sizeB}".format(**fake_drive))
+
     INFO("VERIFYING WEKA TRACES STATUS")
     if V(weka_version) >= V("3.10"):
         weka_traces = json.loads(subprocess.check_output(["weka", "debug", "traces", "status", "-J"]))
@@ -785,7 +804,8 @@ def weka_cluster_checks():
     if V(weka_version) >= V("3.9"):
         INFO("CHECKING FOR MANUAL WEKA OVERRIDES")
         override_list = []
-        if manual_overrides := json.loads(subprocess.check_output(["weka", "debug", "override", "list", "-J"])):
+        manual_overrides = json.loads(subprocess.check_output(["weka", "debug", "override", "list", "-J"]))
+        if manual_overrides:
             WARN("Manual Weka overrides found")
             for override in manual_overrides:
                 override_list += [override['override_id'], override['key'], override['value'],
@@ -909,14 +929,14 @@ def weka_cluster_checks():
                                           stderr=subprocess.STDOUT)
 
                 if retcode == 0:
-                    if etcd_status := json.loads(subprocess.check_output(["sudo", "weka", "local", "exec",
-                                                                          "-C", "s3", "etcdctl", "endpoint",
-                                                                          "health", "--cluster", "-w", "json", ])):
-                        for status in etcd_status:
-                            if not status["health"]:
-                                WARN(f'{" " * 5}⚠️  ETCD member on {status["endpoint"]} is down')
-                            else:
-                                GOOD(f'{" " * 5}✅ ETCD members are healthy {status["endpoint"]}')
+                    etcd_status = json.loads(subprocess.check_output(["sudo", "weka", "local", "exec",
+                                                                         "-C", "s3", "etcdctl", "endpoint",
+                                                                         "health", "--cluster", "-w", "json", ]))
+                    for status in etcd_status:
+                        if not status["health"]:
+                            WARN(f'{" " * 5}⚠️  ETCD member on {status["endpoint"]} is down')
+                        else:
+                            GOOD(f'{" " * 5}✅ ETCD members are healthy {status["endpoint"]}')
                 else:
                     WARN(f'{" " * 5}⚠️  ETCD DB is not healthy or not running please contact Weka support')
 
@@ -1374,7 +1394,9 @@ def check_os_release(host_name, result, weka_version, check_version, backend=Tru
         else:
             version = dict_info['VERSION']
 
-        if backend:
+        if dict_info['ID'] not in supported_os[check_version]['backends_clients']:
+            BAD(f'{" " * 5}❌ Host {host_name} OS {dict_info["ID"]} is not recognized')
+        elif backend:
             if version not in supported_os[check_version]['backends_clients'][dict_info['ID']]:
                 BAD(f'{" " * 5}❌ Host {host_name} OS {dict_info["ID"]} {version} is not supported with ' +
                     f'weka version {weka_version}')
@@ -1512,13 +1534,11 @@ def frontend_check(host_name, result):
 def protocol_host(backend_hosts, s3_enabled):
     S3 = []
 
-    if s3_enabled := json.loads(
-            subprocess.check_output(["weka", "s3", "cluster", "-J"])
-    ):
-        if s3_enabled:
-            weka_s3 = json.loads(subprocess.check_output(["weka", "s3", "cluster", "status", "-J"]))
-            if weka_s3:
-                S3 = list(weka_s3)
+    s3_enabled = json.loads(subprocess.check_output(["weka", "s3", "cluster", "-J"]))
+    if s3_enabled:
+        weka_s3 = json.loads(subprocess.check_output(["weka", "s3", "cluster", "status", "-J"]))
+        if weka_s3:
+            S3 = list(weka_s3)
 
     weka_smb = json.loads(subprocess.check_output(["weka", "smb", "cluster", "-J"]))
     SMB = list(weka_smb['sambaHosts']) if weka_smb != [] else []
