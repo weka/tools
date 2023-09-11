@@ -23,7 +23,6 @@ if sys.version_info < (3, 7):
 
 pg_version = "1.3.5"
 
-
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
 
 logging.basicConfig(handlers=[logging.FileHandler(filename=log_file_path, encoding='utf-8', mode='w')],

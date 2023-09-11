@@ -9,16 +9,21 @@ import os
 # from pprint import pprint
 from datetime import datetime
 from os.path import exists
+
 SSH_OPTIONS = ["ssh", "-o", "LogLevel=ERROR", "-o", "UserKnownHostsFile=/dev/null", "-o", "StrictHostKeyChecking=no"]
+
 
 def get_timestamp():
     return datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
 
+
 def get_timestamp_prefix():
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
+
 def log(msg):
     print("%s LOG: %s" % (get_timestamp_prefix(), msg))
+
 
 def prompt_user_input():
     # Portable python2/3 input
@@ -34,13 +39,16 @@ def is_fully_protected(status, rebuild_status, print_rebuild_status=True):
     if rebuild_status["unavailableMiB"] != 0:
         if print_rebuild_status:
             subprocess.call(["weka", "status", "rebuild"])
-            log("Cluster has too many failures (status %s) (seen rebuilding cluster, as expected)" % (status["status"],))
+            log("Cluster has too many failures (status %s) (seen rebuilding cluster, as expected)" % (
+            status["status"],))
         return False
 
-    if any(prot["MiB"] != 0 for prot in rebuild_status["protectionState"][1:]) or rebuild_status["protectionState"][0] == 0:
+    if any(prot["MiB"] != 0 for prot in rebuild_status["protectionState"][1:]) or rebuild_status["protectionState"][
+        0] == 0:
         if print_rebuild_status:
             subprocess.call(["weka", "status", "rebuild"])
-            scrubber_rate = json.loads(subprocess.check_output(["weka", "debug", "config", "show", "clusterInfo.scrubberBytesPerSecLimit", "-J"]))
+            scrubber_rate = json.loads(subprocess.check_output(
+                ["weka", "debug", "config", "show", "clusterInfo.scrubberBytesPerSecLimit", "-J"]))
             log("Rebuilding at rate of %sMiB/sec (scrubber rate)" % (scrubber_rate / (1 << 20),));
             log("Still has failures (status %s)" % (status["status"],))
         return False
@@ -50,7 +58,7 @@ def is_fully_protected(status, rebuild_status, print_rebuild_status=True):
     return True
 
 
-def wait_for_unhealthy_cluster():
+def wait_for_rebuild_to_start():
     status_max_retries = 180
     attempts = 0
     while True:
@@ -61,7 +69,7 @@ def wait_for_unhealthy_cluster():
             rebuild_status = json.loads(subprocess.check_output(["weka", "status", "rebuild", "-J"]))
             status = json.loads(subprocess.check_output(["weka", "status", "-J"]))
 
-            should_print = attempts % 3 == 0 # Only print in some of the iterations
+            should_print = attempts % 3 == 0  # Only print in some of the iterations
             if not is_fully_protected(status, rebuild_status, print_rebuild_status=should_print):
                 log("Seen rebuilding cluster, as expected (status %s)" % (status["status"],))
                 return
@@ -90,7 +98,7 @@ def wait_for_healthy_cluster(print_healthy=True):
             status = json.loads(subprocess.check_output(["weka", "status", "-J"]))
             rebuild_status = json.loads(subprocess.check_output(["weka", "status", "rebuild", "-J"]))
 
-            should_print = attempts % 5 == 0 # Only print in some of the iterations
+            should_print = attempts % 5 == 0  # Only print in some of the iterations
             if not is_fully_protected(status, rebuild_status, print_rebuild_status=should_print):
                 continue
 
@@ -121,16 +129,18 @@ def wait_for_healthy_cluster(print_healthy=True):
         if print_healthy:
             wait_end = datetime.now()
             wait_delta = wait_end - wait_start
-            log(" === Cluster is healthy (status %s, took %s seconds) ===" % (status["status"], wait_delta.total_seconds(), ))
+            log(" === Cluster is healthy (status %s, took %s seconds) ===" % (
+            status["status"], wait_delta.total_seconds(),))
 
         break
 
 
-def upgrade_flow(target_version, ssh_identity=None, container_name=None, skip_health_checks=False, skip_unhealthy_checks=False, skip_prepare_upgrade=False, skip_local_start=False):
+def upgrade_flow(target_version, ssh_identity=None, container_name=None, skip_health_checks=False,
+                 skip_wait_for_rebuild_to_start=False, skip_prepare_upgrade=False, skip_local_start=False):
     # TODO: Ask the user if we distributed the version
 
     timestamp = get_timestamp()
-    container_filter = ["-F", "container="+container_name] if container_name is not None else []
+    container_filter = ["-F", "container=" + container_name] if container_name is not None else []
     hosts = json.loads(subprocess.check_output(["weka", "cluster", "host", "-b", "-J"] + container_filter))
 
     if container_name is None:
@@ -147,7 +157,8 @@ def upgrade_flow(target_version, ssh_identity=None, container_name=None, skip_he
         log("Querying %s at %s..." % (hostname, ip))
         source_version = ""
         if is_up:
-            machine_info = json.loads(subprocess.check_output(["weka", "debug", "jrpc", "-H", ip, "-P", str(port), "client_query_backend"]))
+            machine_info = json.loads(
+                subprocess.check_output(["weka", "debug", "jrpc", "-H", ip, "-P", str(port), "client_query_backend"]))
             source_version = machine_info['software_release']
         else:
             source_version = host["sw_release_string"]
@@ -161,18 +172,18 @@ def upgrade_flow(target_version, ssh_identity=None, container_name=None, skip_he
             wait_for_healthy_cluster(print_healthy=False)
 
         if not upgrade_all_already_checked:
-            log("Upgrade %s to %s? [y]es / [s]kip / all> " % (hostname, target_version, ))
+            log("Upgrade %s to %s? [y]es / [s]kip / all> " % (hostname, target_version,))
             i = prompt_user_input()
             if i in ("s", "skip"):
-                log("Skipping %s" % (hostname, ))
+                log("Skipping %s" % (hostname,))
                 skipped_hosts += 1
                 continue
 
-            if i in ("all", ):
-                log("Will upgrade %s and then continue to upgrade ALL of the cluster" % (hostname, ))
+            if i in ("all",):
+                log("Will upgrade %s and then continue to upgrade ALL of the cluster" % (hostname,))
                 upgrade_all_already_checked = True
             elif i not in ("y", "yes"):
-                log("Unacceptable input '%s', quitting" % (i, ))
+                log("Unacceptable input '%s', quitting" % (i,))
                 sys.exit(1)
 
         is_root = os.geteuid() == 0
@@ -183,7 +194,8 @@ def upgrade_flow(target_version, ssh_identity=None, container_name=None, skip_he
         sudo_args = ["sudo"] if should_sudo else []
         ssh_opts = SSH_OPTIONS + ssh_identity_args + [ip] + sudo_args
 
-        def ssh_args(args): return ssh_opts + list(args)
+        def ssh_args(args):
+            return ssh_opts + list(args)
 
         def ssh_call(*args):
             log("Running '%s' on %s via ssh" % (' '.join(str(x) for x in args), ip))
@@ -193,13 +205,58 @@ def upgrade_flow(target_version, ssh_identity=None, container_name=None, skip_he
             log("Running '%s' on %s via ssh (allow failure)" % (' '.join(str(x) for x in args), ip))
             subprocess.call(ssh_args(args))
 
+        def ssh_call_with_output(*args):
+            log("Running '%s' on %s (%s) via ssh, capturing output" % (
+                ' '.join(str(x) for x in args), hostname, ip))
+            return subprocess.check_output(ssh_args(args))
+
+        def container_has_drives():
+            return is_node_role_in_container("DRIVES")
+
+        def is_node_role_in_container(role):
+            max_retries = 10
+            attempts = 0
+            while True:
+                attempts += 1
+                try:
+                    resources = json.loads(
+                        ssh_call_with_output("weka", "local", "resources", "-C", container_name, "-J"))
+                    for slot in resources['nodes']:
+                        if role in resources['nodes'][slot]['roles']:
+                            return True
+                except subprocess.CalledProcessError as ex:
+                    if attempts > max_retries:
+                        log("Couldn't query resources of %s:%s after %s retrys with error: %s" %
+                            (hostname, container_name, max_retries, ex.__str__()))
+                        raise ex
+                    else:
+                        time.sleep(1)
+                return False
+
+        def set_agent_version_if_all_container_are_in_target_version():
+            try:
+                containers = json.loads(ssh_call_with_output("weka", "local", "ps", "-J"))
+                all_weka_containers_are_in_target_version = True
+                for container in containers:
+                    if container["type"] == "weka" and container["versionName"] != target_version:
+                        all_weka_containers_are_in_target_version = False
+
+                if all_weka_containers_are_in_target_version:
+                    log("All weka containers are in the target version, setting agent version")
+                    ssh_unchecked_call("weka", "version", "set", target_version, "--allow-running-containers")
+                else:
+                    log("Not all weka containers are in the target version, not setting agent version")
+            except subprocess.CalledProcessError as ex:
+                log("Failed setting agent version %s for host %s, with error: %s" % (
+                target_version, hostname, ex.__str__(),))
+
         wait_start = datetime.now()
 
         # This yields incorrect versions in MBC, when each container runs different versions
         # remote_old_version = subprocess.check_output(ssh_args(["weka", "version", "current"])).strip().decode("utf8")
 
         assert source_version != target_version, "We tested that it is NOT the target version but 'weka version' says it is?!"
-        log("Starting upgrade of %s from %s to %s" % (hostname, source_version, target_version, ))
+        log("Starting upgrade of %s from %s to %s" % (hostname, source_version, target_version,))
 
         ## We assume we delivered the version to every host already
         log("weka version get %s" % (target_version,))
@@ -212,7 +269,7 @@ def upgrade_flow(target_version, ssh_identity=None, container_name=None, skip_he
                 ssh_call("echo", "prepare-upgrade", ">", "/proc/wekafs/interface")
             ssh_call("sync")
 
-        log("Preparing version on %s using 'weka version prepare %s'" % (hostname, target_version, ))
+        log("Preparing version on %s using 'weka version prepare %s'" % (hostname, target_version,))
         ssh_call("weka", "version", "prepare", target_version)
 
         log("Stopping local containers on %s" % (hostname,))
@@ -222,7 +279,7 @@ def upgrade_flow(target_version, ssh_identity=None, container_name=None, skip_he
             ssh_call("weka", "local", "stop", container_name)
 
         # Allowed to fail:
-        log("Moving target version data dir on %s, if one exists:" % (hostname, ))
+        log("Moving target version data dir on %s, if one exists:" % (hostname,))
         ssh_unchecked_call("mv",
                            "/opt/weka/data/%s_%s" % (container_name, target_version,),
                            "/opt/weka/data/%s_%s.bk.%s" % (container_name, target_version, timestamp))
@@ -234,13 +291,13 @@ def upgrade_flow(target_version, ssh_identity=None, container_name=None, skip_he
                      "/opt/weka/data/%s_%s" % (container_name, target_version,))
         except Exception:
             log("Failed to move the data dir to target version, starting back up and bailing out...")
-            ssh_call("weka", "local", "start", container_name,)
+            ssh_call("weka", "local", "start", container_name, )
             raise
 
         if container_name == 'default':
-            ssh_unchecked_call("weka", "version", "set", target_version,)
+            ssh_unchecked_call("weka", "version", "set", target_version, )
         else:
-            ssh_unchecked_call("weka", "version", "set", target_version, "-C", container_name,)
+            ssh_unchecked_call("weka", "version", "set", target_version, "-C", container_name, )
         if skip_local_start:
             log("NOT starting containers on %s because --skip-local-start" % (hostname,))
         else:
@@ -259,15 +316,24 @@ def upgrade_flow(target_version, ssh_identity=None, container_name=None, skip_he
                     ssh_unchecked_call("weka", "version", "set", source_version, "-C", container_name, )
 
                 if not skip_local_start:
-                    ssh_call("weka", "local", "start", container_name,)
+                    ssh_call("weka", "local", "start", container_name, )
                 raise
 
+        set_agent_version_if_all_container_are_in_target_version()
 
         upgraded_hosts += 1
         if not skip_health_checks:
-        # We first want to see the cluster as unhealthy before we wait for it to become healthy
-            if not skip_unhealthy_checks:
-                wait_for_unhealthy_cluster()
+            # We first want to see the cluster as unhealthy before we wait for it to become healthy
+            if not skip_wait_for_rebuild_to_start:
+                should_expect_rebuild = True
+                try:
+                    should_expect_rebuild = container_has_drives()
+                except subprocess.CalledProcessError:
+                    log("We failed to check if %s:%s has drive nodes, we will wait for rebuild to start" % (
+                        hostname, container_name))
+
+                if should_expect_rebuild:
+                    wait_for_rebuild_to_start()
             else:
                 time.sleep(10)
 
@@ -276,7 +342,7 @@ def upgrade_flow(target_version, ssh_identity=None, container_name=None, skip_he
         wait_end = datetime.now()
         wait_delta = wait_end - wait_start
         log(" === Finished upgrade of %s, %s container from %s to %s (took %s seconds) ===" % (
-            hostname, container_name, source_version, target_version, wait_delta.total_seconds(), ))
+            hostname, container_name, source_version, target_version, wait_delta.total_seconds(),))
 
     return upgraded_hosts, skipped_hosts
 
@@ -289,7 +355,8 @@ def main():
     parser.add_argument('-s', dest='skip_health_checks', action='store_true',
                         help='WARNING: DON\'T USE THIS OPTION UNLESS YOU REALLY NEED TO. '
                              'if cluster is unhealthy, don\'t wait for rebuilds, and health checks')
-    parser.add_argument('--skip-unhealthy-checks', dest='skip_unhealthy_checks', action='store_true',
+    parser.add_argument('--skip-unhealthy-checks', "--skip-wait-for-rebuild-to-start",
+                        dest='skip_wait_for_rebuild_to_start', action='store_true',
                         help='WARNING: DON\'T USE THIS OPTION UNLESS YOU REALLY NEED TO. '
                              'don\'t wait for cluster to become unhealthy before waiting for cluster to become ready'
                              'this is useful for compute rolling upgrade')
@@ -298,18 +365,22 @@ def main():
     parser.add_argument('--skip-local-start', dest='skip_local_start', action='store_true',
                         help='Do not "weka local start" in the new version')
 
-
     args = parser.parse_args()
-    upgrade(args.target_version, args.ssh_identity, args.container_name, args.skip_health_checks, args.skip_unhealthy_checks, args.skip_prepare_upgrade, args.skip_local_start)
+    upgrade(args.target_version, args.ssh_identity, args.container_name, args.skip_health_checks,
+            args.skip_wait_for_rebuild_to_start, args.skip_prepare_upgrade, args.skip_local_start)
 
-def upgrade(target_version, ssh_identity=None, container_name=None, skip_health_checks=False, skip_unhealthy_checks=False, skip_prepare_upgrade=False, skip_local_start=False):
+
+def upgrade(target_version, ssh_identity=None, container_name=None, skip_health_checks=False,
+            skip_wait_for_rebuild_to_start=False, skip_prepare_upgrade=False, skip_local_start=False):
     wait_start = datetime.now()
-    upgraded_hosts, skipped_hosts = upgrade_flow(target_version, ssh_identity, container_name, skip_health_checks, skip_unhealthy_checks, skip_prepare_upgrade, skip_local_start)
+    upgraded_hosts, skipped_hosts = upgrade_flow(target_version, ssh_identity, container_name, skip_health_checks,
+                                                 skip_wait_for_rebuild_to_start, skip_prepare_upgrade, skip_local_start)
 
     wait_end = datetime.now()
     wait_delta = wait_end - wait_start
     log(" === Upgrade to %s has finished (%s upgraded, %s skipped, took %s seconds) ===" % (
-        target_version, upgraded_hosts, skipped_hosts, wait_delta.total_seconds(), ))
+        target_version, upgraded_hosts, skipped_hosts, wait_delta.total_seconds(),))
+
 
 if __name__ == '__main__':
     main()
