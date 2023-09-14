@@ -21,7 +21,7 @@ if sys.version_info < (3, 7):
     print("Must have python version 3.7 or later installed.")
     sys.exit(1)
 
-pg_version = "1.3.5"
+pg_version = "1.3.6"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
 
@@ -1393,10 +1393,10 @@ def check_os_release(host_name, result, weka_version, check_version, backend=Tru
         else:
             version = dict_info['VERSION']
 
-        if dict_info['ID'] not in supported_os[check_version]['backends_clients']:
-            BAD(f'{" " * 5}❌ Host {host_name} OS {dict_info["ID"]} is not recognized')
-        elif backend:
-            if version not in supported_os[check_version]['backends_clients'][dict_info['ID']]:
+        if backend:
+            if dict_info['ID'] not in supported_os[check_version]['backends_clients']:
+                BAD(f'{" " * 5}❌ Host {host_name} OS {dict_info["ID"]} is not recognized')
+            elif version not in supported_os[check_version]['backends_clients'][dict_info['ID']]:
                 BAD(f'{" " * 5}❌ Host {host_name} OS {dict_info["ID"]} {version} is not supported with ' +
                     f'weka version {weka_version}')
             else:
