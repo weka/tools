@@ -348,7 +348,7 @@ def wait_for_container_readiness(host, timeout_secs=180):
             continue
 
 
-def change_failure_domains(s3_drain_timeout, s3_drain_grace, s3_drain_interval, s3_drain_required_checks, force_stop_s3_with_failed_drain_check=False, ssh_identity=None, container_name=None, skip_health_checks=False, skip_prepare_upgrade=False, skip_local_start=False, skip_local_disable=False, wait_unhealthy_timeout_secs=None, skip_s3_drain=False):
+def change_failure_domains(s3_drain_timeout, s3_drain_grace, s3_drain_interval, s3_drain_required_checks, force_stop_s3_with_failed_drain_check=False, ssh_identity=None, container_name=None, skip_health_checks=False, skip_prepare_upgrade=False, skip_local_start=False, skip_local_disable=False, wait_unhealthy_timeout_secs=0, skip_s3_drain=False):
     timestamp = get_timestamp()
     container_filter = ["-F", "container="+container_name] if container_name is not None else []
     hosts = [Host(host_json) for host_json in json.loads(subprocess.check_output(["weka", "cluster", "host", "-b", "-J"] + container_filter))]
@@ -508,7 +508,7 @@ def main():
         wait_unhealthy_timeout_secs=args.wait_unhealthy_timeout_secs,
         skip_s3_drain=args.skip_s3_drain)
 
-def upgrade(s3_drain_timeout, s3_drain_grace, s3_drain_interval, s3_drain_required_checks, force_stop_s3_with_failed_drain_check=False, ssh_identity=None, container_name=None, skip_health_checks=False, wait_unhealthy_timeout_secs=None, skip_s3_drain=False):
+def upgrade(s3_drain_timeout, s3_drain_grace, s3_drain_interval, s3_drain_required_checks, force_stop_s3_with_failed_drain_check=False, ssh_identity=None, container_name=None, skip_health_checks=False, wait_unhealthy_timeout_secs=0, skip_s3_drain=False):
     wait_start = datetime.now()
     changed_hosts, skipped_hosts = change_failure_domains(
         s3_drain_timeout, s3_drain_grace, s3_drain_interval, s3_drain_required_checks, force_stop_s3_with_failed_drain_check, ssh_identity, container_name, skip_health_checks, wait_unhealthy_timeout_secs, skip_s3_drain)
