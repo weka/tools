@@ -21,8 +21,7 @@ if sys.version_info < (3, 7):
     print("Must have python version 3.7 or later installed.")
     sys.exit(1)
 
-pg_version = "1.3.4"
-
+pg_version = "1.3.5"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
 
@@ -666,8 +665,7 @@ def weka_cluster_checks():
         INFO("VERIFYING UPGRADE ELIGIBILITY")
         link_type = weka_info['net']['link_layer']
         if link_type != "ETH":
-            BAD(f'❌ Upgrading to 3.14 not supported. Requires Weka to use Ethernet connectivity. Please reach ' +
-                'out to customer success on an ETA for IB support')
+            WARN(f'⚠️ Must upgrade to 3.14.3.16')
         elif ofed_downlevel:
             WARN(f'Upgrading to 3.14 requires Minimum OFED 5.1-2.5.8.0, following hosts need ofed updating\n')
             printlist(ofed_downlevel, 2)
