@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import hashlib
 import logging
 import os
 import re
@@ -219,8 +220,13 @@ class Container:
 
 
 def get_failure_domain_based_on_nodename():
+    max_failure_domain_length = 16
     full_hostname = os.uname().nodename
-    return full_hostname.split('.')[0].replace('-', '_')  # just in case it's a FQDN
+    hostname = full_hostname.split('.')[0].replace('-', '_')  # just in case it's a FQDN
+    if len(hostname) > max_failure_domain_length:
+        hash_obj = hashlib.shake_256(hostname.encode())
+        hostname = hash_obj.hexdigest(max_failure_domain_length // 2)
+    return hostname
 
 
 class Numa:
