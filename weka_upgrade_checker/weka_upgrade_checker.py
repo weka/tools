@@ -21,7 +21,7 @@ if sys.version_info < (3, 7):
     print("Must have python version 3.7 or later installed.")
     sys.exit(1)
 
-pg_version = "1.3.6"
+pg_version = "1.3.7"
 
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
@@ -889,12 +889,10 @@ def weka_cluster_checks():
     s3_cluster_status = json.loads(
         subprocess.check_output(["weka", "s3", "cluster", "-J"]))
 
-    if V(weka_version) < V("3.13"):
-        s3_enabled = s3_cluster_status['status']
-    else:
-        s3_enabled = s3_cluster_status['active']
+    if V(weka_version) > V("3.13"):
+        s3_status = s3_cluster_status['active']
 
-    if s3_enabled:
+    if s3_status:
         bad_s3_hosts = []
         failed_s3host = []
         INFO("CHECKING WEKA S3 CLUSTER HEALTH")
@@ -904,18 +902,77 @@ def weka_cluster_checks():
                 bad_s3_hosts.append([host])
 
         if not bad_s3_hosts:
-            GOOD("No failed s3 hosts found")
+            GOOD(f'{" " * 5}✅ No failed s3 hosts found')
         else:
-            WARN("Found s3 cluster hosts in not ready status\n")
+            WARN(f'{" " * 5}⚠️  Found s3 cluster hosts in not ready status:\n')
             for s3host in bad_s3_hosts:
                 for bkhost in backend_hosts:
                     if s3host == bkhost.typed_id:
-                        failed_s3host += [bkhost.typed_id, bkhost.hostname, bkhost.ip, bkhost.sw_version, bkhost.mode]
+                        failed_s3host.append(dict(id=bkhost.typed_id, hostname=bkhost.hostname, ip=bkhost.ip, version=bkhost.sw_version, mode=bkhost.mode))
 
-        printlist(failed_s3host, 5)
+                for host_info in failed_s3host:
+                    WARN(f'{" " * 5}⚠️  Host: {host_info["id"]} {host_info["hostname"]} {host_info["ip"]} {host_info["version"]} {host_info["mode"]}')
+
+    smb_cluster_hosts = json.loads(
+        subprocess.check_output(["weka", "smb", "cluster", "status", "-J"]))
+    
+    if V(weka_version) > V("3.10"):
+        if len(smb_cluster_hosts) != 0:
+            INFO("CHECKING WEKA SMB CLUSTER HOST HEALTH")
+            bad_smb_hosts = []
+            failed_smbhosts = []
+            for host, status in smb_cluster_hosts.items():
+                if not status:
+                    bad_smb_hosts += [host]
+
+            if not bad_smb_hosts:
+                GOOD(f'{" " * 5}✅ No failed SMB hosts found')
+            else:
+                WARN(f'{" " * 5}⚠️  Found SMB cluster hosts in not ready status:\n')
+                for smbhost in bad_smb_hosts:
+                    for bkhost in backend_hosts:
+                        if smbhost == bkhost.typed_id:
+                            failed_smbhosts.append(dict(id=bkhost.typed_id, hostname=bkhost.hostname, ip=bkhost.ip, version=bkhost.sw_version, mode=bkhost.mode))
+
+                for host_info in failed_smbhosts:
+                    WARN(f'{" " * 5}⚠️  Host: {host_info["id"]} {host_info["hostname"]} {host_info["ip"]} {host_info["version"]} {host_info["mode"]}')  
+       
+    nfs_server_hosts = json.loads(
+        subprocess.check_output(["weka", "nfs", "interface-group", "-J"]))
+
+    if V(weka_version) > V("3.10"):
+        if len(nfs_server_hosts) != 0:
+            INFO("CHECKING WEKA NFS SERVER HEALTH")
+            if nfs_server_hosts[0]['status'] == "OK":
+                GOOD(f'{" " * 5}✅ NFS Server status OK')
+            elif nfs_server_hosts[0]['status'] == "Inactive": 
+                WARN(f'{" " * 5}⚠️  NFS Server {nfs_server_hosts[0]["name"]} is {nfs_server_hosts[0]["status"]}')
+            else:
+                WARN(f'{" " * 5}⚠️  NFS Server {nfs_server_hosts[0]["name"]} Not OK')
+
+            if nfs_server_hosts[0]['status'] != "Inactive":
+                INFO("CHECKING WEKA NFS SERVER HOST HEALTH")
+                bad_nfs_hosts = []
+                failed_nfshosts = []
+                for host in nfs_server_hosts[0]['ports']:
+                    if host['status'] != "OK":
+                        bad_nfs_hosts += [host['host_id']]
+
+                if not bad_nfs_hosts:
+                    GOOD(f'{" " * 5}✅ No failed NFS hosts found')
+                else:
+                    WARN(f'{" " * 5} Found NFS cluster hosts in bad status:\n')
+                    for nfshost in bad_nfs_hosts:
+                        for bkhost in backend_hosts:
+                            if nfshost == bkhost.typed_id:
+                                failed_nfshosts.append(dict(id=bkhost.typed_id, hostname=bkhost.hostname, ip=bkhost.ip, version=bkhost.sw_version, mode=bkhost.mode))
+
+                    for host_info in failed_nfshosts:
+                        WARN(f'{" " * 5}⚠️  Host: {host_info["id"]} {host_info["hostname"]} {host_info["ip"]} {host_info["version"]} {host_info["mode"]}')
+
 
     # need to understand how to handle exception.
-    if s3_enabled:
+    if s3_status:
         if V(weka_version) < V("4.1"):
             INFO("CHECKING ETCD ENDPOINT HEALTH")
             spinner = Spinner('  Retrieving Data  ', color=colors.OKCYAN)
@@ -942,7 +999,7 @@ def weka_cluster_checks():
 
             spinner.stop()
 
-    return backend_hosts, ssh_bk_hosts, client_hosts, ssh_cl_hosts, weka_info, check_version, backend_ips, s3_enabled
+    return backend_hosts, ssh_bk_hosts, client_hosts, ssh_cl_hosts, weka_info, check_version, backend_ips, s3_status
 
 
 supported_os = {
@@ -1852,7 +1909,7 @@ def client_hosts_checks(weka_version, ssh_cl_hosts, check_version, ssh_identity)
             else:
                 WARN(f"Unable to determine Host: {host_name} OS version")
 
-    INFO("CLIENT WEB CONNECTIVITY TEST ON CLIENTS")
+    INFO("CHECKING WEB CONNECTIVITY TEST ON CLIENTS")
     if len(ssh_cl_hosts) != 0:
         results = parallel_execution(ssh_cl_hosts, [
             'curl -sL -w "%{http_code}" "http://get.weka.io" -o /dev/null'], use_check_output=True,
