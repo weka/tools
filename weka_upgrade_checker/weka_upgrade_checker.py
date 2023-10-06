@@ -21,7 +21,7 @@ if sys.version_info < (3, 7):
     print("Must have python version 3.7 or later installed.")
     sys.exit(1)
 
-pg_version = "1.3.7"
+pg_version = "1.3.8"
 
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
@@ -250,6 +250,18 @@ def create_tar_file(source_file, output_path):
     tar_file_name = f"{os.path.splitext(source_file)[0]}_{timestamp}.tar.gz"
     with tarfile.open(tar_file_name, "w:gz") as tar:
         tar.add(source_file)
+
+
+INFO("VERIFYING IF RUNNING LATEST VERSION OF WEKA UPGRADE CHECKER")
+try:
+    with open('version.txt', 'r') as file:
+        latest_version = file.read().strip('\n')
+        if V(pg_version) < V(latest_version):
+            BAD(f'❌ You are not running the latest version of weka upgrade checker current version {pg_version} latest version {latest_version}')
+        else:
+            GOOD('✅ Running the latest version of weka upgrade checker')
+except FileNotFoundError:
+    BAD('❌ Unable to check the latest version of weka upgrade checker.')
 
 
 def weka_cluster_checks():
@@ -624,7 +636,7 @@ def weka_cluster_checks():
             backend_host_names.remove(bkhostnames)
 
     if not current_version:
-        GOOD(f'{" " * 5}✅ Mellanox nics not found')
+        GOOD('✅ Mellanox nics not found')
     elif backend_host_names != []:
         for bkhostname in backend_host_names:
             WARN(f'{" " * 5}⚠️ Unable to determine Host: {bkhostname} OFED version')
@@ -1704,6 +1716,16 @@ def data_dir_check(host_name, result):
                 WARN(f'{" " * 5}⚠️  Data directory {dir} larger than acceptable size {use} MB')
 
 
+def weka_traces_size(host_name, result):
+    weka_trace_status = json.loads(subprocess.check_output(["weka", "debug", "traces", "status", "-J"]))
+    weka_trace_ensure_free = weka_trace_status['servers_ensure_free']['value']
+    INFO2(f'{" " * 2}Checking free space for Weka traces on Host: {host_name}:')
+    if weka_trace_ensure_free > int(result)*1024:
+        WARN(f'{" " * 5}⚠️  Weka trace ensure free size of {weka_trace_ensure_free} is greater than Weka trace directory size of {int(result)*1024}')
+    else:
+        GOOD(f'{" " * 5}✅ Weka trace size OK')
+
+
 def parallel_execution(hosts, commands, use_check_output=True, use_json=False, use_call=False, ssh_identity=None):
     results = []
     spinner = Spinner('  Retrieving Data  ', color=colors.OKCYAN)
@@ -1880,6 +1902,15 @@ def backend_host_checks(backend_hosts, ssh_bk_hosts, weka_version, check_version
         else:
             data_dir_check(host_name, result)
 
+    INFO("VERIFYING FREE SPACE FOR WEKA TRACES")
+    results = parallel_execution(ssh_bk_hosts, [
+        "df -BK /opt/weka/traces | awk 'NR==2 {print $2}' | sed s/K$//"],
+                                 use_check_output=True, ssh_identity=ssh_identity)
+    for host_name, result in results:
+        if result is None:
+            WARN(f"Unable to determine Host: {host_name} available trace space")
+        else:
+            weka_traces_size(host_name, result)
 
 # CLIENT CHECKES
 def client_hosts_checks(weka_version, ssh_cl_hosts, check_version, ssh_identity):
