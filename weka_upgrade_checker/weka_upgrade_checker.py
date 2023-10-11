@@ -255,7 +255,7 @@ def create_tar_file(source_file, output_path):
 INFO("VERIFYING IF RUNNING LATEST VERSION OF WEKA UPGRADE CHECKER")
 def get_online_version():
     git_file_url = "https://raw.githubusercontent.com/weka/tools/master/weka_upgrade_checker/weka_upgrade_checker.py"
-    curl_command = f"curl -s {git_file_url}"
+    curl_command = f"curl -s --connect-timeout 5 {git_file_url}"
     
     try:
         file_content = subprocess.check_output(curl_command, shell=True, text=True)
