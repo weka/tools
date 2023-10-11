@@ -21,7 +21,7 @@ if sys.version_info < (3, 7):
     print("Must have python version 3.7 or later installed.")
     sys.exit(1)
 
-pg_version = "1.3.8"
+pg_version = "1.3.9"
 
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
@@ -253,15 +253,47 @@ def create_tar_file(source_file, output_path):
 
 
 INFO("VERIFYING IF RUNNING LATEST VERSION OF WEKA UPGRADE CHECKER")
-try:
-    with open('version.txt', 'r') as file:
-        latest_version = file.read().strip('\n')
-        if V(pg_version) < V(latest_version):
-            BAD(f'❌ You are not running the latest version of weka upgrade checker current version {pg_version} latest version {latest_version}')
+def get_online_version():
+    git_file_url = "https://raw.githubusercontent.com/weka/tools/master/weka_upgrade_checker/weka_upgrade_checker.py"
+    curl_command = f"curl -s {git_file_url}"
+    
+    try:
+        file_content = subprocess.check_output(curl_command, shell=True, text=True)
+        search_version = "pg_version ="
+        lines = file_content.splitlines()
+        found_version = []
+        for line in lines:
+            if search_version in line and '=' in line:
+                online_version = line.split('=')[1].strip('" "')
+                found_version.append(online_version)
+
+        if found_version:
+            return found_version[0]
+        else:
+            return None
+    except subprocess.CalledProcessError:
+        return None
+
+def check_version():
+    online_version = get_online_version()
+    
+    if online_version:
+        if V(pg_version) < V(online_version):
+            BAD(f'❌ You are not running the latest version of weka upgrade checker current version {pg_version} latest version {online_version}')
         else:
             GOOD('✅ Running the latest version of weka upgrade checker')
-except FileNotFoundError:
-    BAD('❌ Unable to check the latest version of weka upgrade checker.')
+    else:
+        try:
+            with open('version.txt', 'r') as file:
+                latest_version = file.read().strip('\n')
+                if V(pg_version) < V(latest_version):
+                    BAD(f'❌ You are not running the latest version of weka upgrade checker current version {pg_version} latest version {latest_version}')
+                else:
+                    GOOD('✅ Running the latest version of weka upgrade checker')
+        except FileNotFoundError:
+            BAD('❌ Unable to check the latest version of weka upgrade checker.')
+
+check_version()
 
 
 def weka_cluster_checks():
@@ -2033,6 +2065,10 @@ def main():
 
     ssh_identity = args.ssh_identity or None
 
+    if args.version:
+        print("Weka upgrade checker version: %s" % pg_version)
+        sys.exit(0)
+
     if args.run_all_checks:
         weka_cluster_results = weka_cluster_checks()
         backend_hosts = weka_cluster_results[0]
@@ -2079,9 +2115,7 @@ def main():
                             ssh_identity, s3_enabled)
         INFO(f"Cluster upgrade checks complete!")
         sys.exit(0)
-    elif args.version:
-        print("Weka upgrade checker version: %s" % pg_version)
-        sys.exit(0)
+
 
 
 if __name__ == '__main__':
