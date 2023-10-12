@@ -21,8 +21,7 @@ if sys.version_info < (3, 7):
     print("Must have python version 3.7 or later installed.")
     sys.exit(1)
 
-pg_version = "1.3.9"
-
+pg_version = "1.3.10"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
 
@@ -251,11 +250,9 @@ def create_tar_file(source_file, output_path):
     with tarfile.open(tar_file_name, "w:gz") as tar:
         tar.add(source_file)
 
-
-INFO("VERIFYING IF RUNNING LATEST VERSION OF WEKA UPGRADE CHECKER")
 def get_online_version():
     git_file_url = "https://raw.githubusercontent.com/weka/tools/master/weka_upgrade_checker/weka_upgrade_checker.py"
-    curl_command = f"curl -s {git_file_url}"
+    curl_command = f"curl -s --connect-timeout 5 {git_file_url}"
     
     try:
         file_content = subprocess.check_output(curl_command, shell=True, text=True)
@@ -275,13 +272,14 @@ def get_online_version():
         return None
 
 def check_version():
+    INFO("VERIFYING IF RUNNING LATEST VERSION OF WEKA UPGRADE CHECKER")
     online_version = get_online_version()
     
     if online_version:
         if V(pg_version) < V(online_version):
             BAD(f'❌ You are not running the latest version of weka upgrade checker current version {pg_version} latest version {online_version}')
         else:
-            GOOD('✅ Running the latest version of weka upgrade checker')
+            GOOD(f'✅ Running the latest version of weka upgrade checker {pg_version}')
     else:
         try:
             with open('version.txt', 'r') as file:
@@ -289,7 +287,7 @@ def check_version():
                 if V(pg_version) < V(latest_version):
                     BAD(f'❌ You are not running the latest version of weka upgrade checker current version {pg_version} latest version {latest_version}')
                 else:
-                    GOOD('✅ Running the latest version of weka upgrade checker')
+                    GOOD(f'✅ Running the latest version of weka upgrade checker {pg_version}')
         except FileNotFoundError:
             BAD('❌ Unable to check the latest version of weka upgrade checker.')
 
@@ -341,7 +339,8 @@ def weka_cluster_checks():
         GOOD('✅ No Weka alerts present')
     else:
         WARN(f'⚠️  {len(weka_alerts)} Weka alerts present')
-        logging.warning(subprocess.check_output(["weka", "alerts", "-J"]).decode('utf-8').split('\n'))
+        for alert in weka_alerts:
+            logging.warning(alert)
 
     INFO("CHECKING REBUILD STATUS")
     rebuild_status = json.loads(subprocess.check_output(["weka", "status", "rebuild", "-J"]))
