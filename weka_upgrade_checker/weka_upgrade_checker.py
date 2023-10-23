@@ -1811,6 +1811,11 @@ def backend_host_checks(backend_hosts, ssh_bk_hosts, weka_version, check_version
         else:
             data_dir_check(host_name, result)
 
+    INFO("CHECKING FOR REQUIRED CPU INSTRUCTION SET ON BACKENDS")
+    results = parallel_execution(ssh_bk_hosts, ['grep -q "\<avx2\>" /proc/cpuinfo'], use_check_output=False, use_call=True, ssh_identity=ssh_identity)
+    for host_name, result in results:
+        if result != 0:
+            WARN(f"Host: {host_name} does not have the required CPU features provided by x86_64-v3")
 
 # CLIENT CHECKES
 def client_hosts_checks(weka_version, ssh_cl_hosts, check_version, ssh_identity):
@@ -1887,6 +1892,12 @@ def client_hosts_checks(weka_version, ssh_cl_hosts, check_version, ssh_identity)
         if result is None:
             WARN(
                 f"Unable to determine Host: {host_name} weka container status")
+
+    INFO("CHECKING FOR REQUIRED CPU INSTRUCTION SET ON CLIENTS")
+    results = parallel_execution(ssh_cl_hosts, ['grep -q "\<avx2\>" /proc/cpuinfo'], use_check_output=False, use_call=True, ssh_identity=ssh_identity)
+    for host_name, result in results:
+        if result != 0:
+            WARN(f"Host: {host_name} does not have the required CPU features provided by x86_64-v3")
 
     if results != []:
         weka_container_status(results, weka_version)
