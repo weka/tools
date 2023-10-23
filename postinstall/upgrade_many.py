@@ -159,7 +159,15 @@ def upgrade_flow(target_version, ssh_identity=None, container_name=None, skip_he
         if is_up:
             machine_info = json.loads(
                 subprocess.check_output(["weka", "debug", "jrpc", "-H", ip, "-P", str(port), "client_query_backend"]))
-            source_version = machine_info['software_release']
+
+            if 'container_software_release' in machine_info:
+                # in newer versions container_software_release is the
+                # host's own version, and software_release became the
+                # min BE version of the entire cluster
+                source_version = machine_info['container_software_release']
+            else:
+                # in older versions, this is the only one that exists, and is the self version
+                source_version = machine_info['software_release']
         else:
             source_version = host["sw_release_string"]
         log("Queried %s: currently running %s" % (hostname, source_version))
