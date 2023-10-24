@@ -6,6 +6,7 @@ import logging
 import os
 import shlex
 import subprocess
+import time
 from enum import Enum
 import argparse
 from time import sleep, time
@@ -662,6 +663,18 @@ def main():
     if args.keep_s3_up:
         stop_container_cmd = '/bin/sh -c "{}weka local stop s3"'.format(sudo)
         run_shell_command(stop_container_cmd)
+
+    set_unwritable_cmd = '/bin/sh -c "{}weka debug jrpc host_set_unwritable_disks hostId={} force=true"'.format(sudo, current_host_id)
+    run_shell_command(set_unwritable_cmd)
+
+    while True:
+        check_unwritable_cmd = '/bin/sh -c "{}weka debug jrpc host_all_disks_unwritable hostId={}"'.format(sudo, current_host_id)
+        res = json.loads(run_shell_command(check_unwritable_cmd))
+        if res:
+            logger.debug('Disks of {} finished becoming unwritable'.format(host_id_str))
+            break
+        logger.info('Still waiting for disks of {} to become unwritable'.format(host_id_str))
+        time.sleep(1)
 
     stop_container_cmd = '/bin/sh -c "{}weka local stop {}"'.format(sudo, container_name)
     run_shell_command(stop_container_cmd)
