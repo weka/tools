@@ -6,7 +6,6 @@ import logging
 import os
 import shlex
 import subprocess
-import time
 from enum import Enum
 import argparse
 from time import sleep, time
@@ -674,7 +673,7 @@ def main():
             logger.debug('Disks of {} finished becoming unwritable'.format(host_id_str))
             break
         logger.info('Still waiting for disks of {} to become unwritable'.format(host_id_str))
-        time.sleep(1)
+        sleep(1)
 
     stop_container_cmd = '/bin/sh -c "{}weka local stop {}"'.format(sudo, container_name)
     run_shell_command(stop_container_cmd)
