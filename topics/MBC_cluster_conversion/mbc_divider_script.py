@@ -664,6 +664,7 @@ def main():
         run_shell_command(stop_container_cmd)
 
     set_unwritable_cmd = '/bin/sh -c "{}weka debug jrpc host_set_unwritable_disks hostId={} force=true"'.format(sudo, current_host_id)
+    logger.info('Running: {}'.format(set_unwritable_cmd))
     run_shell_command(set_unwritable_cmd)
 
     while True:
