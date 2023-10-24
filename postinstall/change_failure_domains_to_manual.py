@@ -39,7 +39,11 @@ def is_fully_protected(status, rebuild_status, print_rebuild_status=True):
             log("Cluster has too many failures (status %s) (seen rebuilding cluster, as expected)" % (status["status"],))
         return False
 
-    if any(prot["MiB"] != 0 for prot in rebuild_status["protectionState"][1:]) or rebuild_status["protectionState"][0] == 0:
+    if "potentialResilience" in rebuild_status:
+        lost_resilience = max(0, rebuild_status["numProtectionDisks"] - min(1, rebuild_status["potentialResilience"]))
+    else:
+        lost_resilience = 0
+    if any(prot["MiB"] != 0 for prot in rebuild_status["protectionState"][1+lost_resilience:]) or rebuild_status["protectionState"][0] == 0:
         if print_rebuild_status:
             subprocess.call(["weka", "status", "rebuild"])
             scrubber_rate = json.loads(subprocess.check_output(["weka", "debug", "config", "show", "clusterInfo.scrubberBytesPerSecLimit", "-J"]))
