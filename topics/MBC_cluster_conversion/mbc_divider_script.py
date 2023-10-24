@@ -401,12 +401,12 @@ def main():
     local_status_cmd = '/bin/sh -c "{}weka local status -J"'.format(sudo)
     status = json.loads(run_shell_command(local_status_cmd))
     if status[container_name]['mount_points']:
-        logger.warning("This server has an active WekaFS mount, please unmount before continuing")
+        logger.error("This server has an active WekaFS mount, please unmount before continuing")
         exit(1)
     # TODO: for new script generate backup with datetime
     backup_file_name = os.path.abspath('resources.json.backup')
     if os.path.exists(backup_file_name) and not args.force:
-        logger.warning("Backup resources file {} already exists, will not override it".format(backup_file_name))
+        logger.error("Backup resources file {} already exists, will not override it".format(backup_file_name))
         exit(1)
 
     backup_resources_command = '/bin/sh -c "{}weka local resources export {}"'.format(sudo, backup_file_name)
@@ -445,7 +445,7 @@ def main():
         roles = prev_resources['nodes'][slot]['roles']
         coreId = prev_resources['nodes'][slot]['core_id']
         if len(roles) > 1:
-            logger.warning(
+            logger.error(
                 "This script does not support multiple node roles. Please contact costumer support for more information")
             exit(1)
         if roles[0] == "COMPUTE" and not args.compute_dedicated_cores:
@@ -461,7 +461,7 @@ def main():
             if coreId != 4294967295:
                 pinned_frontend_cores.append(coreId)
     if len(prev_resources['backend_endpoints']) < 1:
-        logger.warning('The host\'s resources are missing the backend endpoints, is this host part of a Weka cluster?')
+        logger.error('The host\'s resources are missing the backend endpoints, is this host part of a Weka cluster?')
         exit(1)
 
     network_devices = []
@@ -483,7 +483,7 @@ def main():
     s3_status = json.loads(run_shell_command(s3_status_command))
     if host_id_str in s3_status:
         if len(s3_status) < 4:
-            logger.warning('We have only {} hosts in s3 cluster, in order to convert cluster we need at list 4'.format(
+            logger.error('We have only {} hosts in s3 cluster, in order to convert cluster we need at list 4'.format(
                 len(s3_status)))
             exit(1)
         check_etcd_health(sudo)
@@ -493,7 +493,7 @@ def main():
     smb_status = json.loads(run_shell_command(smb_status_command))
     if host_id_str in smb_status:
         if len(smb_status) < 4:
-            logger.warning('We have only {} hosts in SMB cluster, in order to convert cluster we need at list 4'.format(
+            logger.error('We have only {} hosts in SMB cluster, in order to convert cluster we need at list 4'.format(
                 len(smb_status)))
             exit(1)
         for i in range(retries):
@@ -503,7 +503,7 @@ def main():
             sleep(1)
         smb_status = json.loads(run_shell_command(smb_status_command))
         if not all(status for status in smb_status.values()):
-            logger.warning("SMB cluster never became ready, cannot convert")
+            logger.error("SMB cluster never became ready, cannot convert")
             exit(1)
 
     # NFS check
@@ -564,7 +564,7 @@ def main():
                 sleep(1)
             s3_status = json.loads(run_shell_command(s3_status_command))
             if host_id_str in s3_status:
-                logger.warning("Failed removing host {} from s3 cluster".format(current_host_id))
+                logger.error("Failed removing host {} from s3 cluster".format(current_host_id))
                 exit(1)
 
     # SMB removal
@@ -580,7 +580,7 @@ def main():
             sleep(1)
         smb_status = json.loads(run_shell_command(smb_status_command))
         if host_id_str in smb_status:
-            logger.warning("Failed removing host {} from SMB cluster".format(current_host_id))
+            logger.error("Failed removing host {} from SMB cluster".format(current_host_id))
             exit(1)
 
     # NFS removal
@@ -614,7 +614,7 @@ def main():
                     break
                 sleep(1)
             if host_is_an_active_port:
-                logger.warning('Failed removing nfs port')
+                logger.error('Failed removing nfs port')
                 exit(1)
 
     logger.info('Validating no protocols containers are running')
