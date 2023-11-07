@@ -21,7 +21,7 @@ if sys.version_info < (3, 7):
     print("Must have python version 3.7 or later installed.")
     sys.exit(1)
 
-pg_version = "1.3.11"
+pg_version = "1.3.12"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
 
@@ -396,7 +396,7 @@ def weka_cluster_checks():
     else:
         WARN(f'⚠️  Rebuild in progress {rebuild_status["progressPercent"]} complete')
 
-    if V("4.0") <= V(weka_version) < V("4.1"):
+    if V("4.0.5.39") <= V(weka_version) < V("4.1"):
         INFO("VERIFYING WEKA BACKEND MACHINES")
         weka_bk_machines = [
             Machine(machine_json)
