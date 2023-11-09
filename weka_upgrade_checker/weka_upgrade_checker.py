@@ -17,11 +17,11 @@ from distutils.version import LooseVersion as V
 from itertools import chain
 from subprocess import run
 
-if sys.version_info < (3, 7):
+if sys.version_info < (3, 6):
     print("Must have python version 3.7 or later installed.")
     sys.exit(1)
 
-pg_version = "1.3.12"
+pg_version = "1.3.13"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
 
@@ -281,7 +281,7 @@ def get_online_version():
     curl_command = f"curl -s --connect-timeout 5 {git_file_url}"
 
     try:
-        file_content = subprocess.check_output(curl_command, shell=True, text=True)
+        file_content = subprocess.check_output(curl_command, shell=True, universal_newlines=True)
         search_version = "pg_version ="
         lines = file_content.splitlines()
         found_version = []
