@@ -18,7 +18,7 @@ from itertools import chain
 from subprocess import run
 
 if sys.version_info < (3, 6):
-    print("Must have python version 3.7 or later installed.")
+    print("Must have python version 3.6 or later installed.")
     sys.exit(1)
 
 pg_version = "1.3.15"
