@@ -17,11 +17,11 @@ from distutils.version import LooseVersion as V
 from itertools import chain
 from subprocess import run
 
-if sys.version_info < (3, 7):
+if sys.version_info < (3, 6):
     print("Must have python version 3.7 or later installed.")
     sys.exit(1)
 
-pg_version = "1.3.12"
+pg_version = "1.3.15"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
 
@@ -33,11 +33,11 @@ logging.basicConfig(
 )
 
 if sys.stdout.encoding != "UTF-8":
-    if sys.version_info >= (3, 7):
+    if sys.version_info >= (3, 6):
         sys.stdout.reconfigure(encoding="utf-8")
         sys.stdin.reconfigure(encoding="utf-8")
     else:
-        print("must run script using python3.7")
+        print("must run script using python3.6")
         sys.exit(1)
 
 try:
@@ -281,7 +281,7 @@ def get_online_version():
     curl_command = f"curl -s --connect-timeout 5 {git_file_url}"
 
     try:
-        file_content = subprocess.check_output(curl_command, shell=True, text=True)
+        file_content = subprocess.check_output(curl_command, shell=True, universal_newlines=True)
         search_version = "pg_version ="
         lines = file_content.splitlines()
         found_version = []
@@ -373,6 +373,10 @@ def weka_cluster_checks():
     GOOD(
         f"✅ CLUSTER:{cluster_name} STATUS:{weka_status} VERSION:{weka_version} UUID:{uuid}"
     )
+
+    if any(c.isalpha() for c in weka_version) and not weka_version.endswith("-hcfs"):
+        INFO("CHECKING WEKA HOTFIX VERSION")
+        WARN(f"⚠️  The cluster maybe running a specialized hotfix version of Weka {weka_version}; confirm that required hotfixes are included in upgrade target version.")
 
     INFO("CHECKING FOR WEKA ALERTS")
     weka_alerts = (
@@ -675,14 +679,24 @@ def weka_cluster_checks():
     )
     snap_upload = []
     for snapshot in weka_snapshot:
-        if snapshot["stowStatus"] == "UPLOADING":
-            snap_upload += [
-                snapshot["id"],
-                snapshot["filesystem"],
-                snapshot["name"],
-                snapshot["remote_object_status"],
-                snapshot["remote_object_progress"],
-            ]
+        if V(weka_version) < V("4.0.5"):
+            if snapshot["stowStatus"] == "UPLOADING":
+                snap_upload += [
+                    snapshot["id"],
+                    snapshot["filesystem"],
+                    snapshot["name"],
+                    snapshot["remote_object_status"],
+                    snapshot["remote_object_progress"],
+                ]
+        else:
+            if snapshot["remoteStowInfo"]["stowStatus"] == "UPLOADING":
+                snap_upload += [
+                    snapshot["snap_id"],
+                    snapshot["filesystem"],
+                    snapshot["name"],
+                    snapshot["remoteStowInfo"]["stowStatus"],
+                    snapshot["remoteStowInfo"]["stowProgress"],
+                ]
 
     if not snap_upload:
         GOOD("✅ Weka snapshot upload status ok")
