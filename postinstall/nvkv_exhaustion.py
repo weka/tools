@@ -32,7 +32,7 @@ def parse_args():
     parser.add_argument('--poll-interval', type=float, default=1, help="Seconds to sleep between status polls (e.g. between disk_writable_state calls)")
     parser.add_argument('--delay-before-restart', type=float, default=20, help="Seconds to sleep before restarting drive node (default: 20)")
     parser.add_argument('--delay-after-restart', type=float, default=20, help="Seconds to sleep after restarting drive node (default: 20)")
-    parser.add_argument('--timeout', type=int, default=300, help="Max seconds to wait for disk writable state to change to the expected state (default: 300)")
+    parser.add_argument('--timeout', type=int, default=450, help="Max seconds to wait for disk writable state to change to the expected state (default: 300)")
     parser.add_argument('--max-unwritable', type=int, default=20, help="Max amount of unwritable disk allowed. If more disks are unwritable, the script would doesn't proceed. (default: 20)")
     parser.add_argument('--allowed-failures', type=int, default=0, help="Max amount of failures allowed before restarting drive nodes. (default: 0)")
     args = parser.parse_args()
