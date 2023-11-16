@@ -124,9 +124,8 @@ class App:
             logger.info("Disk %s has the highest NVKV usage of %s%%, which is below the threshold %s%%. Nothing to do.", fullest_drive.disk_id, fullest_drive.used_nvkv_space_percent, self.args.threshold)
             return
         if num_unwritable < self.args.max_unwritable:
-            logger.info("NVKV usage of %s on %s is %s%% (%s), higher than threshold %s%%. Will try to fix it.",
-                        fullest_drive.writable, fullest_drive.disk_id, fullest_drive.node_id, fullest_drive.used_nvkv_space_percent,
-                        self.args.threshold)
+            logger.info("NVKV usage of %s on %s is %s%%, higher than threshold %s%%. Will try to set unwritable.",
+                        fullest_drive.disk_id, fullest_drive.node_id, fullest_drive.used_nvkv_space_percent, self.args.threshold)
             self.set_unwritable(fullest_drive, wait_for_state=True)
             return True
         # We have over-threshold WRITABLE drive, but we have too many unwritable drives:
@@ -230,7 +229,8 @@ class App:
         return drives_new
 
     def log_drive(self, drive):
-        logger.info("Drive %-12s on %-12s %-12s uses %s%% of NVKV (status: %s, writable: %s)", drive.disk_id, drive.node_id, drive.host_id, drive.used_nvkv_space_percent, drive.status, drive.writable)
+        logger.info("Drive %-12s on %-12s %-12s uses %s%% of NVKV (status: %s, writable: %s)",
+                    drive.disk_id, drive.node_id, drive.host_id, drive.used_nvkv_space_percent, drive.status, drive.writable)
 
     def get_num_failures(self):
         status = self.get_rebuild_status()
