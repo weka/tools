@@ -91,7 +91,7 @@ class App:
     def check_once(self):
         drives = self.get_drives()
 
-        drives.sort(key=lambda x: (x.writable == WRITABLE, x.used_nvkv_space_percent), reverse=True)
+        drives.sort(key=lambda x: (x.writable == WRITABLE and x.status in ["ACTIVE", "PHASING_IN"], x.used_nvkv_space_percent), reverse=True)
         num_unwritable = sum(1 for drive in drives if drive.writable != WRITABLE)
         # NOTE: if we have UNWRITABLE drives that are above threshold,
         # that's very bad. But we'll reach those as soon as we run out
@@ -207,9 +207,9 @@ class App:
         timeout = self.timeout()
         while True:
             drive, = self.refresh_drive_list([drive])
-            logger.info("Drive %s on %s is %s/%s (NVKV %s%%) (waiting for %s/ACTIVE)",
+            logger.info("Drive %s on %s is %s/%s (NVKV %s%%) (waiting for %s/(ACTIVE|PHASING_IN))",
                         drive.disk_id, drive.node_id, drive.writable, drive.status, drive.used_nvkv_space_percent, expected_state)
-            if drive.status == "ACTIVE" and drive.writable == expected_state:
+            if drive.status in ["ACTIVE", "PHASING_IN"] and drive.writable == expected_state:
                 return
             if timeout.expired():
                 self.critical_error("Timed out waiting for drive %s on %s to become %s, it is still %s", drive.disk_id, drive.node_id, expected_state, drive.writable)
