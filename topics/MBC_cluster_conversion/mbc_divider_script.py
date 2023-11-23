@@ -34,12 +34,16 @@ def run_shell_command(command, no_fail=False):
     process = subprocess.Popen(shlex.split(command), stdout=subprocess.PIPE)
     output, stderr = process.communicate()
     if process.returncode != 0:
-        logger.warning("Something went wrong running: {}".format(command))
-        logger.warning("Return Code: {}".format(process.returncode))
-        logger.warning("Output: {}".format(output))
-        logger.warning("Stderr: {}".format(stderr))
-        if not no_fail:
-            raise Exception("Error running command (exit code {}): {}".format(process.returncode, command))
+        # Handling specific cases
+        if "modprobe -r" in command and process.returncode == 1:
+            logger.info("modprobe module not found. This is expected when not mounted to wekafsw.")
+        else:
+            logger.warning("Something went wrong running: {}".format(command))
+            logger.warning("Return Code: {}".format(process.returncode))
+            logger.warning("Output: {}".format(output))
+            logger.warning("Stderr: {}".format(stderr))
+            if not no_fail:
+                raise Exception("Error running command (exit code {}): {}".format(process.returncode, command))
 
     return output
 
@@ -665,6 +669,9 @@ def main():
 
     stop_container_cmd = '/bin/sh -c "{}weka local stop {}"'.format(sudo, container_name)
     run_shell_command(stop_container_cmd)
+
+    modprobe_cmd = "modprobe -r wekafsw"
+    run_shell_command(modprobe_cmd)
 
     all_net = ' '
     for netDev in network_devices:
