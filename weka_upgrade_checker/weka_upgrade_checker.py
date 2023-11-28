@@ -21,7 +21,7 @@ if sys.version_info < (3, 7):
     print("Must have python version 3.7 or later installed.")
     sys.exit(1)
 
-pg_version = "1.3.17"
+pg_version = "1.3.18"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
 
@@ -502,7 +502,7 @@ def weka_cluster_checks():
             WARN(f"Unhealthy backend hosts detected\n")
             printlist(down_bkhost, 5)
 
-    if V("4.0") <= V(weka_version) < V("4.1"):
+    if V("4.0.6") <= V(weka_version) < V("4.1"):
         INFO("VERIFYING WEKA CLIENT MACHINES")
         weka_cl_machines = [
             Machine(machine_json)
