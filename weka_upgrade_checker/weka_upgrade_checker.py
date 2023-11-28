@@ -17,11 +17,11 @@ from distutils.version import LooseVersion as V
 from itertools import chain
 from subprocess import run
 
-if sys.version_info < (3, 6):
-    print("Must have python version 3.6 or later installed.")
+if sys.version_info < (3, 7):
+    print("Must have python version 3.7 or later installed.")
     sys.exit(1)
 
-pg_version = "1.3.15"
+pg_version = "1.3.17"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
 
@@ -33,12 +33,13 @@ logging.basicConfig(
 )
 
 if sys.stdout.encoding != "UTF-8":
-    if sys.version_info >= (3, 6):
+    if sys.version_info >= (3, 7):
         sys.stdout.reconfigure(encoding="utf-8")
         sys.stdin.reconfigure(encoding="utf-8")
     else:
-        print("must run script using python3.6")
-        sys.exit(1)
+        # This block is for Python 3.6
+        sys.stdout = open(sys.stdout.fileno(), mode='w', encoding='utf-8', buffering=1)
+        sys.stdin = open(sys.stdin.fileno(), mode='r', encoding='utf-8', buffering=1)
 
 try:
     "❌ ✅".encode(sys.stdout.encoding)
@@ -281,7 +282,9 @@ def get_online_version():
     curl_command = f"curl -s --connect-timeout 5 {git_file_url}"
 
     try:
-        file_content = subprocess.check_output(curl_command, shell=True, universal_newlines=True)
+        file_content = subprocess.check_output(
+            curl_command, shell=True, universal_newlines=True
+        )
         search_version = "pg_version ="
         lines = file_content.splitlines()
         found_version = []
@@ -376,7 +379,9 @@ def weka_cluster_checks():
 
     if any(c.isalpha() for c in weka_version) and not weka_version.endswith("-hcfs"):
         INFO("CHECKING WEKA HOTFIX VERSION")
-        WARN(f"⚠️  The cluster maybe running a specialized hotfix version of Weka {weka_version}; confirm that required hotfixes are included in upgrade target version.")
+        WARN(
+            f"⚠️  The cluster maybe running a specialized hotfix version of Weka {weka_version}; confirm that required hotfixes are included in upgrade target version."
+        )
 
     INFO("CHECKING FOR WEKA ALERTS")
     weka_alerts = (
@@ -1920,7 +1925,8 @@ def check_os_release(
             dict_info[key] = value.strip('"')
 
         if dict_info["ID"] == "ubuntu":
-            version = re.search(r"\b\d+\.\d+\.\d+\b", dict_info["VERSION"]).group()
+            version_match = re.search(r"\b\d+(\.\d+){0,2}\b", dict_info["VERSION"])
+            version = version_match.group() if version_match else "Unknown"
         elif dict_info["ID"] == "rocky" or "rhel":
             version = dict_info["VERSION_ID"]
         else:
