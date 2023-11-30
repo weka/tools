@@ -7,6 +7,7 @@ DESCRIPTION="Check for NFS floating IPs on v4 services"
 SCRIPT_TYPE="single"
 JIRA_REFERENCE="WEKAPP-298483"
 WTA_REFERENCE=""
+KB_REFERENCE="KB 1184"
 
 RETURN_CODE=0
 
@@ -18,9 +19,9 @@ if [[ ( ${WEKA_NFS_V4_SUPPORT_IN_USE} -ne "0" ) && \
     RETURN_CODE=1
     echo "There are NFS v4 services in use with floating IPs - potentially susceptible"
     if [[ ! -z "${WTA_REFERENCE}" ]]; then
-        echo "to ${JIRA_REFERENCE}, discussed in ${WTA_REFERENCE}"
+        echo "to ${JIRA_REFERENCE}, discussed in ${WTA_REFERENCE}, SFDC ${KB_REFERENCE}"
     else
-        echo "to ${JIRA_REFERENCE}"                                                                                                   
+        echo "to ${JIRA_REFERENCE}, SFDC ${KB_REFERENCE}"                                                                                                   
     fi
     echo "This does not necessarily prove a problem, and should be investigated"
 fi

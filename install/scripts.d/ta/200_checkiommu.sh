@@ -4,6 +4,7 @@ DESCRIPTION="Check for IOMMU disabled"
 SCRIPT_TYPE="parallel"
 JIRA_REFERENCE="WEKAPP-323895"
 WTA_REFERENCE=""
+KB_REFERENCE="KB 1168"
 RETURN_CODE=0
 MIN_VERSION="4.1.2"
 MAX_VERSION="4.2.2"
@@ -30,9 +31,9 @@ else
     fi
     echo "IOMMU is configured on $(hostname) - this should be disabled - refer"
     if [[ ! -z "${WTA_REFERENCE}" ]]; then
-        echo "to ${JIRA_REFERENCE}, discussed in ${WTA_REFERENCE}"
+        echo "to ${JIRA_REFERENCE}, discussed in ${WTA_REFERENCE}, SFDC ${KB_REFERENCE}"
     else
-        echo "to ${JIRA_REFERENCE}"                                                                                                   
+        echo "to ${JIRA_REFERENCE}, SFDC ${KB_REFERENCE}"                                                                                                   
     fi
     RETURN_CODE=1
 fi

@@ -6,7 +6,8 @@ DESCRIPTION="Check for disparate drive write latencies"
 # script type is single, parallel, sequential, or parallel-compare-backends
 SCRIPT_TYPE="single"
 JIRA_REFERENCE="WEKAPP-329809"
-WTA_REFERENCE=""
+WTA_REFERENCE="WTA 08312023"
+KB_REFERENCE="KB 1182"
 
 RETURN_CODE=0
 
@@ -35,9 +36,9 @@ if [[  ${DISPARATE_WRITE_LATENCIES} == 0 ]]; then
     echo "The current highest measured drive latency ${HIGHEST_WRITE_LATENCY} is greater than ${ALLOWABLE_MAGNITUDE} * the"
     echo "lowest measured latency (${LOWEST_WRITE_LATENCY}). This may indicate that you are affected by "
     if [[ ! -z "${WTA_REFERENCE}" ]]; then
-        echo "${JIRA_REFERENCE}, discussed in ${WTA_REFERENCE}"
+        echo "${JIRA_REFERENCE}, discussed in ${WTA_REFERENCE}, SFDC ${KB_REFERENCE}"
     else
-        echo "${JIRA_REFERENCE}"
+        echo "${JIRA_REFERENCE}, SFDC ${KB_REFERENCE}"
     fi
     echo "This does not necessarily prove a problem, and should be investigated"
 fi
