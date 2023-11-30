@@ -3,6 +3,8 @@
 DESCRIPTION="Check NVMe LBA format..."
 SCRIPT_TYPE="parallel"
 
+#set -x
+
 # Array containing all available LBA formats per array
 declare -A namespace_lba_formats
 
@@ -82,7 +84,7 @@ for namespace in /dev/nvme*n*; do
 		rc=1
 	fi
 
-	if [ "$rp" -ne 0 ]; then
+	if [ "$rp" != "0" ]; then
 		echo "$namespace: Relative performance ($rp) is not set to 0 (Best)"
 		rc=1
 	fi

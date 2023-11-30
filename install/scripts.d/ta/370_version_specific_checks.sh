@@ -17,10 +17,10 @@ SCRIPT_TYPE="single"
 # if there's no maximum it will be assumed it's every version subsequent to min.
 declare -a WEKA_VERSION_TABLE
 
-WEKA_VERSION_TABLE+=(";4.2.0;WEKAPP-315823;WTA-08292023;NDU rolling update blocked by bucket start-up")
-WEKA_VERSION_TABLE+=("4.2.0;4.2.0;WEKAPP-323045;;Check for possible Weka bucket count disparity")
-WEKA_VERSION_TABLE+=(";4.2.1.21;WEKAPP-312395;;Potentially unroutable cluster management addresses")
-WEKA_VERSION_TABLE+=("4.1.0;4.2.0;WEKAPP-318113;;Batch client upgrade issues")
+WEKA_VERSION_TABLE+=("     ;4.2.0;   WEKAPP-315823;WTA-08292023;KB 1180;NDU rolling update blocked by bucket start-up")
+WEKA_VERSION_TABLE+=("4.2.0;4.2.0   ;WEKAPP-323045;            ;KB 1183;Check for possible Weka bucket count disparity")
+WEKA_VERSION_TABLE+=("     ;4.2.1.21;WEKAPP-312395;            ;KB 1178;Potentially unroutable cluster management addresses")
+WEKA_VERSION_TABLE+=("4.1.0;4.2.0   ;WEKAPP-318113;WTA 08302023;KB 1177;Batch client upgrade issues")
 
 RETURN_CODE=0
 
@@ -40,16 +40,17 @@ for VERSION_TO_CHECK in "${WEKA_VERSION_TABLE[@]}" ; do
     MAX_VERSION=$(   echo ${VERSION_TO_CHECK} | awk -F';' '{print $2}')
     JIRA_REFERENCE=$(echo ${VERSION_TO_CHECK} | awk -F';' '{print $3}')
     WTA_REFERENCE=$( echo ${VERSION_TO_CHECK} | awk -F';' '{print $4}')
-    DESCRIPTION=$(   echo ${VERSION_TO_CHECK} | awk -F';' '{print $5}')
+    KB_REFERENCE=$(  echo ${VERSION_TO_CHECK} | awk -F';' '{print $5}')
+    DESCRIPTION=$(   echo ${VERSION_TO_CHECK} | awk -F';' '{print $6}')
     MIN_VERSION="${MIN_VERSION:-0.0.1}"
     MAX_VERSION="${MAX_VERSION:-999.99.9}"
     if verlte ${MIN_VERSION} ${WEKA_VERSION} && verlte ${WEKA_VERSION} ${MAX_VERSION} ; then
         RETURN_CODE=1
         echo "The current Weka version ${WEKA_VERSION} is potentially susceptible"
         if [[ ! -z "${WTA_REFERENCE}" ]]; then
-            echo "to ${JIRA_REFERENCE} (${DESCRIPTION}), discussed in ${WTA_REFERENCE}"
+            echo "to ${JIRA_REFERENCE} (${DESCRIPTION}), discussed in ${WTA_REFERENCE}, SFDC ${KB_REFERENCE}"
         else
-            echo "to ${JIRA_REFERENCE} (${DESCRIPTION})"
+            echo "to ${JIRA_REFERENCE} (${DESCRIPTION}), SFDC ${KB_REFERENCE}"
         fi
         echo "This does not necessarily prove a problem, and should be investigated"
         echo

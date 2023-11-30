@@ -7,6 +7,7 @@ DESCRIPTION="Check cluster leader is running on a DRIVES process"
 SCRIPT_TYPE="single"
 JIRA_REFERENCE=""
 WTA_REFERENCE=""
+KB_REFERENCE=""
 
 RETURN_CODE=0
 

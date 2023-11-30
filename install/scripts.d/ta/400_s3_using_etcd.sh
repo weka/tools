@@ -6,6 +6,7 @@ DESCRIPTION="Check if still using etcd on S3 cluster"
 SCRIPT_TYPE="single"
 JIRA_REFERENCE="Migrating-S3-Clusters-from-Using-ETCD-to-KWAS-c783f71cc15f4c87a95df0ea2d97171a"
 WTA_REFERENCE="WTA08172023"
+KB_REFERENCE="KB 1181"
 RETURN_CODE=0
 MIN_VERSION="4.0"
 MAX_VERSION="4.2.0"
@@ -28,9 +29,9 @@ if [ ${WEKA_S3_RUNNING} -ge 1 ] ; then
         if [ ${WEKA_ETCD_HOSTS} -gt 0 ] ; then
             echo "S3 cluster is running, and this version of Weka requires migration"
             if [[ ! -z "${WTA_REFERENCE}" ]]; then
-                echo "to ${JIRA_REFERENCE}, discussed in ${WTA_REFERENCE}"
+                echo "to ${JIRA_REFERENCE}, discussed in ${WTA_REFERENCE}, SFDC ${KB_REFERENCE}"
             else
-                echo "to ${JIRA_REFERENCE}"                                                                                                   
+                echo "to ${JIRA_REFERENCE}, SFDC ${KB_REFERENCE}"                                                                                                   
             fi
             RETURN_CODE=1
         fi
