@@ -31,7 +31,7 @@ def get_host_ids(hosts):
 
 
 def get_fe_container_name():
-    output = send_bash_command(f"weka local exec -C s3 cat /data/container/specific_resources.json")
+    output = send_bash_command(f"sudo weka local exec -C s3 cat /data/container/specific_resources.json")
     configs = json.loads(output.decode("utf-8"))
     return configs['s3_options']['container_name']
 

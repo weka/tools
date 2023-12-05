@@ -44,7 +44,7 @@ def system_health_check():
     print(f"{bcolors.DARK_GREEN}\tAll S3 hosts loaded successfully their ETCD data{bcolors.ENDC}")
 
     for host in global_vars.s3_hosts.keys():
-        output = send_bash_command(f"ssh {host} weka local exec -C s3 ls {global_vars.socket_path}").decode("utf-8").rstrip('\n')
+        output = send_bash_command(f"ssh {host} sudo weka local exec -C s3 ls {global_vars.socket_path}").decode("utf-8").rstrip('\n')
         if output != global_vars.socket_path:
             print(f"{bcolors.RED}ERROR: Host {host} is missing it's socket file. Fix what is needed and re-run script{bcolors.ENDC}")
             exit(1)
@@ -183,11 +183,11 @@ def remove_etcd_internals():
 
     print(f"{bcolors.CYAN}\tWaiting 20 seconds on each host to make sure ETCD isn't starting.{bcolors.ENDC}")
     for host in global_vars.s3_hosts.keys():
-        output = send_bash_command(f"ssh {host} weka local exec -C s3 supervisorctl stop etcd")
+        output = send_bash_command(f"ssh {host} sudo weka local exec -C s3 supervisorctl stop etcd")
         t_end = time.time() + 20
         while time.time() < t_end:
             time.sleep(1)
-            output = send_bash_command(f"ssh {host} weka local exec -C s3 ps -elf")
+            output = send_bash_command(f"ssh {host} sudo weka local exec -C s3 ps -elf")
             if 'etcd' in output.decode("utf-8"):
                 print(f"{bcolors.RED}ERROR: ETCD is running on host {host} after being brought down.{bcolors.ENDC}")
                 exit(1)
