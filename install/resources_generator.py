@@ -624,8 +624,12 @@ class ResourcesGenerator:
                 kwargs['netmask'] = int(net_mask_arg)
             if arg_parts:
                 gateway = arg_parts.pop(0)
-                _validate_ips(gateway)
-                kwargs['gateway'] = gateway
+                if len(gateway) > 0:
+                    _validate_ips(gateway)
+                    kwargs['gateway'] = gateway
+            if arg_parts:
+                network_label = arg_parts.pop(0)
+                kwargs['network_label'] = network_label
             kwargs['use_only_nic_identifier'] = self.args.use_only_nic_identifier
             net_dev = NetDevice(name=name, **kwargs)
             logger.debug("Added net device: %s", net_dev.__dict__)
