@@ -27,7 +27,7 @@ case $ID in
 		case $VERSION_ID in 
 			'7.'[2-9]) ;;
 			'8.'[0-6]) ;;
-			'9.'[0-1]) client_only=1 ;; # change to warning=1 when RHEL 9 is supported
+			'9.'[0-2]) ;; # change to warning=1 when RHEL 9 is supported
 			'') version_not_found=1 ;;
 			*) unsupported_version=1 ;;
 		esac
@@ -36,7 +36,7 @@ case $ID in
 	'rocky')
 		case $VERSION_ID in 
 			'8.'[0-7]) ;;
-			'9.'[0-1]) client_only=1 ;; # change to warning=1 when RHEL 9 is supported
+			'9.'[0-2]) ;; # change to warning=1 when RHEL 9 is supported
 			'') version_not_found=1 ;;
 			*) unsupported_version=1 ;;
 		esac
