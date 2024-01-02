@@ -21,7 +21,7 @@ if sys.version_info < (3, 7):
     print("Must have python version 3.7 or later installed.")
     sys.exit(1)
 
-pg_version = "1.3.18"
+pg_version = "1.3.19"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
 
@@ -38,8 +38,8 @@ if sys.stdout.encoding != "UTF-8":
         sys.stdin.reconfigure(encoding="utf-8")
     else:
         # This block is for Python 3.6
-        sys.stdout = open(sys.stdout.fileno(), mode='w', encoding='utf-8', buffering=1)
-        sys.stdin = open(sys.stdin.fileno(), mode='r', encoding='utf-8', buffering=1)
+        sys.stdout = open(sys.stdout.fileno(), mode="w", encoding="utf-8", buffering=1)
+        sys.stdin = open(sys.stdin.fileno(), mode="r", encoding="utf-8", buffering=1)
 
 try:
     "❌ ✅".encode(sys.stdout.encoding)
@@ -2116,7 +2116,7 @@ def frontend_check(host_name, result):
 
 def protocol_host(backend_hosts, s3_enabled):
     S3 = []
-
+    global weka_s3, weka_nfs, weka_smb
     s3_enabled = json.loads(subprocess.check_output(["weka", "s3", "cluster", "-J"]))
     if s3_enabled:
         weka_s3 = json.loads(
@@ -2263,6 +2263,16 @@ def weka_traces_size(host_name, result):
         )
     else:
         GOOD(f'{" " * 5}✅ Weka trace size OK')
+
+
+def cgroup_version(hostname, result):
+    INFO2(f'{" " * 2}Checking group version on host {hostname}:')
+    if result == "tmpfs":
+        GOOD(f'{" " * 5}✅ Correct cgroup v1 set')
+    elif result == "cgroup2fs":
+        BAD(f'{" " * 5}❌ Incorrect vgroup v2 set')
+    else:
+        WARN(f'{" " * 5}⚠️  Unable to determine cgroup version')
 
 
 def cpu_instruction_set(host_name, result):
@@ -2553,6 +2563,20 @@ def backend_host_checks(
             WARN(f"Unable to determine Host: {host_name} available trace space")
         else:
             weka_traces_size(host_name, result)
+
+    if V(weka_version) >= V("4.2.1"):
+        if weka_s3 or weka_nfs or weka_smb:
+            results = parallel_execution(
+                ssh_bk_hosts,
+                ["stat -fc %T /sys/fs/cgroup"],
+                use_check_output=True,
+                ssh_identity=ssh_identity,
+            )
+        for host_name, result in results:
+            if result is None:
+                WARN(f"Unable to determine Host: {host_name} group version")
+            else:
+                cgroup_version(host_name, result)
 
     if V(weka_version) >= V("4.2"):
         INFO("VALIDATING CPU INSTRUCTION SET")
