@@ -21,7 +21,7 @@ if sys.version_info < (3, 7):
     print("Must have python version 3.7 or later installed.")
     sys.exit(1)
 
-pg_version = "1.3.19"
+pg_version = "1.3.20"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
 
@@ -395,6 +395,24 @@ def weka_cluster_checks():
         WARN(f"⚠️  {len(weka_alerts)} Weka alerts present")
         for alert in weka_alerts:
             logging.warning(alert)
+
+    INFO("VERIFYING CUSTOM SSL CERT")
+    custom_ssl = subprocess.call(
+        [
+            "grep",
+            "-q",
+            "SSL_CERT_FILE",
+            "/opt/weka/dist/release/{weka_version}.spec 2>/dev/null",
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.STDOUT,
+    )
+    if custom_ssl == 0:
+        BAD(
+            "❌ Custom ssl certificate detected, please contact Weka Support before upgrading"
+        )
+    else:
+        GOOD("✅ No custom ssl certificate found")
 
     INFO("CHECKING REBUILD STATUS")
     rebuild_status = json.loads(
