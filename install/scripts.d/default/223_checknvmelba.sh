@@ -3,8 +3,6 @@
 DESCRIPTION="Check NVMe LBA format..."
 SCRIPT_TYPE="parallel"
 
-#set -x
-
 # Array containing all available LBA formats per array
 declare -A namespace_lba_formats
 
@@ -42,6 +40,12 @@ declare -A namespace_current_data_size
 declare -A namespace_current_relative_performance
 
 rc=0
+
+# Exit with warning if no NVMes are found
+if ! compgen -G /dev/nvme*n* 2> /dev/null; then
+	echo 'No NVMe devices found'
+	exit 254
+fi
 
 # Populate arrays
 for namespace in /dev/nvme*n*; do
@@ -84,7 +88,7 @@ for namespace in /dev/nvme*n*; do
 		rc=1
 	fi
 
-	if [ "$rp" != "0" ]; then
+	if [ "$rp" -ne 0 ]; then
 		echo "$namespace: Relative performance ($rp) is not set to 0 (Best)"
 		rc=1
 	fi

@@ -33,7 +33,7 @@ if [ ${WEKA_S3_RUNNING} -ge 1 ] ; then
             else
                 echo "to ${JIRA_REFERENCE}, SFDC ${KB_REFERENCE}"                                                                                                   
             fi
-            RETURN_CODE=1
+            RETURN_CODE=254
         fi
     fi
 fi

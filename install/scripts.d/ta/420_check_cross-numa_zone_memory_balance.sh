@@ -27,7 +27,7 @@ MIN_MEMORY_SEEN_ZONE=$(echo ${MIN_MEMORY_SEEN} | awk -F: '{print $1}')
 # and then calculate the ratio between the two, doing floating-point maths in bash, but scaling it by 10^3
 RATIO_SEEN=$(printf "%d\n" $((10**3 * $MAX_MEMORY_SEEN_KB/$MIN_MEMORY_SEEN_KB)))
 if [[ ${RATIO_SEEN} -gt ${MAX_ALLOWED_RATIO} ]]; then
-    RETURN_CODE=1
+    RETURN_CODE=254
     echo "The total memory reported in the two different NUMA regions ${MAX_MEMORY_SEEN_ZONE}"
     echo "and ${MIN_MEMORY_SEEN_ZONE} differs by more than the expected"
     echo "ratio. This might not cause a problem, but it can e.g. prevent Weka processes"

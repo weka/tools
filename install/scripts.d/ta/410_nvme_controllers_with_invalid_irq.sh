@@ -18,7 +18,7 @@ RETURN_CODE=0
 for PCI_DEVICE_ID in $(sudo lspci -mm | grep 'Non-Volatile memory controller' | awk '{print $1}') ; do
     INTERRUPT_LINE=$(sudo lspci -vv -s ${PCI_DEVICE_ID} | grep Interrupt: | grep -c -- -)
     if [[ ${INTERRUPT_LINE} -ge 1 ]]; then
-        RETURN_CODE=1
+        RETURN_CODE=254
         echo "The NVMe device at PCI address ${PCI_DEVICE_ID} appears to have"
         echo "invalid IRQ routing. This is indicated by the presence of a negative number in the"
         echo "\"Interrupt:\" line from lspci."

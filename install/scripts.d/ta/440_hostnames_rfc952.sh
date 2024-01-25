@@ -14,7 +14,7 @@ LENGTH_HOSTNAME=$(echo -n ${SHORT_HOSTNAME} | wc -c)
 
 if [[ ${LENGTH_HOSTNAME} -eq "1" ]] ; then
     echo "Single-character hostnames are not permitted"
-    RETURN_CODE=1
+    RETURN_CODE=254
     exit ${RETURN_CODE}
 fi
 
@@ -23,7 +23,7 @@ GREP_RESULT=$(echo ${SHORT_HOSTNAME} | grep "[^-a-z0-9.]")
 if [[ $? -eq 0 ]]; then
     echo "The hostname ${SHORT_HOSTNAME} appears to contain a character other than [a-z], -, and [0-9]."
     echo "Refer to RFC 952 for more information"
-    RETURN_CODE=1
+    RETURN_CODE=254
 fi
 
 echo "Hostnames conform to RFC 952"
