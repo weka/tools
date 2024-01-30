@@ -21,7 +21,7 @@ if sys.version_info < (3, 7):
     print("Must have python version 3.7 or later installed.")
     sys.exit(1)
 
-pg_version = "1.3.20"
+pg_version = "1.3.21"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
 
@@ -162,18 +162,6 @@ class Host:
             if "instance_type" in host_json
             else None
         )
-
-
-class Machine:
-    def __init__(self, machine_json):
-        self.name = str(machine_json["name"])
-        self.ip = str(machine_json["primary_ip_address"])
-        self.port = str(machine_json["primary_port"])
-        self.roles = str(machine_json["roles"])
-        self.is_up = machine_json["status"]
-        self.uid = str(machine_json["uid"])
-        self.versions = machine_json["versions"][0]
-        self.containers = machine_json["hosts"]["map"]
 
 
 class Spinner:
@@ -383,6 +371,18 @@ def weka_cluster_checks():
             f"⚠️  The cluster maybe running a specialized hotfix version of Weka {weka_version}; confirm that required hotfixes are included in upgrade target version."
         )
 
+    class Machine:
+        def __init__(self, machine_json):
+            self.name = str(machine_json["name"])
+            self.ip = str(machine_json["primary_ip_address"])
+            self.port = str(machine_json["primary_port"])
+            self.roles = str(machine_json["roles"])
+            self.is_up = machine_json["status"]
+            self.uid = str(machine_json["uid"])
+            self.versions = machine_json["versions"][0]
+            if V(weka_version) > V("4.1"):
+                self.containers = machine_json["hosts"]["map"]
+
     INFO("CHECKING FOR WEKA ALERTS")
     weka_alerts = (
         subprocess.check_output(["weka", "alerts", "--no-header"])
@@ -397,22 +397,16 @@ def weka_cluster_checks():
             logging.warning(alert)
 
     INFO("VERIFYING CUSTOM SSL CERT")
-    custom_ssl = subprocess.call(
-        [
-            "grep",
-            "-q",
-            "SSL_CERT_FILE",
-            "/opt/weka/dist/release/{weka_version}.spec 2>/dev/null",
-        ],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.STDOUT,
-    )
-    if custom_ssl == 0:
-        BAD(
-            "❌ Custom ssl certificate detected, please contact Weka Support before upgrading"
-        )
-    else:
-        GOOD("✅ No custom ssl certificate found")
+    try:
+        file_path = f'/opt/weka/dist/release/{weka_version}.spec'
+        with open(file_path, "r") as file:
+            content = file.read()
+            if 'SSL_CERT_FILE' in content:
+                BAD("❌ Custom ssl certificate detected, please contact Weka Support before upgrading")
+            else:
+                GOOD("✅ No custom ssl certificate found")
+    except FileNotFoundError:
+       BAD("❌ Unable to determine if custom ssl certificate is installed.")
 
     INFO("CHECKING REBUILD STATUS")
     rebuild_status = json.loads(
