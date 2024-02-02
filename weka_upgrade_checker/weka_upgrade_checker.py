@@ -21,7 +21,7 @@ if sys.version_info < (3, 7):
     print("Must have python version 3.7 or later installed.")
     sys.exit(1)
 
-pg_version = "1.3.21"
+pg_version = "1.3.22"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
 
@@ -739,6 +739,18 @@ def weka_cluster_checks():
     else:
         WARN(f"Found small file systems\n")
         printlist(small_wekafs, 5)
+
+    if V("4.2") <= V(weka_version) < V("4.3"):
+        allow_gids = json.loads(
+                subprocess.check_output(["weka", "nfs", "interface-group", "-J"])
+            )
+        if allow_gids:
+            INFO("VERIFYING NFS COMPATIBILITY")
+            for item in allow_gids:
+                if item.get("allow_manage_gids") is True:
+                    GOOD("✅ NFS is compatible")
+                else:
+                    BAD("❌ NFS is not compatible, must configure allow_manage_gids prior to upgrading to Weka version 4.3")
 
     supported_ofed = {
         "3.12": [
@@ -2469,7 +2481,11 @@ def backend_host_checks(
         use_check_output=True,
         ssh_identity=ssh_identity,
     )
-    for host_name, result in results:
+
+    # Sort the results by space usage values
+    sorted_results = sorted(results, key=lambda x: x[1])
+
+    for host_name, result in sorted_results:
         if result is None:
             WARN(f"Unable to determine Host: {host_name} available space")
 
