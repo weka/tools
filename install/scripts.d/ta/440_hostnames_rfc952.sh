@@ -26,5 +26,7 @@ if [[ $? -eq 0 ]]; then
     RETURN_CODE=254
 fi
 
-echo "Hostnames conform to RFC 952"
+if [[ ${RETURN_CODE} -eq 0 ]]; then
+    echo "The hostname ${SHORT_HOSTNAME} appears to be valid according to RFC 952"
+fi
 exit ${RETURN_CODE}

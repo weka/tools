@@ -8,5 +8,5 @@ if [ $? == 0 ]; then
     echo "ERROR: /tmp is mounted with noexec on `hostname`"
     exit 1
 fi
-
+echo "/tmp is not mounted with noexec"
 exit 0

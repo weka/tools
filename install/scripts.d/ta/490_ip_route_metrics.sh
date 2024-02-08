@@ -19,4 +19,7 @@ if [[ ${NUMBER_OF_ROUTES_WITH_METRICS} -gt "0" ]]; then
     echo "benefit in a high-performance local network"
 fi
 
+if [[ ${RETURN_CODE} -eq 0 ]]; then
+    echo "No IP routes found with metrics"
+fi
 exit ${RETURN_CODE}

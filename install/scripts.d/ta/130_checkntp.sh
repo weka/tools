@@ -47,6 +47,7 @@ if [ $NTP -eq 1 ]; then
 	ntpdate -q time.nist.gov &> /dev/null
 	if [ $? -eq 1 ]; then
 		echo "NTP installed but not working?"
+		NTPGOOD=0
 	else
 		sec_ntp=`ntpdate -q time.nist.gov | tail -1 | awk {'print $10'} | awk -F. {'print $1'}`
 		if [ "$sec_ntp" -ne "0" ]; then
@@ -59,7 +60,9 @@ if [ $NTP -eq 1 ]; then
 fi
 
 if [ $CHRONY -eq 0 ] && [ $NTP -eq 0 ]; then
-	ret=1
+	echo "Issues detected"
+	return 1
+else
+	echo "Looks good"
+  return 0
 fi
-
-exit $ret

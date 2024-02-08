@@ -9,5 +9,5 @@ if [ $? == 0 ]; then
     echo "ERROR: squashfs is disabled on `hostname`"
     exit 1
 fi
-
+echo "squashfs is enabled"
 exit 0

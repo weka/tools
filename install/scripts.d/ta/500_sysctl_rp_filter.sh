@@ -18,4 +18,7 @@ for INTERFACE_NAME in $(ip --json addr | jq -cr '.[]|select(.link_type!="loopbac
     fi
 done
 
+if [[ ${RETURN_CODE} -eq 0 ]]; then
+    echo "The value for net.ipv4.conf.${INTERFACE_NAME}.rp_filter is set to either 0 or 2"
+fi
 exit ${RETURN_CODE}

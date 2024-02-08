@@ -3,6 +3,7 @@
 DESCRIPTION="Check if HT/AMT is disabled"
 SCRIPT_TYPE="parallel"
 
+ret="0"
 # Checking if CPU has HyperThreading available and running or disabled
 which dmidecode &> /dev/null
 if [ $? -eq 1 ]; then

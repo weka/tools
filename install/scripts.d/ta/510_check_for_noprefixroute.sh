@@ -19,4 +19,7 @@ if [[ "${NOPREFIXROUTE_COUNT}" != "0" ]]; then
     echo "Be able to return a device for each floating IP configured"
 fi
 
+if [[ ${RETURN_CODE} -eq 0 ]]; then
+    echo "No IP addresses found with noprefixroute"
+fi
 exit ${RETURN_CODE}
