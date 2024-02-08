@@ -3,6 +3,7 @@
 DESCRIPTION="Check Firewall rules..."
 SCRIPT_TYPE="parallel"
 
+ret=0
 if grep "Amazon Linux" /etc/os-release &> /dev/null; then
         echo "Not checking frewall rules because it is N/A on AWS"
         ret="0"

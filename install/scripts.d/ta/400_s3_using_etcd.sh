@@ -38,4 +38,6 @@ if [ ${WEKA_S3_RUNNING} -ge 1 ] ; then
     fi
 fi
 
+if [[ ${RETURN_CODE} -eq 0 ]]; then
+    echo "S3 cluster is good"
 exit ${RETURN_CODE}

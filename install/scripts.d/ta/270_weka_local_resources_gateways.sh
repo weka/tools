@@ -29,7 +29,9 @@ for WEKA_CONTAINER in $(sudo weka local ps --output name --no-header); do
         RETURN_CODE=254
     fi 
 done
-
+if [[ ${RETURN_CODE} -eq 0 ]]; then
+    echo "All Weka containers have network devices with gateways"
+fi
 exit ${RETURN_CODE}
 
 

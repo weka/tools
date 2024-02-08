@@ -59,4 +59,7 @@ else
 		fi
 	fi
 fi
+if [ "$ret" -eq 0 ]; then
+  echo "All tests passed."
+fi
 exit $ret

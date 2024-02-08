@@ -19,4 +19,7 @@ WEKA_THEORETICAL_MAX_SSD_BYTES=$((${WEKA_BUCKET_COUNT}*8*1024**4))
 if [[ $((${WEKA_SSD_USED_BYTES}*2)) -gt ${WEKA_THEORETICAL_MAX_SSD_BYTES} ]] ; then 
     RETURN_CODE=254
 fi
+if [[ ${RETURN_CODE} -eq 0 ]]; then
+    echo "SSD space used is less than half the theoretical maximum"
+fi
 exit ${RETURN_CODE}

@@ -19,4 +19,7 @@ for master in $masters; do
 	done
 done
 
+if [ "$rc" -eq 0 ]; then
+  echo "All tests passed."
+fi
 exit "$rc"

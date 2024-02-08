@@ -42,5 +42,7 @@ if [[  ${DISPARATE_WRITE_LATENCIES} == 0 ]]; then
     fi
     echo "This does not necessarily prove a problem, and should be investigated"
 fi
-
+if [[ ${RETURN_CODE} -eq 0 ]]; then
+    echo "No disparate drive write latencies"
+fi
 exit ${RETURN_CODE}

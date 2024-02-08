@@ -18,7 +18,9 @@ if [[ ${NUMBER_OF_WEKA_VERSIONS} -ne 1 ]] ; then
     done
     RETURN_CODE=254
 fi 
-
+if [[ ${RETURN_CODE} -eq 0 ]]; then
+    echo "Only one Weka version is installed"
+fi
 exit ${RETURN_CODE}
 
 

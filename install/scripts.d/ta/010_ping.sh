@@ -136,4 +136,5 @@ fi
 if [ $ROUTEWARNS -gt 0 ]; then
 	exit "254"		
 fi
+echo "All tests passed."
 exit "0"

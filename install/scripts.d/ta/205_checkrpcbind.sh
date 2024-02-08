@@ -9,5 +9,5 @@ if [ $? != 0 ]; then
     echo "error: rpcbind not running on `hostname`"
     exit 1
 fi
-
+echo "rpcbind is running"
 exit 0

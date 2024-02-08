@@ -17,5 +17,7 @@ if [[ $? -eq 0 ]] ; then
         echo "This version of weka appears to use custom CA certificates. Care will be needed for upgrading"
         RETURN_CODE=254
 fi
-
+if [[ ${RETURN_CODE} -eq 0 ]]; then
+    echo "No custom CA certificates found"
+fi
 exit ${RETURN_CODE}

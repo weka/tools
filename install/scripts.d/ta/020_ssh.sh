@@ -34,4 +34,4 @@ if [ $ERRORS -gt 0 ]; then
 	ret=255		# HARDFAIL - if we can't ssh to all the servers, we can't continue
 fi
 
-exit 0
+exit $ret

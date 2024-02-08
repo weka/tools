@@ -57,4 +57,7 @@ for VERSION_TO_CHECK in "${WEKA_VERSION_TABLE[@]}" ; do
     fi
 done
 
+if [[ ${RETURN_CODE} -eq 0 ]]; then
+    echo "No version-specific issues found"
+fi
 exit ${RETURN_CODE}
