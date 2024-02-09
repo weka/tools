@@ -79,4 +79,7 @@ if [[ ${SOURCE_BASED_ROUTING_RECOMMENDED} -ge "1" ]] ; then
     fi
 fi
 
+if [[ ${RETURN_CODE} -eq 0 ]]; then
+    echo "Source-based routing is not required or correct"
+fi
 exit ${RETURN_CODE}

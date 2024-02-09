@@ -35,5 +35,7 @@ if [[ ${RATIO_SEEN} -gt ${MAX_ALLOWED_RATIO} ]]; then
     
 fi
 
-
+if [[ ${RETURN_CODE} -eq 0 ]]; then
+    echo "NUMA zones have similar amounts of memory"
+fi
 exit ${RETURN_CODE}

@@ -740,6 +740,18 @@ def weka_cluster_checks():
         WARN(f"Found small file systems\n")
         printlist(small_wekafs, 5)
 
+    if V("4.2") <= V(weka_version) < V("4.3"):
+        allow_gids = json.loads(
+                subprocess.check_output(["weka", "nfs", "interface-group", "-J"])
+            )
+        if allow_gids:
+            INFO("VERIFYING NFS COMPATIBILITY")
+            for item in allow_gids:
+                if item.get("allow_manage_gids") is True:
+                    GOOD("✅ NFS is compatible")
+                else:
+                    BAD("❌ NFS is not compatible, must configure allow_manage_gids prior to upgrading to Weka version 4.3")
+
     supported_ofed = {
         "3.12": [
             "4.7-1.0.0.1",
@@ -2481,6 +2493,7 @@ def backend_host_checks(
     )
 
     for host_name, result in results:
+
         if result is None:
             WARN(f"Unable to determine Host: {host_name} available space")
         else:

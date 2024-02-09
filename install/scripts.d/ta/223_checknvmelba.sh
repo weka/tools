@@ -114,6 +114,8 @@ if [ "$rc" -ne 0 ]; then
 	echo
 	echo 'Note that data will be lost when reformatting. It is strongly recommended'
 	echo 'that the LBA format of all WEKA NVMe devices match if possible.'
+else
+    echo 'All tests passed.'
 fi
 
 exit "$rc"

@@ -25,5 +25,7 @@ if [[ $? -ne "0" ]] ; then
     fi
 fi
 
-
+if [[ ${RETURN_CODE} -eq 0 ]]; then
+    echo "The weka agent is enabled"
+fi
 exit ${RETURN_CODE}

@@ -33,4 +33,7 @@ if [ -d "/data" ] ; then
     fi
 fi
 
+if [[ ${RETURN_CODE} -eq 0 ]]; then
+    echo "No /data folder exists"
+fi
 exit ${RETURN_CODE}

@@ -23,4 +23,7 @@ if [[ ( ${WEKA_NUMBER_OF_DRIVE_PROCESSES} -eq "0" ) ]] ; then
     echo "This does not necessarily prove a problem, and should be investigated"
 fi
 
+if [[ ${RETURN_CODE} -eq 0 ]]; then
+    echo "The weka cluster leader is running on a DRIVES process"
+fi
 exit ${RETURN_CODE}

@@ -22,7 +22,9 @@ if (( ${WEKA_ENSURE_FREE} > ${TRACES_FS_SIZE})) ; then
     echo "traces will be stored"
     RETURN_CODE=1
 fi 
-
+if [[ ${RETURN_CODE} -eq 0 ]]; then
+    echo "Traces FS is larger than ensure-free"
+fi
 exit ${RETURN_CODE}
 
 

@@ -25,5 +25,7 @@ if [[ ( ${WEKA_NFS_V4_SUPPORT_IN_USE} -ne "0" ) && \
     fi
     echo "This does not necessarily prove a problem, and should be investigated"
 fi
-
+if [[ ${RETURN_CODE} -eq 0 ]]; then
+    echo "No NFS v4 services in use with floating IPs"
+fi
 exit ${RETURN_CODE}

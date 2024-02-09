@@ -103,5 +103,7 @@ for line in $irq_mismatches; do
 	fi
 done
 IFS=$oldifs
-
+if [ "$rc" -eq 0 ]; then
+  echo "No IRQ conflicts found"
+fi
 exit "$rc"
