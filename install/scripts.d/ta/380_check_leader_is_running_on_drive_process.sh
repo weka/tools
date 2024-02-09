@@ -14,7 +14,7 @@ RETURN_CODE=0
 # Need to check the container rather than the process, as it'll only ever be part of a MANAGEMENT process,
 # so easiest to check the container/host has the DRIVES role
 WEKA_CLUSTER_LEADER_CONTAINER=$(weka cluster host --leader --no-header --output id 2>/dev/null)
-WEKA_NUMBER_OF_DRIVE_PROCESSES=$(weka cluster host resources --json ${WEKA_CLUSTER_LEADER_CONTAINER} | jq -cr '.nodes[].roles|select(.[0]=="DRIVES")|length' 2>/dev/null)
+WEKA_NUMBER_OF_DRIVE_PROCESSES=$(weka cluster host resources ${WEKA_CLUSTER_LEADER_CONTAINER} | grep ^DRIVES | wc -l)
 
 if [[ ( ${WEKA_NUMBER_OF_DRIVE_PROCESSES} -eq "0" ) ]] ; then 
     RETURN_CODE=1

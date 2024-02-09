@@ -61,8 +61,8 @@ fi
 
 if [ $CHRONY -eq 0 ] && [ $NTP -eq 0 ]; then
 	echo "Issues detected"
-	return 1
+	exit 1
 else
 	echo "Looks good"
-  return 0
+  exit 0
 fi
