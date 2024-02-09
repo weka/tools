@@ -398,15 +398,17 @@ def weka_cluster_checks():
 
     INFO("VERIFYING CUSTOM SSL CERT")
     try:
-        file_path = f'/opt/weka/dist/release/{weka_version}.spec'
+        file_path = f"/opt/weka/dist/release/{weka_version}.spec"
         with open(file_path, "r") as file:
             content = file.read()
-            if 'SSL_CERT_FILE' in content:
-                BAD("❌ Custom ssl certificate detected, please contact Weka Support before upgrading")
+            if "SSL_CERT_FILE" in content:
+                BAD(
+                    "❌ Custom ssl certificate detected, please contact Weka Support before upgrading"
+                )
             else:
                 GOOD("✅ No custom ssl certificate found")
     except FileNotFoundError:
-       BAD("❌ Unable to determine if custom ssl certificate is installed.")
+        BAD("❌ Unable to determine if custom ssl certificate is installed.")
 
     INFO("CHECKING REBUILD STATUS")
     rebuild_status = json.loads(
@@ -739,18 +741,6 @@ def weka_cluster_checks():
     else:
         WARN(f"Found small file systems\n")
         printlist(small_wekafs, 5)
-
-    if V("4.2") <= V(weka_version) < V("4.3"):
-        allow_gids = json.loads(
-                subprocess.check_output(["weka", "nfs", "interface-group", "-J"])
-            )
-        if allow_gids:
-            INFO("VERIFYING NFS COMPATIBILITY")
-            for item in allow_gids:
-                if item.get("allow_manage_gids") is True:
-                    GOOD("✅ NFS is compatible")
-                else:
-                    BAD("❌ NFS is not compatible, must configure allow_manage_gids prior to upgrading to Weka version 4.3")
 
     supported_ofed = {
         "3.12": [
@@ -2471,25 +2461,35 @@ def backend_host_checks(
             WARN(f"Unable to determine time on Host: {host_name}")
 
     INFO("CHECKING WEKA DATA DIRECTORY SPACE USAGE ON BACKENDS")
-    data_dir = os.path.join(f"/opt/weka/data/*_{str(weka_version)}")
+    data_dir = "/opt/weka/data"
+
+    if V(weka_version) >= V("4.2.7"):
+        subdirectories = [d for d in os.listdir(data_dir) if "_" not in d]
+        commands = [
+            "df -m /opt/weka | awk 'NR==2 {print $4}'",
+            *[
+                f"sudo du -smc /opt/weka/data/{d} | awk '/total/ {{print $1}}'"
+                for d in subdirectories
+            ],
+        ]
+    else:
+        commands = [
+            "df -m /opt/weka | awk 'NR==2 {print $4}'",
+            "sudo du -smc %s | awk '/total/ {print $1}'" % data_dir,
+        ]
+
     results = parallel_execution(
         ssh_bk_hosts,
-        [
-            "df -m /opt/weka | awk 'NR==2 {print $4}'",
-            "sudo du -smc %s" "| awk '/total/ {print $1}'" % (data_dir),
-        ],
+        commands,
         use_check_output=True,
         ssh_identity=ssh_identity,
     )
 
-    # Sort the results by space usage values
-    sorted_results = sorted(results, key=lambda x: x[1])
-
-    for host_name, result in sorted_results:
+    for host_name, result in results:
         if result is None:
             WARN(f"Unable to determine Host: {host_name} available space")
-
-    free_space_check_data(host_name, results)
+        else:
+            free_space_check_data(host_name, results)
 
     INFO("CHECKING WEKA LOGS DIRECTORY SPACE USAGE ON BACKENDS")
     results = parallel_execution(
@@ -2564,15 +2564,27 @@ def backend_host_checks(
             invalid_endpoints(host_name, result, backend_ips)
 
     INFO("CHECKING WEKA DATA DIRECTORY SIZE ON BACKENDS")
-    data_dir = os.path.join("/opt/weka/data/")
-    results = parallel_execution(
-        ssh_bk_hosts,
-        [
-            f'for name in $(weka local ps --no-header -o name,versionName| egrep -v "samba|smbw|s3|ganesha|envoy" | tr -s " " "_"); do du -sm {data_dir}"$name"; done'
-        ],
-        use_check_output=True,
-        ssh_identity=ssh_identity,
-    )
+    data_dir = "/opt/weka/data/"
+
+    if V(weka_version) >= V("4.2.7"):
+        results = parallel_execution(
+            ssh_bk_hosts,
+            [
+                f'for name in $(weka local ps --no-header -o name,versionName | egrep -v "samba|smbw|s3|ganesha|envoy"); do du -sm {data_dir}"$name"; done'
+            ],
+            use_check_output=True,
+            ssh_identity=ssh_identity,
+        )
+    else:
+        results = parallel_execution(
+            ssh_bk_hosts,
+            [
+                f'for name in $(weka local ps --no-header -o name,versionName | egrep -v "samba|smbw|s3|ganesha|envoy" | tr -s " " "_"); do du -sm {data_dir}"$name"; done'
+            ],
+            use_check_output=True,
+            ssh_identity=ssh_identity,
+        )
+
     for host_name, result in results:
         if result is None:
             WARN(f"Unable to determine weka mounts on Host: {host_name}")
