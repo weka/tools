@@ -57,6 +57,7 @@ if [ "$MLX5_VER" != "" ]; then
     if [ "$MLX5_VER" != "${OFEDVER:0:9}" ]; then
         echo "Loaded Mellanox 5 driver $MLX5_VER does not match OFED version $OFEDVER!"
         exit "254"
+
     fi
 fi
 # we really don't care about this anymore... not really supporting OFED4 anymore.
@@ -68,6 +69,6 @@ fi
 #fi
 
 echo "Valid OFED configuration observed"
-exit $ret
+return $ret
 
 

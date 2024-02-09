@@ -41,4 +41,5 @@ fi
 if [[ ${RETURN_CODE} -eq 0 ]]; then
     echo "S3 cluster is good"
 fi
+
 exit ${RETURN_CODE}

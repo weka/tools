@@ -3,6 +3,7 @@
 #set -ue # Fail with an error code if there's any sub-command/variable error
 
 DESCRIPTION="Ratio of NVMe read operations to DRIVE node read operations"
+
 SCRIPT_TYPE="single"
 JIRA_REFERENCE="WEKAPP-335035"
 WTA_REFERENCE=""

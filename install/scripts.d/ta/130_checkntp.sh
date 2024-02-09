@@ -65,4 +65,5 @@ if [ $CHRONY -eq 0 ] && [ $NTP -eq 0 ]; then
 else
 	echo "Looks good"
   exit 0
+
 fi
