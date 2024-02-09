@@ -2570,7 +2570,7 @@ def backend_host_checks(
         results = parallel_execution(
             ssh_bk_hosts,
             [
-                f'for name in $(weka local ps --no-header -o name,versionName | egrep -v "samba|smbw|s3|ganesha|envoy"); do du -sm {data_dir}"$name"; done'
+                f'for name in $(weka local ps --no-header -o name | egrep -v "samba|smbw|s3|ganesha|envoy"); do du -sm {data_dir}"$name"; done'
             ],
             use_check_output=True,
             ssh_identity=ssh_identity,
