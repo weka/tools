@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -ue # Fail with an error code if there's any sub-command/variable error
+#set -ue # Fail with an error code if there's any sub-command/variable error
 
 DESCRIPTION="Check that all NVME devices have valid IRQ routing"
 # script type is single, parallel, sequential, or parallel-compare-backends

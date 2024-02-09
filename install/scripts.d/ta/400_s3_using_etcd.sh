@@ -11,7 +11,7 @@ RETURN_CODE=0
 MIN_VERSION="4.0"
 MAX_VERSION="4.2.0"
 
-# Use core-util's sort -V to dermine if version $1 is <= version $2
+# Use core-util's sort -V to determine if version $1 is <= version $2
 verlte() {
     [  "$1" = "$(echo -e "$1\n$2" | sort -V | head -n1)" ]
 }
@@ -40,4 +40,5 @@ fi
 
 if [[ ${RETURN_CODE} -eq 0 ]]; then
     echo "S3 cluster is good"
+fi
 exit ${RETURN_CODE}

@@ -2,7 +2,7 @@
 
 #set -ue # Fail with an error code if there's any sub-command/variable error
 
-DESCRIPTION="Look for "
+DESCRIPTION="Look for no prefix route on any IP address"
 SCRIPT_TYPE="parallel"
 JIRA_REFERENCE=""
 WTA_REFERENCE=""

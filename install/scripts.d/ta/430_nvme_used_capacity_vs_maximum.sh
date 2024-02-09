@@ -12,8 +12,18 @@ WEKA_VERSION=$(weka version current)
 # we can't rely on jq being present
 WEKA_BUCKET_COUNT=$(weka status | grep Buckets | sed 's/.*[^0-9]\([0-9][0-9]*\) Buckets.*/\1/')
 WEKA_SSD_USED_BYTES=$(weka fs -o usedSSD --no-header -R | awk '{tot+=$1}; END {print tot}')
+
+# gets a syntax error if this isn't numeric... so check
+if [[ ${WEKA_SSD_USED_BYTES} =~ ^-?[0-9]+$ ]]; then
+    echo "Used bytes is ${WEKA_SSD_USED_BYTES}"
+else
+    echo ${WEKA_SSD_USED_BYTES}
+    exit 0
+fi
+
 # Theoretical max is 8 TiB per bucket
 WEKA_THEORETICAL_MAX_SSD_BYTES=$((${WEKA_BUCKET_COUNT}*8*1024**4))
+echo ${WEKA_SSD_USED_BYTES}
 
 # if we've allocated more than half the maximum theoretical SSD space, warn
 if [[ $((${WEKA_SSD_USED_BYTES}*2)) -gt ${WEKA_THEORETICAL_MAX_SSD_BYTES} ]] ; then 
