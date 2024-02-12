@@ -21,7 +21,7 @@ if sys.version_info < (3, 7):
     print("Must have python version 3.7 or later installed.")
     sys.exit(1)
 
-pg_version = "1.3.22"
+pg_version = "1.3.23"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
 
@@ -2005,25 +2005,33 @@ def client_mount_check(host_name, result):
         GOOD(f'{" " * 5}✅ No wekafs mounted on /weka for host: {host_name}')
 
 
-def free_space_check_data(host_name, results):
+results_lock = threading.Lock()
+
+
+def free_space_check_data(results):
     results_by_host = {}
     for host_name, result in results:
-        if host_name not in results_by_host:
-            results_by_host[host_name] = []
-        results_by_host[host_name].append((result).strip())
+        with results_lock:
+            if host_name not in results_by_host:
+                results_by_host[host_name] = []
+            results_by_host[host_name].append(result.strip())
 
-    for result in results_by_host.items():
-        hname = result[0]
-        weka_partition = int(result[1][0])
-        weka_data_dir = int(result[1][1])
-        free_capacity_needed = weka_data_dir * 1.5
-        if (free_capacity_needed) > (weka_partition):
-            WARN(
-                f'{" " * 5}⚠️  Host: {hname} does not have enough free capacity, need to free up '
-                + f"~{(free_capacity_needed - weka_partition) / 1000}G"
-            )
+    for host_name, result_list in results_by_host.items():
+        if len(result_list) >= 2:
+            weka_partition = int(result_list[0])
+            print(weka_partition)
+            weka_data_dir = int(result_list[1]) if result_list[1] else 0
+            print(weka_data_dir)
+            free_capacity_needed = weka_data_dir * 1.5
+            if free_capacity_needed > weka_partition:
+                WARN(
+                    f'{" " * 5}⚠️  Host: {host_name} does not have enough free capacity, need to free up '
+                    + f"~{(free_capacity_needed - weka_partition) / 1000}G"
+                )
+            else:
+                GOOD(f'{" " * 5}✅ Host: {host_name} has adequate free space')
         else:
-            GOOD(f'{" " * 5}✅ Host: {hname} has adequate free space')
+            WARN(f'{" " * 5}⚠️  Insufficient data for host: {host_name}')
 
 
 def free_space_check_logs(results):
@@ -2461,35 +2469,48 @@ def backend_host_checks(
             WARN(f"Unable to determine time on Host: {host_name}")
 
     INFO("CHECKING WEKA DATA DIRECTORY SPACE USAGE ON BACKENDS")
-    data_dir = "/opt/weka/data"
-
     if V(weka_version) >= V("4.2.7"):
-        subdirectories = [d for d in os.listdir(data_dir) if "_" not in d]
-        commands = [
-            "df -m /opt/weka | awk 'NR==2 {print $4}'",
-            *[
-                f"sudo du -smc /opt/weka/data/{d} | awk '/total/ {{print $1}}'"
-                for d in subdirectories
+        data_dir = os.path.join(f"/opt/weka/data/")
+        subdirectories = [
+            d
+            for d in os.listdir(data_dir)
+            if "_" not in d
+            and d not in ["envoy", "smbw", "ganesha", "agent", "dependencies", "ofed"]
+        ]
+        results = parallel_execution(
+            ssh_bk_hosts,
+            [
+                "df -m /opt/weka | awk 'NR==2 {print $4}'",
+                *[
+                    f"sudo du -smc /opt/weka/data/{d} | awk '/total/ {{print $1}}'"
+                    for d in subdirectories
+                ],
             ],
-        ]
+            use_check_output=True,
+            ssh_identity=ssh_identity,
+        )
+        for host_name, result in results:
+            if result is None:
+                WARN(f"Unable to determine Host: {host_name} available space")
+
+        free_space_check_data(results)
+
     else:
-        commands = [
-            "df -m /opt/weka | awk 'NR==2 {print $4}'",
-            "sudo du -smc %s | awk '/total/ {print $1}'" % data_dir,
-        ]
+        data_dir = os.path.join(f"/opt/weka/data/*_{str(weka_version)}")
+        results = parallel_execution(
+            ssh_bk_hosts,
+            [
+                "df -m /opt/weka | awk 'NR==2 {print $4}'",
+                "sudo du -smc %s" "| awk '/total/ {print $1}'" % (data_dir),
+            ],
+            use_check_output=True,
+            ssh_identity=ssh_identity,
+        )
+        for host_name, result in results:
+            if result is None:
+                WARN(f"Unable to determine Host: {host_name} available space")
 
-    results = parallel_execution(
-        ssh_bk_hosts,
-        commands,
-        use_check_output=True,
-        ssh_identity=ssh_identity,
-    )
-
-    for host_name, result in results:
-        if result is None:
-            WARN(f"Unable to determine Host: {host_name} available space")
-        else:
-            free_space_check_data(host_name, results)
+        free_space_check_data(results)
 
     INFO("CHECKING WEKA LOGS DIRECTORY SPACE USAGE ON BACKENDS")
     results = parallel_execution(
