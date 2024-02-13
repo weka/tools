@@ -2019,9 +2019,7 @@ def free_space_check_data(results):
     for host_name, result_list in results_by_host.items():
         if len(result_list) >= 2:
             weka_partition = int(result_list[0])
-            print(weka_partition)
             weka_data_dir = int(result_list[1]) if result_list[1] else 0
-            print(weka_data_dir)
             free_capacity_needed = weka_data_dir * 1.5
             if free_capacity_needed > weka_partition:
                 WARN(
