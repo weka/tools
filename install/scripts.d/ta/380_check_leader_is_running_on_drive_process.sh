@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -ue # Fail with an error code if there's any sub-command/variable error
+#set -ue # Fail with an error code if there's any sub-command/variable error
 
 DESCRIPTION="Check cluster leader is running on a DRIVES process"
 # script type is single, parallel, sequential, or parallel-compare-backends
@@ -10,6 +10,19 @@ WTA_REFERENCE=""
 KB_REFERENCE=""
 
 RETURN_CODE=0
+
+# check if we can run weka commands
+weka status &> /dev/null
+status=$?
+if [[ $status -ne 0 ]]; then
+    echo "ERROR: Not able to run weka commands"
+    if [[ $status -eq 127 ]]; then
+        echo "WEKA not found"
+    elif [[ $status -eq 41 ]]; then
+        echo "Unable to log into Weka cluster"
+    fi
+    exit 254 # WARN
+fi
 
 # Need to check the container rather than the process, as it'll only ever be part of a MANAGEMENT process,
 # so easiest to check the container/host has the DRIVES role

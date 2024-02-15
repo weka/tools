@@ -9,7 +9,19 @@ WTA_REFERENCE=""
 KB_REFERENCE="SFDC 12492"
 RETURN_CODE=0
 
-NOPREFIXROUTE_COUNT=$(ip --json addr | jq '[.[].addr_info[]|select((.family=="inet")and(.noprefixroute))]|length')
+# check if the ip command supports --json
+ip --json &> /dev/null
+status=$?
+if [[ $status -ne 0 ]]; then
+    echo "ERROR: Not able to run ip --json command"
+    if [[ $status -eq 127 ]]; then
+        echo "ip command not found"
+    fi
+    exit 254 # WARN
+fi
+
+# look for addr_info["family"] == "inet" && addr_info["noprefixroute"]
+NOPREFIXROUTE_COUNT=$(ip --json addr | python3 -c 'import sys, json; data = json.load(sys.stdin) ; print(len([addr for entry in data for addr in entry["addr_info"] if addr.get("family") == "inet" and addr.get("noprefixroute")]))')
 
 if [[ "${NOPREFIXROUTE_COUNT}" != "0" ]]; then
     RETURN_CODE="254"

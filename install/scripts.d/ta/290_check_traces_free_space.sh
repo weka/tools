@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -ue # Fail with an error code if there's any sub-command/variable error
+#set -ue # Fail with an error code if there's any sub-command/variable error
 
 DESCRIPTION="Verify that size of traces FS is larger than ensure-free"
 # script type is single, parallel, sequential, or parallel-compare-backends
@@ -10,7 +10,40 @@ RETURN_CODE=0
 
 WEKA_TRACES_DIR="/opt/weka/traces"
 
-WEKA_ENSURE_FREE=$(weka debug traces status --json | jq .servers_ensure_free.value)   # bytes
+# check if we can run weka commands
+weka status &> /dev/null
+status=$?
+if [[ $status -ne 0 ]]; then
+    echo "ERROR: Not able to run weka commands"
+    if [[ $status -eq 127 ]]; then
+        echo "WEKA not found"
+    elif [[ $status -eq 41 ]]; then
+        echo "Unable to log into Weka cluster"
+    fi
+    exit 254 # WARN
+fi
+
+WEKA_ENSURE_FREE=$(weka debug traces status --json | python3 -c '
+from __future__ import print_function
+import sys, json
+try:
+    data = json.load(sys.stdin)
+except json.JSONDecodeError as e:
+    print("ERROR: Unable to decode JSON from weka debug traces status")
+    print(e)
+    sys.exit(1)
+try:
+    print(data["servers_ensure_free"]["value"])
+except KeyError as e:
+    print("ERROR: Unable to find servers_ensure_free in JSON from weka debug traces status")
+    print(e)
+    sys.exit(1)
+')   # bytes
+# check if the python script failed (WEKA_ENSURE_FREE is not a number)
+if ! [[ $WEKA_ENSURE_FREE =~ ^[0-9]+$ ]]; then
+    echo ${WEKA_ENSURE_FREE}
+    exit 1
+fi
 TRACES_FS_SIZE_KB=$(df -BK ${WEKA_TRACES_DIR} --output=size | tail -n -1 | sed s/K$//) # kibibytes
 TRACES_FS_SIZE=$((${TRACES_FS_SIZE_KB}*1024)) # kibibytes
 

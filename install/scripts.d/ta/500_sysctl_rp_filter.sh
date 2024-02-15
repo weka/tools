@@ -9,7 +9,7 @@ WTA_REFERENCE=""
 KB_REFERENCE="SFDC 12492"
 RETURN_CODE=0
 
-for INTERFACE_NAME in $(ip --json addr | jq -cr '.[]|select(.link_type!="loopback")|.ifname') ; do
+for INTERFACE_NAME in $(ip --json addr | python3 -c 'import sys, json; data = json.load(sys.stdin) ; print(" ".join([a["ifname"] for a in data if "loopback" not in a.get("link_type")]));') ; do
     RP_FILTER_VALUE=$(sysctl -n net.ipv4.conf.${INTERFACE_NAME}.rp_filter)
     if [[ "${RP_FILTER_VALUE}" != "0" && "${RP_FILTER_VALUE}" != "2" ]]; then
         RETURN_CODE="254"

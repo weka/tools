@@ -9,6 +9,19 @@ WTA_REFERENCE=""
 KB_REFERENCE=""
 RETURN_CODE=0
 
+# check if we can run weka commands
+weka status &> /dev/null
+status=$?
+if [[ $status -ne 0 ]]; then
+    echo "ERROR: Not able to run weka commands"
+    if [[ $status -eq 127 ]]; then
+        echo "WEKA not found"
+    elif [[ $status -eq 41 ]]; then
+        echo "Unable to log into Weka cluster"
+    fi
+    exit 254 # WARN
+fi
+
 HIGHEST_EXPECTED_RATIO="3"
 TIME_TO_EXAMINE="1h"
 # TODO: should possibly change this to calculate the values rather than relying on the macro
