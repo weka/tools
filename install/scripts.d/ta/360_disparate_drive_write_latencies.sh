@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -ue # Fail with an error code if there's any sub-command/variable error
+#set -ue # Fail with an error code if there's any sub-command/variable error
 
 DESCRIPTION="Check for disparate drive write latencies"
 # script type is single, parallel, sequential, or parallel-compare-backends
@@ -11,6 +11,18 @@ KB_REFERENCE="KB 1182"
 
 RETURN_CODE=0
 
+# check if we can run weka commands
+weka status &> /dev/null
+status=$?
+if [[ $status -ne 0 ]]; then
+    echo "ERROR: Not able to run weka commands"
+    if [[ $status -eq 127 ]]; then
+        echo "WEKA not found"
+    elif [[ $status -eq 41 ]]; then
+        echo "Unable to log into Weka cluster"
+    fi
+    exit 254 # WARN
+fi
 
 LOWEST_WRITE_LATENCY=$( weka stats --category ssd --stat DRIVE_WRITE_LATENCY --param "disk:*" --interval 60 -s value --output value --no-header | head -n1 | sed "s/[^0-9.]//g")
 HIGHEST_WRITE_LATENCY=$(weka stats --category ssd --stat DRIVE_WRITE_LATENCY --param "disk:*" --interval 60 -s value --output value --no-header | tail -n1 | sed "s/[^0-9.]//g")

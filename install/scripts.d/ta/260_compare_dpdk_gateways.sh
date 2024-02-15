@@ -14,6 +14,6 @@ for WEKA_CONTAINER in $(sudo weka local ps --output name --no-header); do
           ( ${WEKA_CONTAINER} == "smb"   ) ]] ; then
         continue
     fi
-    sudo weka local resources --container ${WEKA_CONTAINER} --json | jq -r "[.net_devices[].gateway] | .[]" | sort -n
+    sudo weka local resources --container ${WEKA_CONTAINER} --json | python3 -c 'import sys, json; data = json.load(sys.stdin); print("\n".join([device["gateway"] for device in data["net_devices"]]))' | sort -n
 done
 ) | sha256sum | awk '{print $1}'

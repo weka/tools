@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -ue # Fail with an error code if there's any sub-command/variable error
+#set -ue # Fail with an error code if there's any sub-command/variable error
 
 DESCRIPTION="Check if still using etcd on S3 cluster"
 SCRIPT_TYPE="single"
@@ -19,13 +19,26 @@ verlt() {
     [ "$1" = "$2" ] && return 1 || verlte $1 $2
 }
 
+# check if we can run weka commands
+weka status &> /dev/null
+status=$?
+if [[ $status -ne 0 ]]; then
+    echo "ERROR: Not able to run weka commands"
+    if [[ $status -eq 127 ]]; then
+        echo "WEKA not found"
+    elif [[ $status -eq 41 ]]; then
+        echo "Unable to log into Weka cluster"
+    fi
+    exit 254 # WARN
+fi
+
 WEKA_VERSION=$(weka version current)
 
 WEKA_S3_RUNNING=$(weka s3 cluster --json | grep active | grep true | wc -l)
 
 if [ ${WEKA_S3_RUNNING} -ge 1 ] ; then 
     if verlte ${MIN_VERSION} ${WEKA_VERSION} && verlte ${WEKA_VERSION} ${MAX_VERSION} ; then
-        WEKA_ETCD_HOSTS=$(weka s3 cluster --json | jq ".etcd_cluster_hosts|length")
+        WEKA_ETCD_HOSTS=$(weka s3 cluster --json | python3 -c 'import sys, json; data = json.load(sys.stdin); print(len(data["etcd_cluster_hosts"]))')
         if [ ${WEKA_ETCD_HOSTS} -gt 0 ] ; then
             echo "S3 cluster is running, and this version of Weka requires migration"
             if [[ ! -z "${WTA_REFERENCE}" ]]; then

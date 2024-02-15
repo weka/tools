@@ -9,7 +9,22 @@ WTA_REFERENCE=""
 KB_REFERENCE="SFDC 12492"
 RETURN_CODE=0
 
-NUMBER_OF_ROUTES_WITH_METRICS=$(ip --json route | jq "[.[]|select(.metric!=null)]|length")
+# check if the ip command supports --json
+ip --json &> /dev/null
+status=$?
+if [[ $status -ne 0 ]]; then
+    echo "ERROR: Not able to run ip --json command"
+    if [[ $status -eq 127 ]]; then
+        echo "ip command not found"
+    fi
+    exit 254 # WARN
+fi
+
+NUMBER_OF_ROUTES_WITH_METRICS=$(ip -4 --json route | python3 -c '
+import sys, json
+data = json.load(sys.stdin)
+print(len([r for r in data if r.get("metric") and r["metric"]]))
+')
 
 if [[ ${NUMBER_OF_ROUTES_WITH_METRICS} -gt "0" ]]; then
     RETURN_CODE="254"
