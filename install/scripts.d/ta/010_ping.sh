@@ -65,20 +65,29 @@ if [ $# -gt 0 ]; then
 	  LINKTYPE=`echo $DEVINFO | grep -oE "(ether|infiniband|loopback)"` # link type
 	  CONF_MTU=`echo $DEVINFO | grep -oP "mtu \K[0-9]*"` # extract mtu 
 
+          # Check if we're in Azure
+          if curl -s -H Metadata:true --noproxy "*" "http://169.254.169.254/metadata/instance?api-version=2021-02-01" | grep -q Azure; then
+            AZURE=True
+          fi
+
 	  # LINK should now be either "ether" or "infiniband" or "loopback"
 	  if [ "$LINKTYPE" == "loopback" ]; then continue; fi
-      if [ "$LINKTYPE" == "ether" ]; then 
-	    MTU="9000"; PINGMTU="8972"
-      elif [ "$LINKTYPE" == "infiniband" ]; then
-	    MTU="4092"; PINGMTU="4064"
-      else
-        echo "Unknown link type $LINKTYPE when determining target MTU - $DEVINFO"
+          if [ "$LINKTYPE" == "ether" ]; then
+            if [[ -v AZURE ]]; then
+              MTU="3900"; PINGMTU="3872"
+            else
+              MTU="9000"; PINGMTU="8972"
+            fi
+          elif [ "$LINKTYPE" == "infiniband" ]; then
+            MTU="4092"; PINGMTU="4064"
+          else
+            echo "Unknown link type $LINKTYPE when determining target MTU - $DEVINFO"
 	    if [ -z "$IFHW" ]; then IFHW=`lshw -class network -short  2> /dev/null | grep $IF`; fi
 		IFHWA=($IFHW)
 		echo "             $IF hardware: \"${IFHWA[@]:3}\""
 	    let LINKTYPEERRORS=$LINKTYPEERRORS+1
 		continue
-      fi
+          fi
 	  if [ ! -z "$VIA" ]; then
 	  	echo "    WARN: `hostname` to $DESTIPADDR routes via gateway $VIA from dev $IF (src ip $SRC)"
 		if [ $ROUTEWARNS -eq 0 ]; then
