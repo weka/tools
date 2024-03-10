@@ -91,12 +91,12 @@ def is_cloud_env(check_aws=True, check_oci=True):
             try:
                 request.urlopen(req, timeout=i * init_timeout).read()
                 return True
-            #except error.URLError:
-            #    pass
+            except error.URLError:
+                pass
             except timeout:
                 pass
-            except:
-                break
+            except ConnectionResetError:
+                pass
         return False
 
     with ThreadPoolExecutor() as executor:
