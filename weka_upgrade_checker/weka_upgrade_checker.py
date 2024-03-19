@@ -21,7 +21,7 @@ if sys.version_info < (3, 7):
     print("Must have python version 3.7 or later installed.")
     sys.exit(1)
 
-pg_version = "1.3.23"
+pg_version = "1.3.24"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
 
@@ -1273,7 +1273,7 @@ def weka_cluster_checks():
     if blacklist:
         printlist(blacklist, 5)
 
-    if V(weka_version) >= V("3.14"):
+    if V("3.14") <= V(weka_version) < V("4.2.7"):
         INFO("CHECKING WEKA STATS RETENTION")
         stats_retention = json.loads(
             subprocess.check_output(["weka", "stats", "retention", "status", "-J"])
@@ -1347,6 +1347,8 @@ def weka_cluster_checks():
         GOOD(f'{" " * 5}✅ Machine identifiers check complete')
 
     spinner.stop()
+
+    s3_status = False
 
     s3_cluster_status = json.loads(
         subprocess.check_output(["weka", "s3", "cluster", "-J"])
@@ -2286,11 +2288,11 @@ def weka_traces_size(host_name, result):
 
 
 def cgroup_version(hostname, result):
-    INFO2(f'{" " * 2}Checking group version on host {hostname}:')
+    INFO2(f'{" " * 2}Checking Cgroup version on host {hostname}:')
     if result == "tmpfs":
         GOOD(f'{" " * 5}✅ Correct cgroup v1 set')
     elif result == "cgroup2fs":
-        BAD(f'{" " * 5}❌ Incorrect vgroup v2 set')
+        BAD(f'{" " * 5}❌ Incorrect cgroup v2 set')
     else:
         WARN(f'{" " * 5}⚠️  Unable to determine cgroup version')
 
