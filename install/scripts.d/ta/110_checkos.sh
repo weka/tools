@@ -55,8 +55,8 @@ case $ID in
 	'ubuntu')
 		case $VERSION_ID in
 			'18.04.'[0-6]) ;;
-			'20.04.'[0-6]) ;;
-			'22.04.'[0-4]) client_only=1 ;;
+			'20.04.'[0-3]) ;;
+			'22.04.'[0-3]) client_only=1 ;;
 			'') version_not_found=1 ;;
 			*) unsupported_version=1 ;;
 		esac

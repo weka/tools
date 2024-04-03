@@ -10,10 +10,10 @@ KB_REFERENCE="SFDC 12492"
 RETURN_CODE=0
 
 # check if the ip command supports --json
-ip --json &> /dev/null
+ip --json addr &> /dev/null
 status=$?
 if [[ $status -ne 0 ]]; then
-    echo "ERROR: Not able to run ip --json command"
+    echo "ERROR: Not able to run ip --json addr command"
     if [[ $status -eq 127 ]]; then
         echo "ip command not found"
     fi
