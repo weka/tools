@@ -3,6 +3,7 @@
 import json
 import subprocess
 import sys
+import argparse
 
 
 def main():
@@ -36,14 +37,34 @@ def main():
     print("Leader host ips: %s" % (", ".join(ips),))
     container_name = cfg["hosts"][leaderHostId]["containerName"]
     print("Leader container name is: %s" % (container_name,))
-    print("")
-    print("To restart leader, use:")
-    print("")
-    msg = "ssh %s weka local exec -C %s /usr/local/bin/supervisorctl restart weka-management" % (ips[0], container_name)
-    print("-" * len(msg))
-    print(msg)
-    print("-" * len(msg))
 
+    parser = argparse.ArgumentParser(description="Leader Restart")
+
+    parser.add_argument(
+        "-f",
+        "--force",
+        dest="force_restart",
+        action="store_true",
+        default=False,
+        help="To force leader restart",
+    )
+
+    args = parser.parse_args()
+
+    if args.force_restart:
+        cmd = ["ssh", ips[0], "weka", "local", "exec", "-C", container_name, "/usr/local/bin/supervisorctl", "restart", "weka-management"]
+        try:
+            subprocess.run(cmd, check=True)
+        except subprocess.CalledProcessError:
+            print("SSH command failed. Unable to restart leader.")
+    else:
+        print("")
+        print("To restart leader, use:")
+        print("")
+        msg = "ssh %s weka local exec -C %s /usr/local/bin/supervisorctl restart weka-management" % (ips[0], container_name)
+        print("-" * len(msg))
+        print(msg)
+        print("-" * len(msg))
 
 if __name__ == '__main__':
     main()
