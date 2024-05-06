@@ -21,7 +21,7 @@ if sys.version_info < (3, 7):
     print("Must have python version 3.7 or later installed.")
     sys.exit(1)
 
-pg_version = "1.3.24"
+pg_version = "1.3.26"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
 
@@ -812,6 +812,20 @@ def weka_cluster_checks():
             "5.7-1.0.2.0",
             "5.8-1.1.2.1",
             "5.9-0.5.6.0",
+        ],
+            "4.3": [
+            "5.1-2.5.8.0",
+            "5.1-2.6.2.0",
+            "5.4-3.4.0.0",
+            "5.4-3.5.8.0",
+            "5.6-1.0.3.3",
+            "5.6-2.0.9.0",
+            "5.7-1.0.2.0",
+            "5.8-1.1.2.1",
+            "5.8-3.0.7.0",
+            "5.9-0.5.6.0",
+            "23.04-1.1.3.0",
+            "23.10-0.5.5.0",
         ],
     }
 
@@ -1880,6 +1894,83 @@ supported_os = {
             "sles": ["12.5", "15.2"],
         },
     },
+    "4.3": {
+        "backends_clients": {
+            "centos": [
+                "7.2",
+                "7.3",
+                "7.4",
+                "7.5",
+                "7.6",
+                "7.7",
+                "7.8",
+                "7.9",
+                "8.0",
+                "8.1",
+                "8.2",
+                "8.3",
+                "8.4",
+                "8.5",
+            ],
+            "rhel": [
+                "7.2",
+                "7.3",
+                "7.4",
+                "7.5",
+                "7.6",
+                "7.7",
+                "7.8",
+                "7.9",
+                "8.0",
+                "8.1",
+                "8.2",
+                "8.3",
+                "8.4",
+                "8.5",
+                "8.6",
+                "8.7",
+                "8.8",
+                "9.0",
+                "9.1",
+                "9.2",
+            ],
+            "rocky": [
+                "8.6",
+                "8.7",
+                "8.8",
+                "8.9",
+                "9.0",
+                "9.1",
+                "9.2",
+                ],
+            "sles": [],
+            "ubuntu": [
+                "18.04.0",
+                "18.04.1",
+                "18.04.2",
+                "18.04.3",
+                "18.04.4",
+                "18.04.5",
+                "18.04.6",
+                "20.04.0",
+                "20.04.1",
+                "20.04.2",
+                "20.04.3",
+                "20.04.4",
+                "20.04.5",
+                "22.04.0",
+                "22.04.1",
+                "22.04.2",
+                "22.04.3",
+                "22.04.4",
+                "22.04.6",
+            ],
+            "amzn": ["17.09", "17.12", "18.03", "2"],
+        },
+        "clients_only": {
+            "sles": ["12.5", "15.2"],
+        },
+    },
 }
 
 
@@ -2625,15 +2716,14 @@ def backend_host_checks(
         else:
             weka_traces_size(host_name, result)
 
-    if V(weka_version) >= V("4.2.1"):
-        if weka_s3 or weka_nfs or weka_smb:
-            INFO("VERIFYING CGROUP VERSION")
-            results = parallel_execution(
-                ssh_bk_hosts,
-                ["stat -fc %T /sys/fs/cgroup"],
-                use_check_output=True,
-                ssh_identity=ssh_identity,
-            )
+    if V(weka_version) <= V("4.2.1.10"):
+        INFO("VERIFYING CGROUP VERSION")
+        results = parallel_execution(
+            ssh_bk_hosts,
+            ["stat -fc %T /sys/fs/cgroup"],
+            use_check_output=True,
+            ssh_identity=ssh_identity,
+        )
         for host_name, result in results:
             if result is None:
                 WARN(f"Unable to determine Host: {host_name} group version")
