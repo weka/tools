@@ -21,7 +21,7 @@ if sys.version_info < (3, 7):
     print("Must have python version 3.7 or later installed.")
     sys.exit(1)
 
-pg_version = "1.3.26"
+pg_version = "1.3.27"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
 
@@ -812,8 +812,9 @@ def weka_cluster_checks():
             "5.7-1.0.2.0",
             "5.8-1.1.2.1",
             "5.9-0.5.6.0",
+            "23.10-0.5.5.0",
         ],
-            "4.3": [
+        "4.3": [
             "5.1-2.5.8.0",
             "5.1-2.6.2.0",
             "5.4-3.4.0.0",
@@ -1404,6 +1405,19 @@ def weka_cluster_checks():
                         f'{" " * 5}⚠️  Host: {host_info["id"]} {host_info["hostname"]} {host_info["ip"]} {host_info["version"]} {host_info["mode"]}'
                     )
 
+    if s3_status:
+        INFO("CHECKING WEKA S3 MOUNT OPTIONS")
+        s3_mount_options = json.loads(
+            subprocess.check_output(["weka", "s3", "cluster", "-J"])
+        )
+        mount_options = s3_mount_options["mount_options"]
+        if "writecache" in mount_options:
+            GOOD(f'{" " * 5}✅ S3 mount options set correctly')
+        else:
+            WARN(
+                f'{" " * 5}⚠️  S3 mount options set incorrectly please contact weka support prior to upgrade'
+            )
+
     smb_cluster_hosts = json.loads(
         subprocess.check_output(["weka", "smb", "cluster", "status", "-J"])
     )
@@ -1942,7 +1956,7 @@ supported_os = {
                 "9.0",
                 "9.1",
                 "9.2",
-                ],
+            ],
             "sles": [],
             "ubuntu": [
                 "18.04.0",
@@ -2398,6 +2412,24 @@ def cpu_instruction_set(host_name, result):
         GOOD(f'{" " * 5}✅ Cpu instruction set validation successful')
 
 
+def check_os_kernel(host_name, result):
+    result_lines = result.splitlines()
+    P = None
+    for line in result_lines:
+        if line.startswith("P="):
+            P = line.split("=", 1)[1]
+            break
+
+    if P == "true":
+        BAD(
+            f'{" " * 5}❌ Host {host_name} kernel level not supported, please contact weka support prior to upgrade'
+        )
+    elif P == "false":
+        GOOD(f'{" " * 5}✅ Host {host_name}: kernel level supports upgrade')
+    else:
+        WARN(f"Host: {host_name} kernel validation result unknown")
+
+
 def parallel_execution(
     hosts,
     commands,
@@ -2516,11 +2548,17 @@ def backend_host_checks(
 
     if V(weka_version) >= V("3.12"):
         INFO("CHECKING IF OS IS SUPPORTED ON BACKENDS")
+        command = r"""
+        OS=$(sudo cat /etc/os-release | awk -F= '/^ID=/ {print $2}' > /dev/null);
+        if [[ $OS == "centos" ]]; then
+            sudo cat /etc/centos-release;
+        else
+                sudo cat /etc/os-release;
+        fi
+        """
         results = parallel_execution(
             ssh_bk_hosts,
-            [
-                'OS=$(sudo cat /etc/os-release | awk -F= "/^ID=/ {print $2}" > /dev/null); if [[ $OS == "centos" ]]; then sudo cat /etc/centos-release; else sudo cat /etc/os-release; fi'
-            ],
+            [command],
             use_check_output=True,
             ssh_identity=ssh_identity,
         )
@@ -2561,22 +2599,33 @@ def backend_host_checks(
 
     INFO("CHECKING WEKA DATA DIRECTORY SPACE USAGE ON BACKENDS")
     if V(weka_version) >= V("4.2.7"):
-        data_dir = os.path.join(f"/opt/weka/data/")
+        data_dir = "/opt/weka/data/"
+        excluded_dirs = {
+            "envoy",
+            "smbw",
+            "ganesha",
+            "agent",
+            "dependencies",
+            "ofed",
+            "igb_uio",
+            "logs.loop",
+            "mpin_user",
+            "pkg_tools",
+            "uio_generic",
+            "weka_driver",
+        }
         subdirectories = [
-            d
-            for d in os.listdir(data_dir)
-            if "_" not in d
-            and d not in ["envoy", "smbw", "ganesha", "agent", "dependencies", "ofed"]
+            d for d in os.listdir(data_dir) if "_" not in d and d not in excluded_dirs
         ]
+
+        commands = ["df -m /opt/weka | awk 'NR==2 {print $4}'"] + [
+            f"sudo du -smc /opt/weka/data/{d} 2>&1 | grep -v  '^du:' | awk '/total/ {{print $1}}'"
+            for d in subdirectories
+        ]
+
         results = parallel_execution(
             ssh_bk_hosts,
-            [
-                "df -m /opt/weka | awk 'NR==2 {print $4}'",
-                *[
-                    f"sudo du -smc /opt/weka/data/{d} | awk '/total/ {{print $1}}'"
-                    for d in subdirectories
-                ],
-            ],
+            commands,
             use_check_output=True,
             ssh_identity=ssh_identity,
         )
@@ -2587,21 +2636,21 @@ def backend_host_checks(
         free_space_check_data(results)
 
     else:
-        data_dir = os.path.join(f"/opt/weka/data/*_{str(weka_version)}")
+        data_dir = f"/opt/weka/data/*_{str(weka_version)}"
+        commands = [
+            "df -m /opt/weka | awk 'NR==2 {print $4}'",
+            f"sudo du -smc {data_dir} 2>&1 | grep -v  '^du:' | awk '/total/ {{print $1}}'",
+        ]
+
         results = parallel_execution(
             ssh_bk_hosts,
-            [
-                "df -m /opt/weka | awk 'NR==2 {print $4}'",
-                "sudo du -smc %s" "| awk '/total/ {print $1}'" % (data_dir),
-            ],
+            commands,
             use_check_output=True,
             ssh_identity=ssh_identity,
         )
         for host_name, result in results:
             if result is None:
                 WARN(f"Unable to determine Host: {host_name} available space")
-
-        free_space_check_data(results)
 
     INFO("CHECKING WEKA LOGS DIRECTORY SPACE USAGE ON BACKENDS")
     results = parallel_execution(
@@ -2682,7 +2731,7 @@ def backend_host_checks(
         results = parallel_execution(
             ssh_bk_hosts,
             [
-                f'for name in $(weka local ps --no-header -o name | egrep -v "samba|smbw|s3|ganesha|envoy"); do du -sm {data_dir}"$name"; done'
+                f'for name in $(weka local ps --no-header -o name | egrep -v "samba|smbw|s3|ganesha|envoy"); do du -sm {data_dir}"$name" 2>&1 | grep -v  "^du:"; done'
             ],
             use_check_output=True,
             ssh_identity=ssh_identity,
@@ -2691,7 +2740,7 @@ def backend_host_checks(
         results = parallel_execution(
             ssh_bk_hosts,
             [
-                f'for name in $(weka local ps --no-header -o name,versionName | egrep -v "samba|smbw|s3|ganesha|envoy" | tr -s " " "_"); do du -sm {data_dir}"$name"; done'
+                f'for name in $(weka local ps --no-header -o name,versionName | egrep -v "samba|smbw|s3|ganesha|envoy" | tr -s " " "_"); do du -sm {data_dir}"$name" 2>&1 | grep -v  "^du:"; done'
             ],
             use_check_output=True,
             ssh_identity=ssh_identity,
@@ -2744,6 +2793,33 @@ def backend_host_checks(
             else:
                 cpu_instruction_set(host_name, result)
 
+    if V("4.2.6") <= V(weka_version) <= V("4.2.10"):
+        INFO("VALIDATING OS KERNEL UPGRADE ELIGIBILITY")
+        command = r"""
+        OS=$(sudo awk -F= '/^ID=/ {gsub(/"/, "", $2); print $2}' /etc/os-release);
+        if [[ $OS == rocky ]]; then
+            KV=$(sudo uname -r);
+            if [[ ! -z $(sudo grep "launder_folio" /usr/src/kernels/"${KV}"/include/linux/fs.h) ]]; then
+                echo "P=true";
+            else
+                echo "P=false";
+            fi;
+        else
+            echo "P=unknown";
+        fi
+        """
+        results = parallel_execution(
+            ssh_bk_hosts,
+            [command],
+            use_check_output=True,
+            ssh_identity=ssh_identity,
+        )
+        for host_name, result in results:
+            if result is None:
+                GOOD(f"Host: {host_name} kernel validation successfull")
+            else:
+                check_os_kernel(host_name, result)
+
 
 # CLIENT CHECKS
 def client_hosts_checks(weka_version, ssh_cl_hosts, check_version, ssh_identity):
@@ -2768,26 +2844,55 @@ def client_hosts_checks(weka_version, ssh_cl_hosts, check_version, ssh_identity)
         sys.exit(1)
 
     if V(weka_version) >= V("3.12"):
-        INFO("CHECKING IF OS IS SUPPORTED ON CLIENTS")
+        INFO("CHECKING IF OS IS SUPPORTED ON BACKENDS")
+        command = r"""
+        OS=$(sudo cat /etc/os-release | awk -F= '/^ID=/ {print $2}' > /dev/null);
+        if [[ $OS == "centos" ]]; then
+            sudo cat /etc/centos-release;
+        else
+                sudo cat /etc/os-release;
+        fi
+        """
         results = parallel_execution(
             ssh_cl_hosts,
-            [
-                'OS=$(sudo cat /etc/os-release | awk -F= "/^ID=/ {print $2}" > /dev/null); if [[ $OS == "centos" ]]; then sudo cat /etc/centos-release; else sudo cat /etc/os-release; fi'
-            ],
+            [command],
             use_check_output=True,
+            ssh_identity=ssh_identity,
         )
         for host_name, result in results:
             if result is not None:
                 check_os_release(
-                    host_name,
-                    result,
-                    weka_version,
-                    check_version,
-                    backend=False,
-                    client=True,
+                    host_name, result, weka_version, check_version, backend=True
                 )
             else:
                 WARN(f"Unable to determine Host: {host_name} OS version")
+
+    if V("4.2.6") <= V(weka_version) <= V("4.2.10"):
+        INFO("VALIDATING OS KERNEL UPGRADE ELIGIBILITY")
+        command = r"""
+        OS=$(sudo awk -F= '/^ID=/ {gsub(/"/, "", $2); print $2}' /etc/os-release);
+        if [[ $OS == rocky ]]; then
+            KV=$(sudo uname -r');
+            if [[ ! -z $(sudo grep "launder_folio" /usr/src/kernels/"${KV}"/include/linux/fs.h) ]]; then
+                echo "P=true";
+            else
+                echo "P=false";
+            fi;
+        else
+            echo "P=unknown";
+        fi
+        """
+        results = parallel_execution(
+            ssh_cl_hosts,
+            [command],
+            use_check_output=True,
+            ssh_identity=ssh_identity,
+        )
+        for host_name, result in results:
+            if result is None:
+                GOOD(f"Host: {host_name} kernel validation successfull")
+            else:
+                check_os_kernel(host_name, result)
 
     INFO("CHECKING WEB CONNECTIVITY TEST ON CLIENTS")
     if len(ssh_cl_hosts) != 0:
