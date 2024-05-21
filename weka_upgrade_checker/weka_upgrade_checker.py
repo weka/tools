@@ -21,7 +21,7 @@ if sys.version_info < (3, 7):
     print("Must have python version 3.7 or later installed.")
     sys.exit(1)
 
-pg_version = "1.3.27"
+pg_version = "1.3.28"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
 
@@ -232,28 +232,28 @@ def printlist(lst, num):
     global num_warn
     for i in range(0, len(lst), num):
         if num == 6:
-            WARN("⚠️  {} {} {} {} {} {}".format(*lst[i : i + num]))
-            logging.warning("⚠️  {} {} {} {} {} {}".format(*lst[i : i + num]))
+            WARN("⚠️ {} {} {} {} {} {}".format(*lst[i : i + num]))
+            logging.warning("⚠️ {} {} {} {} {} {}".format(*lst[i : i + num]))
             num_warn += 1
         elif num == 5:
-            WARN("⚠️  {} {} {} {} {}".format(*lst[i : i + num]))
-            logging.warning("⚠️  {} {} {} {} {}".format(*lst[i : i + num]))
+            WARN("⚠️ {} {} {} {} {}".format(*lst[i : i + num]))
+            logging.warning("⚠️ {} {} {} {} {}".format(*lst[i : i + num]))
             num_warn += 1
         elif num == 4:
-            WARN("⚠️  {} {} {} {}".format(*lst[i : i + num]))
-            logging.warning("⚠️  {} {} {} {}".format(*lst[i : i + num]))
+            WARN("⚠️ {} {} {} {}".format(*lst[i : i + num]))
+            logging.warning("⚠️ {} {} {} {}".format(*lst[i : i + num]))
             num_warn += 1
         elif num == 3:
-            WARN("⚠️  {} {} {}".format(*lst[i : i + num]))
-            logging.warning("⚠️  {} {} {}".format(*lst[i : i + num]))
+            WARN("⚠️ {} {} {}".format(*lst[i : i + num]))
+            logging.warning("⚠️ {} {} {}".format(*lst[i : i + num]))
             num_warn += 1
         elif num == 2:
-            WARN("⚠️  {} {}".format(*lst[i : i + num]))
-            logging.warning("⚠️  {} {}".format(*lst[i : i + num]))
+            WARN("⚠️ {} {}".format(*lst[i : i + num]))
+            logging.warning("⚠️ {} {}".format(*lst[i : i + num]))
             num_warn += 1
         elif num == 1:
-            WARN("⚠️  {}".format(*lst[i : i + num]))
-            logging.warning("⚠️  {}".format(*lst[i : i + num]))
+            WARN("⚠️ {}".format(*lst[i : i + num]))
+            logging.warning("⚠️ {}".format(*lst[i : i + num]))
             num_warn += 1
 
 
@@ -368,7 +368,7 @@ def weka_cluster_checks():
     if any(c.isalpha() for c in weka_version) and not weka_version.endswith("-hcfs"):
         INFO("CHECKING WEKA HOTFIX VERSION")
         WARN(
-            f"⚠️  The cluster maybe running a specialized hotfix version of Weka {weka_version}; confirm that required hotfixes are included in upgrade target version."
+            f"⚠️ The cluster maybe running a specialized hotfix version of Weka {weka_version}; confirm that required hotfixes are included in upgrade target version."
         )
 
     class Machine:
@@ -392,7 +392,7 @@ def weka_cluster_checks():
     if len(weka_alerts) == 0:
         GOOD("✅ No Weka alerts present")
     else:
-        WARN(f"⚠️  {len(weka_alerts)} Weka alerts present")
+        WARN(f"⚠️ {len(weka_alerts)} Weka alerts present")
         for alert in weka_alerts:
             logging.warning(alert)
 
@@ -417,7 +417,7 @@ def weka_cluster_checks():
     if rebuild_status["progressPercent"] == 0:
         GOOD("✅ No rebuild in progress")
     else:
-        WARN(f'⚠️  Rebuild in progress {rebuild_status["progressPercent"]} complete')
+        WARN(f'⚠️ Rebuild in progress {rebuild_status["progressPercent"]} complete')
 
     if V("4.0.5.39") <= V(weka_version) < V("4.1"):
         INFO("VERIFYING WEKA BACKEND MACHINES")
@@ -629,7 +629,7 @@ def weka_cluster_checks():
                     if ".".join(clsw_version[:2]) != check_version:
                         cl_machine_need_upgrade += [w_cl_machine.name, w_cl_machine.ip]
             except NameError as e:
-                WARN("⚠️  Unable to determine client weka version")
+                WARN("⚠️ Unable to determine client weka version")
 
         elif V(weka_version) >= V("4.1"):
             try:
@@ -638,7 +638,7 @@ def weka_cluster_checks():
                     if ".".join(clsw_version[:2]) != check_version:
                         cl_machine_need_upgrade += [w_cl_server.name, w_cl_server.ip]
             except NameError as e:
-                WARN("⚠️  Unable to determine client weka version")
+                WARN("⚠️ Unable to determine client weka version")
         else:
             try:
                 for client in client_hosts:
@@ -652,9 +652,9 @@ def weka_cluster_checks():
                             client.mode,
                         ]
             except NameError as e:
-                WARN("⚠️  Unable to determine client weka version")
+                WARN("⚠️ Unable to determine client weka version")
     except NameError as e:
-        WARN("⚠️  Unable to determine client weka version")
+        WARN("⚠️ Unable to determine client weka version")
 
     if V(weka_version) >= V("4.0"):
         if cl_machine_need_upgrade:
@@ -882,7 +882,7 @@ def weka_cluster_checks():
         for bkhostname in backend_host_names:
             WARN(f'{" " * 5}⚠️ Unable to determine Host: {bkhostname} OFED version')
     elif len(set(current_version)) == 1:
-        WARN(f'\n{" " * 5}⚠️  Mismatch ofed version found on backend hosts\n')
+        WARN(f'\n{" " * 5}⚠️ Mismatch ofed version found on backend hosts\n')
         printlist(printlist, 1)
 
     spinner.stop()
@@ -909,11 +909,11 @@ def weka_cluster_checks():
                 GOOD("✅ Raid Reduction is disabled")
             else:
                 WARN(
-                    '⚠️  Raid Reduction is ENABLED issue command "weka debug jrpc config_override_key '
+                    '⚠️ Raid Reduction is ENABLED issue command "weka debug jrpc config_override_key '
                     + 'key="clusterInfo.reserved[1]" value=1" to disable'
                 )
         except (ValueError, RuntimeError, TypeError, NameError):
-            WARN("⚠️  Unable able to determine Raid Reduction settings")
+            WARN("⚠️ Unable able to determine Raid Reduction settings")
 
     if V(weka_version) == V("3.12"):
         INFO("VERIFYING TLS SECURITY SETTINGS")
@@ -937,11 +937,11 @@ def weka_cluster_checks():
                 GOOD(f"✅ Raid Reduction is disabled")
             else:
                 WARN(
-                    '⚠️  Raid Reduction is ENABLED issue command "weka debug jrpc config_override_key '
+                    '⚠️ Raid Reduction is ENABLED issue command "weka debug jrpc config_override_key '
                     + 'key="clusterInfo.reserved[1]" value=1" to disable'
                 )
         except (ValueError, RuntimeError, TypeError, NameError):
-            WARN(f"⚠️  Unable able to determine Raid Reduction settings")
+            WARN(f"⚠️ Unable able to determine Raid Reduction settings")
 
     if V("3.13") <= V(weka_version) < V("3.14"):
         INFO("VERIFYING UPGRADE ELIGIBILITY")
@@ -972,7 +972,7 @@ def weka_cluster_checks():
         )
         if "KIOXIA" in weka_drives:
             WARN(
-                "⚠️  Contact Weka Support prior to upgrading to Weka 4.0, System identified with Kioxia drives"
+                "⚠️ Contact Weka Support prior to upgrading to Weka 4.0, System identified with Kioxia drives"
             )
         else:
             GOOD("✅ No problematic drives found")
@@ -1006,10 +1006,10 @@ def weka_cluster_checks():
                 GOOD(f"✅ Raid Reduction is disabled")
             else:
                 WARN(
-                    "⚠️  Raid Reduction is ENABLED. Please contact Weka support for instructions on how to disable"
+                    "⚠️ Raid Reduction is ENABLED. Please contact Weka support for instructions on how to disable"
                 )
         except (ValueError, RuntimeError, TypeError, NameError):
-            WARN(f"⚠️  Unable able to determine Raid Reduction settings")
+            WARN(f"⚠️ Unable able to determine Raid Reduction settings")
 
     if V(weka_version) == V("3.9"):
         INFO("VERIFYING BUCKET L2BLOCK ENTRIES")
@@ -1045,14 +1045,14 @@ def weka_cluster_checks():
                     error_bucket += bucket
             if error_bucket:
                 WARN(
-                    "⚠️  L2BLOCK error entries found, please contact weka support ref WEKAPP-229504\n"
+                    "⚠️ L2BLOCK error entries found, please contact weka support ref WEKAPP-229504\n"
                 )
                 for line in error_bucket:
                     WARN(str(line))
             else:
                 GOOD("✅ No error L2BLOCK entries found")
         except Exception as e:
-            WARN("⚠️  Unable able to determine entriesInL2Block entries {e}")
+            WARN("⚠️ Unable able to determine entriesInL2Block entries {e}")
 
         spinner.stop()
 
@@ -1075,7 +1075,7 @@ def weka_cluster_checks():
         GOOD("✅ SSD Firmware check completed")
     else:
         WARN(
-            "⚠️  The following SSDs might be problematic please contact Weka Support\n"
+            "⚠️ The following SSDs might be problematic please contact Weka Support\n"
         )
         printlist(bad_firmware, 5)
 
@@ -1135,7 +1135,7 @@ def weka_cluster_checks():
             )
             for fake_drive in fake_drives:
                 WARN(
-                    "⚠️  {disk_id} {committed_state}=>{target_state} lastPhaseOutSizeB={lastPhaseOutSizeB} sizeB={sizeB}".format(
+                    "⚠️ {disk_id} {committed_state}=>{target_state} lastPhaseOutSizeB={lastPhaseOutSizeB} sizeB={sizeB}".format(
                         **fake_drive
                     )
                 )
@@ -1164,7 +1164,7 @@ def weka_cluster_checks():
                         host_id = container["cores_ids"][0]
                     elif container["cores_ids"][0] != host_id:
                         WARN(
-                            f'⚠️  Container {container["container"]} core_ids set to AUTO while other containers manually set to core_id.'
+                            f'⚠️ Container {container["container"]} core_ids set to AUTO while other containers manually set to core_id.'
                         )
                         has_error = True
 
@@ -1200,12 +1200,12 @@ def weka_cluster_checks():
         for hostname, containers in combined_data.items():
             if check_duplicate_core_ids(containers):
                 WARN(
-                    f"⚠️  Duplicate core_ids found in different containers on host {hostname}."
+                    f"⚠️ Duplicate core_ids found in different containers on host {hostname}."
                 )
 
             if validate_core_ids(containers):
                 WARN(
-                    f"⚠️  Core_ids set to AUTO in one container on host {hostname} while other containers have pinned core_ids."
+                    f"⚠️ Core_ids set to AUTO in one container on host {hostname} while other containers have pinned core_ids."
                 )
 
         if not any(
@@ -1223,7 +1223,7 @@ def weka_cluster_checks():
             GOOD(f"✅ Weka traces are enabled")
         else:
             WARN(
-                '⚠️  Weka traces are NOT enabled, enable Weka traces using "weka debug traces start"'
+                '⚠️ Weka traces are NOT enabled, enable Weka traces using "weka debug traces start"'
             )
     else:
         weka_traces = subprocess.check_output(
@@ -1241,7 +1241,7 @@ def weka_cluster_checks():
             GOOD(f"✅ Weka traces are enabled")
         else:
             WARN(
-                '⚠️  Weka traces are NOT enabled, enable Weka traces using "weka local exec '
+                '⚠️ Weka traces are NOT enabled, enable Weka traces using "weka local exec '
                 + '/usr/local/bin/supervisorctl stop weka-trace-dumper"'
             )
 
@@ -1297,7 +1297,7 @@ def weka_cluster_checks():
             GOOD("✅ Weka stats retention settings are set correctly")
         else:
             WARN(
-                '⚠️  Set stats retention to 1 days, execute "weka stats retention set --days 1". Following '
+                '⚠️ Set stats retention to 1 days, execute "weka stats retention set --days 1". Following '
                 + 'the upgrade revert back using "weka stats retention set --days '
                 + '{int(stats_retention["retention_secs"] / 86400)}'
             )
@@ -1323,10 +1323,10 @@ def weka_cluster_checks():
                 GOOD("✅ TLS is Disabled")
             else:
                 WARN(
-                    "⚠️  TLS is Enabled and should be disabled please contact Weka Support"
+                    "⚠️ TLS is Enabled and should be disabled please contact Weka Support"
                 )
         except (ValueError, RuntimeError, TypeError, NameError):
-            WARN(f"⚠️  Unable able to determine TLS state")
+            WARN(f"⚠️ Unable able to determine TLS state")
 
     INFO("VERIFING HOSTS MACHINE IDENTIFIERS")
     spinner = Spinner("  Retrieving Data  ", color=colors.OKCYAN)
@@ -1386,7 +1386,7 @@ def weka_cluster_checks():
         if not bad_s3_hosts:
             GOOD(f'{" " * 5}✅ No failed s3 hosts found')
         else:
-            WARN(f'{" " * 5}⚠️  Found s3 cluster hosts in not ready status:\n')
+            WARN(f'{" " * 5}⚠️ Found s3 cluster hosts in not ready status:\n')
             for s3host in bad_s3_hosts:
                 for bkhost in backend_hosts:
                     if s3host == bkhost.typed_id:
@@ -1402,7 +1402,7 @@ def weka_cluster_checks():
 
                 for host_info in failed_s3host:
                     WARN(
-                        f'{" " * 5}⚠️  Host: {host_info["id"]} {host_info["hostname"]} {host_info["ip"]} {host_info["version"]} {host_info["mode"]}'
+                        f'{" " * 5}⚠️ Host: {host_info["id"]} {host_info["hostname"]} {host_info["ip"]} {host_info["version"]} {host_info["mode"]}'
                     )
 
     if s3_status:
@@ -1412,11 +1412,11 @@ def weka_cluster_checks():
         )
         mount_options = s3_mount_options["mount_options"]
         if "writecache" in mount_options:
-            GOOD(f'{" " * 5}✅ S3 mount options set correctly')
-        else:
             WARN(
-                f'{" " * 5}⚠️  S3 mount options set incorrectly please contact weka support prior to upgrade'
+                f'{" " * 5}⚠️ S3 mount options set incorrectly please contact weka support prior to upgrade'
             )
+        else:
+            GOOD(f'{" " * 5}✅ S3 mount options set correctly')
 
     smb_cluster_hosts = json.loads(
         subprocess.check_output(["weka", "smb", "cluster", "status", "-J"])
@@ -1434,7 +1434,7 @@ def weka_cluster_checks():
             if not bad_smb_hosts:
                 GOOD(f'{" " * 5}✅ No failed SMB hosts found')
             else:
-                WARN(f'{" " * 5}⚠️  Found SMB cluster hosts in not ready status:\n')
+                WARN(f'{" " * 5}⚠️ Found SMB cluster hosts in not ready status:\n')
                 for smbhost in bad_smb_hosts:
                     for bkhost in backend_hosts:
                         if smbhost == bkhost.typed_id:
@@ -1450,7 +1450,7 @@ def weka_cluster_checks():
 
                 for host_info in failed_smbhosts:
                     WARN(
-                        f'{" " * 5}⚠️  Host: {host_info["id"]} {host_info["hostname"]} {host_info["ip"]} {host_info["version"]} {host_info["mode"]}'
+                        f'{" " * 5}⚠️ Host: {host_info["id"]} {host_info["hostname"]} {host_info["ip"]} {host_info["version"]} {host_info["mode"]}'
                     )
 
     nfs_server_hosts = json.loads(
@@ -1464,10 +1464,10 @@ def weka_cluster_checks():
                 GOOD(f'{" " * 5}✅ NFS Server status OK')
             elif nfs_server_hosts[0]["status"] == "Inactive":
                 WARN(
-                    f'{" " * 5}⚠️  NFS Server {nfs_server_hosts[0]["name"]} is {nfs_server_hosts[0]["status"]}'
+                    f'{" " * 5}⚠️ NFS Server {nfs_server_hosts[0]["name"]} is {nfs_server_hosts[0]["status"]}'
                 )
             else:
-                WARN(f'{" " * 5}⚠️  NFS Server {nfs_server_hosts[0]["name"]} Not OK')
+                WARN(f'{" " * 5}⚠️ NFS Server {nfs_server_hosts[0]["name"]} Not OK')
 
             if nfs_server_hosts[0]["status"] != "Inactive":
                 INFO("CHECKING WEKA NFS SERVER HOST HEALTH")
@@ -1496,7 +1496,7 @@ def weka_cluster_checks():
 
                     for host_info in failed_nfshosts:
                         WARN(
-                            f'{" " * 5}⚠️  Host: {host_info["id"]} {host_info["hostname"]} {host_info["ip"]} {host_info["version"]} {host_info["mode"]}'
+                            f'{" " * 5}⚠️ Host: {host_info["id"]} {host_info["hostname"]} {host_info["ip"]} {host_info["version"]} {host_info["mode"]}'
                         )
 
     # need to understand how to handle exception.
@@ -1550,7 +1550,7 @@ def weka_cluster_checks():
                     for status in etcd_status:
                         if not status["health"]:
                             WARN(
-                                f'{" " * 5}⚠️  ETCD member on {status["endpoint"]} is down'
+                                f'{" " * 5}⚠️ ETCD member on {status["endpoint"]} is down'
                             )
                         else:
                             GOOD(
@@ -1558,7 +1558,7 @@ def weka_cluster_checks():
                             )
                 else:
                     WARN(
-                        f'{" " * 5}⚠️  ETCD DB is not healthy or not running please contact Weka support'
+                        f'{" " * 5}⚠️ ETCD DB is not healthy or not running please contact Weka support'
                     )
 
             spinner.stop()
@@ -2130,13 +2130,13 @@ def free_space_check_data(results):
             free_capacity_needed = weka_data_dir * 1.5
             if free_capacity_needed > weka_partition:
                 WARN(
-                    f'{" " * 5}⚠️  Host: {host_name} does not have enough free capacity, need to free up '
+                    f'{" " * 5}⚠️ Host: {host_name} does not have enough free capacity, need to free up '
                     + f"~{(free_capacity_needed - weka_partition) / 1000}G"
                 )
             else:
                 GOOD(f'{" " * 5}✅ Host: {host_name} has adequate free space')
         else:
-            WARN(f'{" " * 5}⚠️  Insufficient data for host: {host_name}')
+            WARN(f'{" " * 5}⚠️ Insufficient data for host: {host_name}')
 
 
 def free_space_check_logs(results):
@@ -2148,7 +2148,7 @@ def free_space_check_logs(results):
         logs_partition_available = int(result[1])
         if (free_capacity_needed) > (logs_partition_available):
             WARN(
-                f'{" " * 5}⚠️  Host: {hname} does not have enough free capacity, need to free up '
+                f'{" " * 5}⚠️ Host: {hname} does not have enough free capacity, need to free up '
                 + f"~{(free_capacity_needed - logs_partition_available) / 1000}G"
             )
         else:
@@ -2221,7 +2221,7 @@ def weka_mounts(results):
             GOOD(f'{" " * 5}✅ No mounted Weka filesystems found')
         else:
             for mount in mounts:
-                WARN(f'{" " * 5}⚠️  Found Weka filesytems mounted {mount}')
+                WARN(f'{" " * 5}⚠️ Found Weka filesytems mounted {mount}')
 
 
 def get_host_name(host_id, backend_hosts):
@@ -2235,7 +2235,7 @@ def frontend_check(host_name, result):
     frontend_mounts = result
     if frontend_mounts != "0":
         WARN(
-            f'{" " * 5}⚠️  Weka Frontend Process in use on host: {host_name}, contact Weka Support prior to upgrading'
+            f'{" " * 5}⚠️ Weka Frontend Process in use on host: {host_name}, contact Weka Support prior to upgrading'
         )
     else:
         GOOD(f'{" " * 5}✅ Weka Frontend Process OK on host: {host_name}')
@@ -2293,7 +2293,7 @@ def protocol_host(backend_hosts, s3_enabled):
         protos = multiprotocols[host_name]["lists"]
         if num_proto > 1:
             WARN(
-                f'{" " * 5}⚠️  Host: {host_name} is running {num_proto} protocols {protos} recommended is 1'
+                f'{" " * 5}⚠️ Host: {host_name} is running {num_proto} protocols {protos} recommended is 1'
             )
         elif num_proto == 1:
             GOOD(
@@ -2317,7 +2317,7 @@ def client_web_test(results):
             )
         else:
             WARN(
-                f'{" " * 5}⚠️  Client web connectivity check failed on host: {client_name}'
+                f'{" " * 5}⚠️ Client web connectivity check failed on host: {client_name}'
             )
 
 
@@ -2350,7 +2350,7 @@ def invalid_endpoints(host_name, result, backend_ips):
                     )
                 else:
                     WARN(
-                        f'{" " * 5}⚠️  Invalid endpoint ips found on host: {host_name} container: '
+                        f'{" " * 5}⚠️ Invalid endpoint ips found on host: {host_name} container: '
                         + f"{container} invalid ips: {bad_backend_ip}"
                     )
 
@@ -2374,7 +2374,7 @@ def data_dir_check(host_name, result):
                 GOOD(f'{" " * 5}✅ Data directory {dir} acceptable size {use} MB')
             else:
                 WARN(
-                    f'{" " * 5}⚠️  Data directory {dir} larger than acceptable size {use} MB'
+                    f'{" " * 5}⚠️ Data directory {dir} larger than acceptable size {use} MB'
                 )
 
 
@@ -2386,7 +2386,7 @@ def weka_traces_size(host_name, result):
     INFO2(f'{" " * 2}Checking free space for Weka traces on Host: {host_name}:')
     if weka_trace_ensure_free > int(result) * 1024:
         WARN(
-            f'{" " * 5}⚠️  Weka trace ensure free size of {weka_trace_ensure_free} is greater than Weka trace directory size of {int(result)*1024}'
+            f'{" " * 5}⚠️ Weka trace ensure free size of {weka_trace_ensure_free} is greater than Weka trace directory size of {int(result)*1024}'
         )
     else:
         GOOD(f'{" " * 5}✅ Weka trace size OK')
@@ -2399,7 +2399,7 @@ def cgroup_version(hostname, result):
     elif result == "cgroup2fs":
         BAD(f'{" " * 5}❌ Incorrect cgroup v2 set')
     else:
-        WARN(f'{" " * 5}⚠️  Unable to determine cgroup version')
+        WARN(f'{" " * 5}⚠️ Unable to determine cgroup version')
 
 
 def cpu_instruction_set(host_name, result):
@@ -2512,7 +2512,7 @@ def parallel_execution(
                 results.append(result)
             except Exception as exc:
                 host_name = host["name"] if isinstance(host, dict) else host
-                WARN(f'{" " * 5}⚠️  Unable to determine Host: {host_name} results')
+                WARN(f'{" " * 5}⚠️ Unable to determine Host: {host_name} results')
 
     spinner.stop()
     return results
@@ -2836,7 +2836,7 @@ def client_hosts_checks(weka_version, ssh_cl_hosts, check_version, ssh_identity)
         if result is not None:
             ssh_cl_hosts_dict = ssh_check(host_name, result, ssh_cl_hosts_dict)
         else:
-            WARN(f'{" " * 5}⚠️  Unable to determine weka mounts on Host: {host_name}')
+            WARN(f'{" " * 5}⚠️ Unable to determine weka mounts on Host: {host_name}')
 
     ssh_cl_hosts = [host_dict["name"] for host_dict in ssh_cl_hosts_dict]
     if len(ssh_cl_hosts) == 0:
@@ -2989,7 +2989,7 @@ def client_hosts_checks(weka_version, ssh_cl_hosts, check_version, ssh_identity)
         elif result.returncode == 0:
             GOOD(f'{" " * 5}✅ IOMMU is not enabled on host: {host_name}')
         else:
-            WARN(f'{" " * 5}⚠️  IOMMU is enabled on host: {host_name}')
+            WARN(f'{" " * 5}⚠️ IOMMU is enabled on host: {host_name}')
 
 
 create_tar_file(log_file_path, "./weka_upgrade_checker.tar.gz")
@@ -2998,7 +2998,7 @@ create_tar_file(log_file_path, "./weka_upgrade_checker.tar.gz")
 def cluster_summary():
     INFO("CLUSTER SUMMARY:")
     GOOD(f'{" " * 5}✅ Total Checks Passed: {num_good}')
-    WARN(f'{" " * 5}⚠️  Total Warnings: {num_warn}')
+    WARN(f'{" " * 5}⚠️ Total Warnings: {num_warn}')
     BAD(f'{" " * 5}❌ Total Checks Failed: {num_bad}')
 
 
