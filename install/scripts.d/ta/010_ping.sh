@@ -45,14 +45,14 @@ if [ $# -gt 0 ]; then
 	for i in $*
 	do
 	  # resolve the name, in case we have a name, not an ip addr
-	  QUICKPING=`ping -c1 $i`
+	  QUICKPING=`ping -4 -c1 $i`
 	  if [ $? -gt 0 ]; then
 	      PINGERRORS=$PINGERRORS+1
 		  echo "   *FAIL: Unable to ping $i"
 		  echo "        $QUICKPING"
 		  exit "255"
 	  fi
-      IPRESOLVED=`ping -c1 $i | head -1 | cut '-d ' -f3`
+      IPRESOLVED=`ping -4 -c1 $i | head -1 | cut '-d ' -f3`
       DESTIPADDR=${IPRESOLVED:1:-1}
 	  # using sed below because the output of the 'ip' command isn't strictly columnar; data may be in different columns
 	  # determine which interface will be used to get to this address
@@ -65,29 +65,20 @@ if [ $# -gt 0 ]; then
 	  LINKTYPE=`echo $DEVINFO | grep -oE "(ether|infiniband|loopback)"` # link type
 	  CONF_MTU=`echo $DEVINFO | grep -oP "mtu \K[0-9]*"` # extract mtu 
 
-          # Check if we're in Azure
-          if curl -s -H Metadata:true --noproxy "*" "http://169.254.169.254/metadata/instance?api-version=2021-02-01" | grep -q Azure; then
-            AZURE=True
-          fi
-
 	  # LINK should now be either "ether" or "infiniband" or "loopback"
 	  if [ "$LINKTYPE" == "loopback" ]; then continue; fi
-          if [ "$LINKTYPE" == "ether" ]; then
-            if [[ -v AZURE ]]; then
-              MTU="3900"; PINGMTU="3872"
-            else
-              MTU="9000"; PINGMTU="8972"
-            fi
-          elif [ "$LINKTYPE" == "infiniband" ]; then
-            MTU="4092"; PINGMTU="4064"
-          else
-            echo "Unknown link type $LINKTYPE when determining target MTU - $DEVINFO"
+      if [ "$LINKTYPE" == "ether" ]; then 
+	    MTU="9000"; PINGMTU="8972"
+      elif [ "$LINKTYPE" == "infiniband" ]; then
+	    MTU="4092"; PINGMTU="4064"
+      else
+        echo "Unknown link type $LINKTYPE when determining target MTU - $DEVINFO"
 	    if [ -z "$IFHW" ]; then IFHW=`lshw -class network -short  2> /dev/null | grep $IF`; fi
 		IFHWA=($IFHW)
 		echo "             $IF hardware: \"${IFHWA[@]:3}\""
 	    let LINKTYPEERRORS=$LINKTYPEERRORS+1
 		continue
-          fi
+      fi
 	  if [ ! -z "$VIA" ]; then
 	  	echo "    WARN: `hostname` to $DESTIPADDR routes via gateway $VIA from dev $IF (src ip $SRC)"
 		if [ $ROUTEWARNS -eq 0 ]; then
@@ -111,7 +102,7 @@ if [ $# -gt 0 ]; then
 			continue
       fi
 	  # check for jumbo frames working correctly as well as basic connectivity.
-	  sudo ping -M 'do' -c 2 -i 0.2 -s $PINGMTU  $i &> /dev/null
+	  sudo ping -4 -M 'do' -c 2 -i 0.2 -s $PINGMTU  $i &> /dev/null
 	  if [ ! $? -eq 0 ]; then	# change to not eq 0
 		echo $PINGOUT
 		echo "   *FAIL: Host $i JUMBO FRAME packet test error over $IF."
@@ -145,5 +136,4 @@ fi
 if [ $ROUTEWARNS -gt 0 ]; then
 	exit "254"		
 fi
-echo "All tests passed."
 exit "0"
