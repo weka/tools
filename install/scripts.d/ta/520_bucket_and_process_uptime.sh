@@ -22,18 +22,25 @@ if [[ $status -ne 0 ]]; then
     exit 254 # WARN
 fi
 
-MOST_RECENT_BUCKET_STARTTIME=$( date +%s --date=$(weka cluster bucket  --json -s -uptime | python3 -c 'import sys, json; data = json.load(sys.stdin) ; print(data[0]["up_since"])'))
-MOST_RECENT_PROCESS_STARTTIME=$(date +%s --date=$(weka cluster process --json -s -uptime | python3 -c 'import sys, json; data = json.load(sys.stdin) ; print(data[0]["up_since"])'))
-CURRENT_TIME=$(                 date +%s)
 
-if [[ $((${CURRENT_TIME}-${MOST_RECENT_BUCKET_STARTTIME})) -lt 3600 ]]; then
+MOST_RECENT_BUCKET_STARTTIME=$(weka cluster bucket  --json -s -uptime | python3 -c 'import sys, json; data = json.load(sys.stdin) ; print(data[0]["up_since"])')
+MOST_RECENT_PROCESS_STARTTIME=$(weka cluster process --json -s -uptime | python3 -c 'import sys, json; data = json.load(sys.stdin) ; print(data[0]["up_since"])')
+
+# If they have no value, then set a usable value so at least it can be converted to epoch time
+if [[ ${MOST_RECENT_BUCKET_STARTTIME}  == "None" ]] ; then MOST_RECENT_BUCKET_STARTTIME=$( date -Iseconds) ; fi
+if [[ ${MOST_RECENT_PROCESS_STARTTIME} == "None" ]] ; then MOST_RECENT_PROCESS_STARTTIME=$(date -Iseconds) ; fi
+MOST_RECENT_BUCKET_STARTTIME_EPOCH=$( date +%s --date=${MOST_RECENT_BUCKET_STARTTIME})
+MOST_RECENT_PROCESS_STARTTIME_EPOCH=$(date +%s --date=${MOST_RECENT_PROCESS_STARTTIME})                                                          
+CURRENT_TIME_EPOCH=$(                 date +%s)
+
+if [[ $((${CURRENT_TIME_EPOCH}-${MOST_RECENT_BUCKET_STARTTIME_EPOCH})) -lt 3600 ]]; then
     RETURN_CODE="254"
-    echo "Weka buckets have been restarted within the last hour. This may not be a problem on a new cluster"
+    echo "Weka buckets have been restarted within the last hour, or have never started. This may not be a problem on a new cluster"
     echo "but could be indicative of problems (e.g. network flapping"
 fi
-if [[ $((${CURRENT_TIME}-${MOST_RECENT_PROCESS_STARTTIME})) -lt 3600 ]]; then
+if [[ $((${CURRENT_TIME_EPOCH}-${MOST_RECENT_PROCESS_STARTTIME_EPOCH})) -lt 3600 ]]; then
     RETURN_CODE="254"
-    echo "Weka processes have been restarted within the last hour. This may not be a problem on a new cluster"
+    echo "Weka processes have been restarted within the last hour, or have never started. This may not be a problem on a new cluster"
     echo "but could be indicative of problems (e.g. network flapping"
 fi
 
