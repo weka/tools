@@ -13,15 +13,20 @@ import sys
 import tarfile
 import threading
 import time
-from distutils.version import LooseVersion as V
 from itertools import chain
 from subprocess import run
+import warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning, module='distutils')
 
 if sys.version_info < (3, 7):
-    print("Must have python version 3.7 or later installed.")
+    print("Must have Python version 3.7 or later installed.")
     sys.exit(1)
+elif sys.version_info < (3, 12):
+    from distutils.version import LooseVersion as V
+else:
+    from packaging.version import Version as V
 
-pg_version = "1.3.29"
+pg_version = "1.3.30"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
 
@@ -34,8 +39,8 @@ logging.basicConfig(
 
 if sys.stdout.encoding != "UTF-8":
     if sys.version_info >= (3, 7):
-        sys.stdout.reconfigure(encoding="utf-8")
-        sys.stdin.reconfigure(encoding="utf-8")
+        sys.stdout.reconfigure(encoding="utf-8") # type: ignore
+        sys.stdin.reconfigure(encoding="utf-8") # type: ignore
     else:
         # This block is for Python 3.6
         sys.stdout = open(sys.stdout.fileno(), mode="w", encoding="utf-8", buffering=1)
@@ -46,6 +51,7 @@ try:
     unicode_test = True
 except UnicodeEncodeError:
     unicode_test = False
+
 
 if not unicode_test:
     [FAIL] = "\u274C"
@@ -117,7 +123,7 @@ def BAD(text):
 class Host:
     def __init__(self, host_json):
         self.typed_id = str(host_json["host_id"])
-        self.id = re.search("HostId<(\\d+)>", self.typed_id)[1]
+        self.id = re.search("HostId<(\\d+)>", self.typed_id)[1] # type: ignore
         self.ip = str(host_json["host_ip"])
         self.port = str(host_json["mgmt_port"])
         self.hostname = str(host_json["hostname"])
@@ -813,22 +819,9 @@ def weka_cluster_checks():
             "5.8-1.1.2.1",
             "5.9-0.5.6.0",
             "23.10-0.5.5.0",
+            "23.10-1.1.9.0",
         ],
         "4.3": [
-            "5.1-2.5.8.0",
-            "5.1-2.6.2.0",
-            "5.4-3.4.0.0",
-            "5.4-3.5.8.0",
-            "5.6-1.0.3.3",
-            "5.6-2.0.9.0",
-            "5.7-1.0.2.0",
-            "5.8-1.1.2.1",
-            "5.8-3.0.7.0",
-            "5.9-0.5.6.0",
-            "23.04-1.1.3.0",
-            "23.10-0.5.5.0",
-        ],
-            "4.3": [
             "5.1-2.5.8.0",
             "5.1-2.6.2.0",
             "5.4-3.4.0.0",
@@ -1395,7 +1388,7 @@ def weka_cluster_checks():
         )
         for host, status in s3_cluster_hosts.items():
             if not status:
-                bad_s3_hosts.append([host])
+                bad_s3_hosts.append(host)
 
         if not bad_s3_hosts:
             GOOD(f'{" " * 5}✅  No failed s3 hosts found')
@@ -2442,6 +2435,21 @@ def check_os_kernel(host_name, result):
     elif P == "false" or "not_rocky":
         GOOD(f'{" " * 5}✅  Host {host_name}: kernel level supports upgrade')
 
+def endpoint_status(host_name, result):
+    result_lines = result.splitlines()
+    P = None
+    for line in result_lines:
+        if line.startswith("P="):
+            P = line.split("=", 1)[1]
+            break
+
+    if P == "running":
+        WARN(f'{" " * 5}⚠️  Host {host_name} CrowdStrike Falcon Sensor is running, recommended to stop the service prior to upgrade')
+    elif P == "loaded":
+        WARN(f'{" " * 5}⚠️  Host {host_name} CrowdStrike Falcon Sensor kernel module loaded')
+    elif P == "not_running":
+        GOOD(f'{" " * 5}✅  Host {host_name}: Endpoint validation complete')
+
 
 def parallel_execution(
     hosts,
@@ -2833,6 +2841,27 @@ def backend_host_checks(
             else:
                 check_os_kernel(host_name, result)
 
+    INFO("VALIDATING ENDPOINT STATUS")
+    command = r"""
+    if systemctl status falcon-sensor &> /dev/null; then
+        echo "P=running"
+    elif lsmod | grep -q -m 1 falcon_lsm; then
+        echo "P=loaded"
+    else
+        echo "P=not_running"
+    fi
+    """
+    results = parallel_execution(
+        ssh_bk_hosts,
+        [command],
+        use_check_output=True,
+        ssh_identity=ssh_identity,
+    )
+    for host_name, result in results:
+        if result is None:
+            GOOD(f"Unable to validate Host: {host_name} endpoint status")
+        else:
+            endpoint_status(host_name, result)
 
 # CLIENT CHECKS
 def client_hosts_checks(weka_version, ssh_cl_hosts, check_version, ssh_identity):
@@ -3011,7 +3040,7 @@ create_tar_file(log_file_path, "./weka_upgrade_checker.tar.gz")
 def cluster_summary():
     INFO("CLUSTER SUMMARY:")
     GOOD(f'{" " * 5}✅  Total Checks Passed: {num_good}')
-    WARN(f'{" " * 5}⚠️  Total Warnings: {num_warn}')
+    WARN(f'{" " * 5}⚠️   Total Warnings: {num_warn}')
     BAD(f'{" " * 5}❌  Total Checks Failed: {num_bad}')
 
 
