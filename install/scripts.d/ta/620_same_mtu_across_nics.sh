@@ -46,10 +46,15 @@ main() {
                     echo "has an MTU of ${MTU}, which is less than the MTU ${SMALLEST_MTU_REQUIRED} seen elsewhere in this host"
                     echo "This can lead to cluster communication problems"
                     echo "Please see ${JIRA_REFERENCE} for more information"
-                    RETURN_CODE="254"
+                    RETURN_CODE=254
             fi
         done
     done
+    
+    if [[ ${RETURN_CODE} -eq 0 ]] ; then
+        echo "No mismatched large/small MTUs found"
+    fi
+    
     exit $RETURN_CODE
 }
 

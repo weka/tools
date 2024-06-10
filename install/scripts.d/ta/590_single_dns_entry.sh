@@ -43,7 +43,10 @@ fi
 if [[ ${NUMBER_OF_A_RECORDS} != "1" ]] ; then
     echo "There are ${NUMBER_OF_A_RECORDS} A records in DNS for ${HOSTNAME}"
     echo "This is very likely to cause problems with (at least) SMB-W clustering"
-    RETURN_CODE="254"
+    RETURN_CODE=254
+else
+    echo "There is exactly one A record in DNS for ${HOSTNAME}"
+    RETURN_CODE=0
 fi
 
 exit ${RETURN_CODE}

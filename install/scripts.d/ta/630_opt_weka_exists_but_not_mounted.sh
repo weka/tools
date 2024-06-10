@@ -29,7 +29,9 @@ main() {
         echo
         echo "This means that changes made to the live system as it is now"
         echo "are unlikely to be present on the system post-reboot"
-        RETURN_CODE=1
+        RETURN_CODE=254
+    else
+        echo "No immediate directory/mount overlaps found"
     fi
 
     exit ${RETURN_CODE}
