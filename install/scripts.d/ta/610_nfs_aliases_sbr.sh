@@ -17,63 +17,70 @@ RETURN_CODE=0
 # - Requires that the weka binary be available and the account logged onto the cluster
 
 main() {
-   # Check if we can run weka commands
-   weka status &> /dev/null
-   if [[ $? -ne 0 ]]; then
-     echo "ERROR: Not able to run weka commands"
-     exit 254
-   elif [[ $? -eq 127 ]]; then
-     echo "WEKA not found"
-     exit 254
-   elif [[ $? -eq 41 ]]; then
-     echo "Unable to login into Weka cluster."
-     exit 254
-   fi
+    # Check if we can run weka commands
+    weka status &> /dev/null
+    if [[ $? -ne 0 ]]; then
+        echo "ERROR: Not able to run weka commands"
+        exit 254
+    elif [[ $? -eq 127 ]]; then
+        echo "WEKA not found"
+        exit 254
+    elif [[ $? -eq 41 ]]; then
+        echo "Unable to login into Weka cluster."
+        exit 254
+    fi
 
-   # Obtain current host id
-   # Filtering on container="frontend0" may not be the best approach...
-   weka_host_id=$(weka cluster container -o id --no-header -F hostname="$(hostname)" -F container="frontend0")
-   #weka_host_id=$(weka cluster container -o id --no-header -F hostname="$(hostname)")
+    # Obtain current host id
+    # Filtering on container="frontend0" may not be the best approach...
+    # We should not filter on hostname, because sometimes Weka hostname does not match the output of hostname with FQDN, so grep instead
+    weka_host_id=$(weka cluster container -o id,hostname --no-header -F container="frontend0" | grep -w $(hostname -s) | awk '{print $1}')
+    #weka_host_id=$(weka cluster container -o id --no-header -F hostname="$(hostname)")
 
-   # Iterate over NFS alias assignments, for this host
-   # Sample output, from weka nfs interface-group assignment:
-   #  172.31.80.77  HostId: 14  eth0  nfs-ig1
-   #  172.31.80.78  HostId: 14  eth0  nfs-ig1
+    # Iterate over NFS alias assignments, for this host
+    # Sample output, from weka nfs interface-group assignment:
+    #  172.31.80.77  HostId: 14  eth0  nfs-ig1
+    #  172.31.80.78  HostId: 14  eth0  nfs-ig1
 
-   overlapping_subnets=0
-   while read NFS_IP; do
-     local interfaces=($(ip -4 -o addr | awk '{print $2}' | uniq))
-     for interface in "${interfaces[@]}"; do
-       if ip_in_interface_subnet "$NFS_IP" "$interface"; then
-         #echo "IP $NFS_IP belongs to subnet on interface $interface"
-         overlapping_subnets=$((overlapping_subnets+1))
-       fi
-     done
-   done < <(weka nfs interface-group assignment --no-header | awk '$3 == '$weka_host_id'' | awk '{print $1}')
+    overlapping_subnets=0
+    # we couldn't find a frontend container; no point checking what IP rules we have
+    if [[ -z ${weka_host_id} ]] ; then
+        echo "Host is not running a frontend - no check required"
+        exit $RETURN_CODE
+    fi
+    while read NFS_IP; do
+        local interfaces=($(ip -4 -o addr | awk '{print $2}' | uniq))
+        for interface in "${interfaces[@]}"; do
+        if ip_in_interface_subnet "$NFS_IP" "$interface"; then
+            #echo "IP $NFS_IP belongs to subnet on interface $interface"
+            overlapping_subnets=$((overlapping_subnets+1))
+        fi
+        done
+    done < <(weka nfs interface-group assignment --no-header | awk '$3 == '$weka_host_id'' | awk '{print $1}')
 
-   # There is more than 1 subnet that overlaps with the NFS alias range.
-   # Ostensibly, this would indicate source based routing needs to be configured.
-   if [[ $overlapping_subnets -gt 1 ]]; then
-     while read NFS_IP; do
-       found_rule=0
-       while read IP_RULE_SUBNET; do
-         if ip_in_subnet "$NFS_IP" "$IP_RULE_SUBNET"; then
-           echo "INFO: Found IP/subnet $IP_RULE_SUBNET in ip rule for address $NFS_IP"
-           found_rule=1
-           continue
-         fi
-       done < <(ip -4 rule | awk '{print $3}' | grep -v "all")
-       if [[ $found_rule -eq 0 ]]; then 
-         echo "WARNING: No ip rule for address $NFS_IP! It is possible source-based routing should be configured."
-         RETURN_CODE=254		 
-       fi
-     done < <(weka nfs interface-group assignment --no-header | awk '$3 == '$weka_host_id'' | awk '{print $1}')
+    # There is more than 1 subnet that overlaps with the NFS alias range.
+    # Ostensibly, this would indicate source based routing needs to be configured.
+    if [[ $overlapping_subnets -gt 1 ]]; then
+        while read NFS_IP; do
+        found_rule=0
+        while read IP_RULE_SUBNET; do
+            if ip_in_subnet "$NFS_IP" "$IP_RULE_SUBNET"; then
+                echo "INFO: Found IP/subnet $IP_RULE_SUBNET in ip rule for address $NFS_IP"
+                found_rule=1
+                continue
+            fi
+        done < <(ip -4 rule | awk '{print $3}' | grep -v "all")
+        if [[ $found_rule -eq 0 ]]; then
+            echo "WARNING: No ip rule for address $NFS_IP! It is possible source-based routing should be configured."
+            RETURN_CODE=254
+        fi
+        done < <(weka nfs interface-group assignment --no-header | awk '$3 == '$weka_host_id'' | awk '{print $1}')
 
-     exit $RETURN_CODE
+        exit $RETURN_CODE
 
    # No overlapping subnets -- exit w/ success
    else
-     exit $RETURN_CODE
+        echo "No overlapping subnets found"
+        exit $RETURN_CODE
    fi
 }
 
@@ -85,7 +92,7 @@ ip_in_interface_subnet() {
    local subnet=$(ip -o -f inet addr show "$interface" | grep -v secondary |  awk '{print $4}')
    if [ -n "$subnet" ]; then
      if ip_in_subnet "$ip" "$subnet"; then
-       return 0 
+       return 0
      fi
    fi
    return 1
