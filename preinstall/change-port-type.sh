@@ -129,7 +129,6 @@ main() {
 			port_pci_addr=$(basename "$sysfs_port_path")
 			port_pci_num=${port_pci_addr##*.}
 			port_num=$((port_pci_num + 1))
-			# port_count=$(lspci | grep -c "$dev_pci_addr")
 
 			dev_pci_addr=${port_pci_addr%%.*}
 			device_file=$(mst status | grep -B 1 "$dev_pci_addr" | awk '{ print $1; exit }')
