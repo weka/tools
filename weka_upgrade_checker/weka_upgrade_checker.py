@@ -26,7 +26,7 @@ elif sys.version_info < (3, 12):
 else:
     from packaging.version import Version as V
 
-pg_version = "1.3.30"
+pg_version = "1.3.31"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
 
@@ -984,6 +984,27 @@ def weka_cluster_checks():
         else:
             GOOD("✅  No problematic drives found")
 
+    if V(weka_version) == V("4.1.0.77"):
+        INFO("VERIFYING SSD SUPPORTED SIZE")
+        unsupported_drive = []
+        for drive in weka_drives:
+            if drive["size_bytes"] >= "30725970923520":
+                unsupported_drive += [
+                    drive["disk_id"],
+                    drive["node_id"],
+                    drive["status"],
+                    drive["size_bytes"],
+                    drive["hostname"],
+                ]
+
+        if not unsupported_drive:
+            GOOD("✅  SSD Drive check complete")
+        else:
+            WARN(
+                "⚠️  Found unsupport SSD drive size. Please contact WEKA Support prior to upgrading"
+            )
+            printlist(unsupported_drive, 5)
+
     if V(weka_version) == V("3.14"):
         INFO("VERIFYING SYSTEM OPTIMAL SETTINGS")
         WARN(
@@ -1171,7 +1192,7 @@ def weka_cluster_checks():
                         host_id = container["cores_ids"][0]
                     elif container["cores_ids"][0] != host_id:
                         WARN(
-                            f'⚠️  Container {container["container"]} core_ids set to AUTO while other containers manually set to core_id.'
+                            f'⚠️  Container {container["container"]} core_ids set to AUTO while other containers manually set to core_id. Containers should have manually assigned core ids'
                         )
                         has_error = True
 
@@ -1212,7 +1233,7 @@ def weka_cluster_checks():
 
             if validate_core_ids(containers):
                 WARN(
-                    f"⚠️  Core_ids set to AUTO in one container on host {hostname} while other containers have pinned core_ids."
+                    f"⚠️  Core_ids set to AUTO in one container on host {hostname} while other containers have manually assigned core_ids."
                 )
 
         if not any(
