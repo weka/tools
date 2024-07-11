@@ -2834,6 +2834,22 @@ def backend_host_checks(
                 WARN(f"Unable to determine Host: {host_name} cpu instruction set")
             else:
                 cpu_instruction_set(host_name, result)
+                
+    if V(weka_version) >= V("4.2.1"):
+        INFO("VALIDATING IPV6")
+        results = parallel_execution(
+            ssh_bk_hosts,
+            ['grep "\<ipv6.disable=1\>" /proc/cmdline'],
+            use_check_output=False,
+            use_call=True,
+            ssh_identity=ssh_identity,
+        )
+        for host_name, result in results:
+            INFO2(f'{" " * 2}Checking IPv6 status on Host: {host_name}:')
+            if result == 0:
+                BAD(f'{" " * 5}❌  Cannot update to Weka version 4.3.2.x - ipv6 is disabled')
+            else:
+                GOOD(f'{" " * 5}✅  IPv6 is enabled')
 
     if V("4.2.6") <= V(weka_version) <= V("4.2.10"):
         INFO("VALIDATING OS KERNEL UPGRADE ELIGIBILITY")
