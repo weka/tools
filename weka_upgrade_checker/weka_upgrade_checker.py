@@ -26,7 +26,7 @@ elif sys.version_info < (3, 12):
 else:
     from packaging.version import Version as V
 
-pg_version = "1.3.32"
+pg_version = "1.3.33"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
 
@@ -987,8 +987,11 @@ def weka_cluster_checks():
     if V(weka_version) == V("4.1.0.77"):
         INFO("VERIFYING SSD SUPPORTED SIZE")
         unsupported_drive = []
+        weka_drives = json.loads(
+            subprocess.check_output(["weka", "cluster", "drive", "-J"])
+        )
         for drive in weka_drives:
-            if drive["size_bytes"] >= "30725970923520":
+            if drive["size_bytes"] >= 30725970923520:
                 unsupported_drive += [
                     drive["disk_id"],
                     drive["node_id"],
