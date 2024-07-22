@@ -8,7 +8,7 @@ import sys
 import logging
 
 def parse_args():
-    parser = argparse.ArgumentParser(description='Filter HangingIos by age.')
+    parser = argparse.ArgumentParser(description='Filter HangingIos by age and drop cache on the hangingio.')
     parser.add_argument('--age', type=int, default=24, help='The minimum age in hours to filter HangingIos entries.')
     parser.add_argument('--log-file', type=str, default='hangingios.log', help='The log file to save the process logs.')
     return parser.parse_args()
