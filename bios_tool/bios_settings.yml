@@ -86,4 +86,9 @@ Lenovo:
     Processors_DeterminismSlider: Performance
     DevicesandIOPorts_IOMMU: Disabled
     Processors_SMTMode: Disabled
+    Processors_DFC_States: Disabled
+    Power_PCIePowerBrake: Disabled
+    OperatingModes_ChooseOperatingMode: CustomMode
+    LegacyBIOS_LegacyBIOS: Disabled
+    Processors_SOCP_states: P0
     
