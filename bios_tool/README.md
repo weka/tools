@@ -3,7 +3,8 @@ A tool for viewing/setting bios_settings for Weka servers
 
 ```angular2html
 
-usage: bios_tool.py [-h] [-c [HOSTCONFIGFILE]] [-b [BIOS]] [--fix] [--reboot] [--dump] [--diff DIFF DIFF] [-v]
+usage: bios_tool [-h] [-c [HOSTCONFIGFILE]] [-b [BIOS]] [--bmc_config] [--fix] [--reboot] [--dump] [--reset_bios] [--diff DIFF DIFF] [--bmc_ips [BMC_IPS ...]]
+                 [--bmc_username BMC_USERNAME] [--bmc_password BMC_PASSWORD] [-v] [--version]
 
 View/Change BIOS Settings on servers
 
@@ -13,20 +14,39 @@ optional arguments:
                         filename of host config file
   -b [BIOS], --bios [BIOS]
                         bios configuration filename
+  --bmc_config          Configure the BMCs to allow RedFish access
   --fix                 Correct any bios settings that do not match the definition
   --reboot              Reboot server if changes have been made
   --dump                Print out BIOS settings only
   --reset_bios          Reset BIOS to default settings. To also reboot, add the --reboot option
-  --diff DIFF DIFF      Compare 2 hosts
+  --diff DIFF DIFF      Compare 2 hosts BIOS settings
+  --bmc_ips [BMC_IPS ...]
+                        a list of hosts to configure, or none to use cluster beacons
+  --bmc_username BMC_USERNAME
+                        a username to use on all hosts in --bmc_ips
+  --bmc_password BMC_PASSWORD
+                        a password to use on all hosts in --bmc_ips
+  -v, --verbose         enable verbose mode
+  --version             report program version and exit
+
 ```
 
 ## Getting Started
-There are 2 configuration files for bios_tool: a host configuration file ("host_config.yml") and a BIOS settings configuration file ("bios_config.yml")
+There are 2 configuration files for bios_tool: a host configuration file ("host_config.yml" or host_config.csv) and a BIOS settings configuration file ("bios_config.yml")
 You can either use these default names or override the configuration file names using the provided command-line switches, -c/--hostconfigfile and -b/--bios.
-### host_config.yml
-The host_config.yml defines the list of hosts, and their logon credentials for the BMC (ipmi, iLO, iDRAC).
+### host_config.yml or csv
+The host_config.yml/csv defines the list of hosts, and their logon credentials for the BMC (ipmi, iLO, iDRAC).  This may be in YAML or CSV format.  Use the file extension `.yml` or `.csv` to indicate the format.
 
-The format standard YAML, as such:
+The format can be standard CSV, as such: (compatible with Excel)
+```angular2html
+name,user,password
+172.29.3.164,ADMIN,_PASSWORD_1!
+172.29.3.1,Administrator,Administrator
+172.29.1.74,root,Administrator
+172.29.1.75,root,Administrator
+```
+
+The format can also be standard YAML, as such:
 ```angular2html
 hosts:
   # Hpe servers
@@ -37,7 +57,10 @@ hosts:
     user: Administrator
     password: Administrator
 ```
+
 You should set all the servers you want to work with here.   Note they may have different passwords for each server.
+
+See the section on `--bcm_ips` to configure the hosts on the command line instead of in configuration files.
 
 ### bios_config.yml
 The bios_config.yml defines the BIOS settings that you want set on the servers that are defined in the host_config.yml file.
@@ -73,6 +96,8 @@ Dell:
     WorkloadProfile: NotConfigured
 ```
 
+Note that we've prvovided 2 examples - a standard set of BIOS settings, and a set specifically for Dell AMD with Genoa processors.
+
 ## Default Behavior
 With no command-line overrides, bios_tool will scan the hosts in the host_config.yml and note where they differ (if they differ) from the settings in the bios_settings.yml file.
 No changes are made to the servers (read-only mode)
@@ -95,6 +120,8 @@ No changes are needed on 172.29.3.3
 ```
 
 ## Optional Behaviors
+### BMC Configuration mode
+Using the --bms_config command line option will cause bios_tool to ssh to each of the servers and turn on RedFish and IPMI Over LAN.   The RedFish is strictly REQUIRED for bios_tool operation.   IPMI Over LAN is required for WMS deployment to operate properly, so is automatically enabled.
 ### Fix Mode
 Using the --fix command line option will cause the tool to make the settings to the bios as defined in the bios_settings.yml.   
 It will not reboot the server(s) unless given the --reboot option
@@ -131,3 +158,5 @@ Sriov                       Disabled                   Enabled
 ThermalConfig               IncreasedCooling           OptimalCooling
 WorkloadProfile             I/OThroughput              GeneralPowerEfficientCompute
 ```
+### Version option
+Using --version will simply print the bios_tool version number and exit.
