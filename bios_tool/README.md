@@ -33,7 +33,7 @@ optional arguments:
 
 ## Getting Started
 There are 2 configuration files for bios_tool: a host configuration file ("host_config.yml" or host_config.csv) and a BIOS settings configuration file ("bios_config.yml")
-You can either use these default names or override the configuration file names using the provided command-line switches, -c/--hostconfigfile and -b/--bios.
+You can either use these default names or override the configuration file names using the provided command-line switches, -c/--hostconfigfile and -b/--bios or --bmc_ips.  (see Optional Behaviors/Command-line Host Specification below for --bmc_ips)
 ### host_config.yml or csv
 The host_config.yml/csv defines the list of hosts, and their logon credentials for the BMC (ipmi, iLO, iDRAC).  This may be in YAML or CSV format.  Use the file extension `.yml` or `.csv` to indicate the format.
 
@@ -158,5 +158,7 @@ Sriov                       Disabled                   Enabled
 ThermalConfig               IncreasedCooling           OptimalCooling
 WorkloadProfile             I/OThroughput              GeneralPowerEfficientCompute
 ```
+### Command-line Host Specification
+Using --bmc_ips with a space separated list of IP addresses (ie: `--bmc_ips 192.168.1.1 192.168.1.2`) and --bmc_username and --bmc_password will allow you to easily configure a set of servers that have the same userid/password settings, rather than providing a configuration file.
 ### Version option
 Using --version will simply print the bios_tool version number and exit.
