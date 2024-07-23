@@ -1,5 +1,5 @@
 # bios_tool
-A tool for viewing/setting bios_settings for Weka servers
+A tool for viewing/setting bios settings for Weka servers
 
 ```angular2html
 
@@ -80,7 +80,7 @@ Currently known manufacturer names are "Dell", "Hpe", and "Supermicro" and defau
 
 The architecture can be either "AMD" or "Intel".   No other architectures are currently supported.
 
-See the provided bios_config.yml for a full example, but here's what it looks like:
+See the provided `bios_config.yml` for a full example, but here's what it looks like:
 ```angular2html
 Dell:
   AMD: {}
@@ -96,7 +96,7 @@ Dell:
     WorkloadProfile: NotConfigured
 ```
 
-Note that we've prvovided 2 examples - a standard set of BIOS settings, and a set specifically for Dell AMD with Genoa processors.
+Note that we've provided 2 examples - a standard set of BIOS settings, and a set specifically for Dell AMD with Genoa processors.
 
 ## Default Behavior
 With no command-line overrides, bios_tool will scan the hosts in the host_config.yml and note where they differ (if they differ) from the settings in the bios_settings.yml file.
@@ -121,17 +121,17 @@ No changes are needed on 172.29.3.3
 
 ## Optional Behaviors
 ### BMC Configuration mode
-Using the --bms_config command line option will cause bios_tool to ssh to each of the servers and turn on RedFish and IPMI Over LAN.   The RedFish is strictly REQUIRED for bios_tool operation.   IPMI Over LAN is required for WMS deployment to operate properly, so is automatically enabled.
+Using the `--bmc_config` command line option will cause bios_tool to ssh to each of the servers and turn on RedFish and IPMI Over LAN.   The RedFish is strictly REQUIRED for bios_tool operation.   IPMI Over LAN is required for WMS deployment to operate properly, so is automatically enabled.
 ### Fix Mode
-Using the --fix command line option will cause the tool to make the settings to the bios as defined in the bios_settings.yml.   
-It will not reboot the server(s) unless given the --reboot option
+Using the `--fix` command line option will cause the tool to make the settings to the bios as defined in the `bios_settings.yml`.   
+It will not reboot the server(s) unless given the `--reboot` option
 ### Reboot option
-Using a --reboot with --fix will make bios_tool reboot the servers after any changes are made.  
+Using a `--reboot` with `--fix` will make bios_tool reboot the servers after any changes are made.  
 Only servers that have been modified are rebooted (this causes them to APPLY the changes)
 ### Dump option
-Using the --dump command line option will cause the tool to simply print out all the bios settings for each server. (read-only)
+Using the `--dump` command line option will cause the tool to simply print out all the bios settings for each server. (read-only)
 ### Diff option
-Using the --diff option will compare all the settings on 2 servers, and print out which settings differ.
+Using the `--diff` option will compare all the settings on 2 servers, and print out which settings differ.
 
 Example diff output:
 ```angular2html
@@ -159,6 +159,6 @@ ThermalConfig               IncreasedCooling           OptimalCooling
 WorkloadProfile             I/OThroughput              GeneralPowerEfficientCompute
 ```
 ### Command-line Host Specification
-Using --bmc_ips with a space separated list of IP addresses (ie: `--bmc_ips 192.168.1.1 192.168.1.2`) and --bmc_username and --bmc_password will allow you to easily configure a set of servers that have the same userid/password settings, rather than providing a configuration file.
+Using `--bmc_ips` with a space separated list of IP addresses (ie: `--bmc_ips 192.168.1.1 192.168.1.2`) and `--bmc_username` and `--bmc_password` will allow you to easily configure a set of servers that have the same userid/password settings, rather than providing a configuration file.
 ### Version option
-Using --version will simply print the bios_tool version number and exit.
+Using `--version` will simply print the bios_tool version number and exit.
