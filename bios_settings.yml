@@ -1,0 +1,88 @@
+Dell:
+  AMD:
+    LogicalProc: Disabled
+    NumaNodesPerSocket: "1"
+    PcieAspmL1: Disabled
+    PcieEnhancedPreferredIo: Enabled
+    PciePreferredIoBus: Enabled
+    ProcCStates: Disabled
+    ProcPwrPerf: MaxPerf
+    ProcVirtualization: Disabled
+    PxeDev1Interface: NIC.Embedded.1-1-1
+    SysProfile: PerfOptimized
+    WorkloadProfile: HpcProfile
+    SriovGlobalEnable: Disabled
+    BootMode: Uefi
+  Intel:
+    WorkloadProfile: LowLatencyOptimizedProfile
+    SysProfile: Custom
+    ControlledTurbo: Enabled
+    LogicalProc: Disabled
+    MadtCoreEnumeration: Linear
+    MemPatrolScrub: Disabled
+    MonitorMwait: Disabled
+    ProcCStates: Disabled
+    ProcHwPrefetcher: Enabled
+    ProcPwrPerf: MaxPerf
+    ProcTurboMode: Enabled
+    ProcVirtualization: Disabled
+    ProcX2Apic: Disabled
+    #SubNumaCluster: Disabled
+    SubNumaCluster: 2-Way
+    #PackageCStates: Disabled
+    ProcC1E: Disabled
+    SecureBoot: Disabled
+    SriovGlobalEnable: Enabled
+    EnergyPerformanceBias: MaxPower
+    #WorkloadConfiguration: Balance
+Hpe:
+  AMD:
+    ApplicationPowerBoost: Enabled
+    DeterminismControl: DeterminismCtrlAuto
+    NumaMemoryDomainsPerSocket: OneMemoryDomainPerSocket
+    ProcAmdIoVt: Enabled
+    Sriov: Enabled
+    ThermalConfig: IncreasedCooling
+    WorkloadProfile: GeneralThroughputCompute
+    CStateEfficiencyMode: Disabled
+    DataFabricCStateEnable: Disabled
+    InfinityFabricPstate: P0
+    MinProcIdlePower: NoCStates
+    NumaGroupSizeOpt: Clustered
+    PerformanceDeterminism: PerformanceDeterministic
+    PowerRegulator: StaticHighPerf
+    ProcSMT: Disabled
+    ProcAmdIoVt: Disabled
+    BootMode: Uefi
+    SecureBootStatus: Disabled
+  Intel:
+    IntelProcVtd: Disabled
+    ThermalConfig: IncreasedCooling
+    WorkloadProfile: I/OThroughput
+    ProcHyperthreading: Disabled
+Supermicro:
+  AMD:
+    ACPISRATL3CacheAsNUMADomain: Disabled
+    IOMMU: Disabled
+    NUMANodesPerSocket: Auto
+    SMTControl: Disabled
+    SR-IOVSupport: Enabled
+    DFCstates: Disabled
+    GlobalC-stateControl: Disabled
+  Intel:
+    EnhancedHaltState(C1E): Disabled
+    HardwareP-States: Disabled
+    Hyper-Threading[ALL]: Disabled
+    PackageCState: Disabled
+    SR-IOVSupport: Enabled
+    SpeedStep(P-States): Disabled
+    Intel\u00aeVTforDirectedI/O(VT-d): Disabled
+Lenovo:
+  AMD:
+    Secured_Core_IOMMU: Disabled
+    Processors_P_state1: Disabled
+    Processors_P_state2: Disabled
+    Processors_GlobalC_stateControl: Disabled
+    Processors_DeterminismSlider: Performance
+    DevicesandIOPorts_IOMMU: Disabled
+    Processors_SMTMode: Disabled
