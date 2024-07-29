@@ -26,7 +26,7 @@ elif sys.version_info < (3, 12):
 else:
     from packaging.version import Version as V
 
-pg_version = "1.3.32"
+pg_version = "1.3.33"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
 
@@ -987,8 +987,11 @@ def weka_cluster_checks():
     if V(weka_version) == V("4.1.0.77"):
         INFO("VERIFYING SSD SUPPORTED SIZE")
         unsupported_drive = []
+        weka_drives = json.loads(
+            subprocess.check_output(["weka", "cluster", "drive", "-J"])
+        )
         for drive in weka_drives:
-            if drive["size_bytes"] >= "30725970923520":
+            if drive["size_bytes"] >= 30725970923520:
                 unsupported_drive += [
                     drive["disk_id"],
                     drive["node_id"],
@@ -2834,6 +2837,22 @@ def backend_host_checks(
                 WARN(f"Unable to determine Host: {host_name} cpu instruction set")
             else:
                 cpu_instruction_set(host_name, result)
+                
+    if V(weka_version) >= V("4.2.1"):
+        INFO("VALIDATING IPV6")
+        results = parallel_execution(
+            ssh_bk_hosts,
+            ['test -f /proc/net/if_inet6'],
+            use_check_output=False,
+            use_call=True,
+            ssh_identity=ssh_identity,
+        )
+        for host_name, result in results:
+            INFO2(f'{" " * 2}Checking IPv6 status on Host: {host_name}:')
+            if result == 0:
+                GOOD(f'{" " * 5}✅  IPv6 is enabled')
+            else:
+                BAD(f'{" " * 5}❌  Cannot update to Weka version 4.3.2.x - ipv6 is disabled')
 
     if V("4.2.6") <= V(weka_version) <= V("4.2.10"):
         INFO("VALIDATING OS KERNEL UPGRADE ELIGIBILITY")

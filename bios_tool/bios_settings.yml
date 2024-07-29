@@ -11,6 +11,8 @@ Dell:
     PxeDev1Interface: NIC.Embedded.1-1-1
     SysProfile: PerfOptimized
     WorkloadProfile: HpcProfile
+    SriovGlobalEnable: Disabled
+    BootMode: Uefi
   Intel:
     WorkloadProfile: LowLatencyOptimizedProfile
     SysProfile: Custom
@@ -51,6 +53,8 @@ Hpe:
     PowerRegulator: StaticHighPerf
     ProcSMT: Disabled
     ProcAmdIoVt: Disabled
+    BootMode: Uefi
+    SecureBootStatus: Disabled
   Intel:
     IntelProcVtd: Disabled
     ThermalConfig: IncreasedCooling
@@ -73,3 +77,18 @@ Supermicro:
     SR-IOVSupport: Enabled
     SpeedStep(P-States): Disabled
     Intel\u00aeVTforDirectedI/O(VT-d): Disabled
+Lenovo:
+  AMD:
+    Secured_Core_IOMMU: Disabled
+    Processors_P_state1: Disabled
+    Processors_P_state2: Disabled
+    Processors_GlobalC_stateControl: Disabled
+    Processors_DeterminismSlider: Performance
+    DevicesandIOPorts_IOMMU: Disabled
+    Processors_SMTMode: Disabled
+    Processors_DFC_States: Disabled
+    Power_PCIePowerBrake: Disabled
+    OperatingModes_ChooseOperatingMode: CustomMode
+    LegacyBIOS_LegacyBIOS: Disabled
+    Processors_SOCP_states: P0
+    
