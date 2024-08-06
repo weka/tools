@@ -8,7 +8,7 @@ import sys
 from argparse import ArgumentParser, HelpFormatter
 from concurrent.futures import ThreadPoolExecutor
 from json import dumps
-from ipaddress import ip_address
+from ipaddress import ip_address, IPv4Address
 from math import ceil
 from urllib import request, error
 from socket import timeout
@@ -592,6 +592,7 @@ class ResourcesGenerator:
         self._ensure_port_14000_is_used()
 
     def set_net_devices(self):
+        # format of this parameter is: iface_name/ip_addr+ipaddr/netmask_bits/gateway_ip/network_label
         def _validate_ips(ip):
             try:
                 ip_address(ip)
@@ -600,8 +601,18 @@ class ResourcesGenerator:
                 logger.error(err)
                 quit(1)
 
-        def _validate_netmask(netmask):
-            if not netmask.isdecimal() or int(netmask) not in range(0, 129):
+        def _is_ipv4(ip):
+            return type(ip_address(ip)) == IPv4Address
+
+        def _validate_netmask(ip, netmask):
+            if _is_ipv4(ip):
+                min_bits = 8
+                max_bits = 32
+            else:
+                min_bits = 8
+                max_bits = 128
+
+            if not netmask.isdecimal() or int(netmask) not in range(min_bits, max_bits+1):
                 logger.error("Invalid value for netmask: %s", netmask)
                 quit(1)
             return netmask
@@ -637,7 +648,7 @@ class ResourcesGenerator:
                 kwargs['ips'] = [ip.strip() for ip in ips]
             if arg_parts:
                 net_mask_arg = arg_parts.pop(0)
-                _validate_netmask(net_mask_arg)
+                _validate_netmask(ips[0], net_mask_arg)
                 kwargs['netmask'] = int(net_mask_arg)
             if arg_parts:
                 gateway = arg_parts.pop(0)
