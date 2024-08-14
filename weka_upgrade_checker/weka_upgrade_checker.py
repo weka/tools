@@ -26,7 +26,7 @@ elif sys.version_info < (3, 12):
 else:
     from packaging.version import Version as V
 
-pg_version = "1.3.33"
+pg_version = "1.3.35"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
 
@@ -832,6 +832,7 @@ def weka_cluster_checks():
             "5.8-1.1.2.1",
             "5.8-3.0.7.0",
             "5.9-0.5.6.0",
+            "23.10-0.5.5",
             "23.04-1.1.3.0",
             "23.10-0.5.5.0",
         ],
@@ -2837,7 +2838,7 @@ def backend_host_checks(
                 WARN(f"Unable to determine Host: {host_name} cpu instruction set")
             else:
                 cpu_instruction_set(host_name, result)
-                
+
     if V(weka_version) >= V("4.2.1"):
         INFO("VALIDATING IPV6")
         results = parallel_execution(
@@ -2883,9 +2884,9 @@ def backend_host_checks(
 
     INFO("VALIDATING ENDPOINT STATUS")
     command = r"""
-    if systemctl status falcon-sensor &> /dev/null; then
+    if sudo systemctl status falcon-sensor &> /dev/null; then
         echo "P=running"
-    elif lsmod | grep -q -m 1 falcon_lsm; then
+    elif sudo lsmod | grep -q -m 1 falcon_lsm; then
         echo "P=loaded"
     else
         echo "P=not_running"
@@ -3096,6 +3097,14 @@ def main():
         help="Provide one or more ips or fqdn of hosts to check, seperated by space",
     )
     parser.add_argument(
+        "-d",
+        "--cluster-checks-only",
+        dest="cluster_checks_only",
+        action="store_true",
+        default=False,
+        help="Will only preform cluster checks will skip all other checks",
+    )
+    parser.add_argument(
         "-c",
         "--skip-client-checks",
         dest="skip_client_checks",
@@ -3156,6 +3165,11 @@ def main():
             s3_enabled,
         )
         client_hosts_checks(weka_version, ssh_cl_hosts, check_version, ssh_identity)
+        cluster_summary()
+        INFO(f"Cluster upgrade checks complete!")
+        sys.exit(0)
+    elif args.cluster_checks_only:
+        weka_cluster_checks()
         cluster_summary()
         INFO(f"Cluster upgrade checks complete!")
         sys.exit(0)
