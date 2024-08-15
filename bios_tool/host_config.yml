@@ -1,6 +1,33 @@
 hosts:
   # Hpe servers
-  - name: 172.29.3.11
+  - name: 172.29.3.1
+    user: Administrator
+    password: Administrator
+  - name: 172.29.3.2
+    user: Administrator
+    password: Administrator
+  - name: 172.29.3.3
+    user: Administrator
+    password: Administrator
+  - name: 172.29.3.4
+    user: Administrator
+    password: Administrator
+  - name: 172.29.3.5
+    user: Administrator
+    password: Administrator
+  - name: 172.29.3.6
+    user: Administrator
+    password: Administrator
+  - name: 172.29.3.7
+    user: Administrator
+    password: Administrator
+  - name: 172.29.3.8
+    user: Administrator
+    password: Administrator
+  - name: 172.29.3.9
+    user: Administrator
+    password: Administrator
+  - name: 172.29.3.10
     user: Administrator
     password: Administrator
 #  - name: 172.29.3.12
@@ -30,9 +57,9 @@ hosts:
 #  - name: 172.29.3.20
 #    user: Administrator
 #    password: Administrator
-#
-#  # Dell servers
-#  # 172.29.1.170 - 177, root/Administrator for the idrac login
+
+  # Dell servers
+  # 172.29.1.170 - 177, root/Administrator for the idrac login
 #  - name: 172.29.1.170
 #    user: root
 #    password: Administrator
