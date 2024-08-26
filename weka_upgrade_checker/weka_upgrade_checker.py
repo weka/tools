@@ -16,17 +16,26 @@ import time
 from itertools import chain
 from subprocess import run
 import warnings
-warnings.filterwarnings("ignore", category=DeprecationWarning, module='distutils')
+import pkg_resources
+from packaging.version import parse, Version, InvalidVersion
+
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="distutils")
+
+try:
+    pkg_resources.get_distribution("packaging")
+except pkg_resources.DistributionNotFound:
+    print("The 'packaging' module is not installed. Installing it now...")
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "packaging"])
 
 if sys.version_info < (3, 7):
     print("Must have Python version 3.7 or later installed.")
     sys.exit(1)
-elif sys.version_info < (3, 12):
-    from distutils.version import LooseVersion as V
-else:
+elif sys.version_info >= (3, 10):
     from packaging.version import Version as V
+else:
+    from distutils.version import LooseVersion as V
 
-pg_version = "1.3.35"
+pg_version = "1.3.37"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
 
@@ -39,8 +48,8 @@ logging.basicConfig(
 
 if sys.stdout.encoding != "UTF-8":
     if sys.version_info >= (3, 7):
-        sys.stdout.reconfigure(encoding="utf-8") # type: ignore
-        sys.stdin.reconfigure(encoding="utf-8") # type: ignore
+        sys.stdout.reconfigure(encoding="utf-8")  # type: ignore
+        sys.stdin.reconfigure(encoding="utf-8")  # type: ignore
     else:
         # This block is for Python 3.6
         sys.stdout = open(sys.stdout.fileno(), mode="w", encoding="utf-8", buffering=1)
@@ -123,7 +132,7 @@ def BAD(text):
 class Host:
     def __init__(self, host_json):
         self.typed_id = str(host_json["host_id"])
-        self.id = re.search("HostId<(\\d+)>", self.typed_id)[1] # type: ignore
+        self.id = re.search("HostId<(\\d+)>", self.typed_id)[1]  # type: ignore
         self.ip = str(host_json["host_ip"])
         self.port = str(host_json["mgmt_port"])
         self.hostname = str(host_json["hostname"])
@@ -134,6 +143,7 @@ class Host:
         self.container = host_json["container_name"]
         self.cores = host_json["cores"]
         self.cores_ids = host_json["cores_ids"]
+        self.memory = host_json["memory"]
         self.sw_release_string = (
             str(host_json["sw_release_string"])
             if "sw_release_string" in host_json
@@ -333,7 +343,9 @@ def weka_cluster_checks():
         stderr=subprocess.STDOUT,
     )
     if weka_agent_service != 0:
-        BAD("❌  Weka is NOT installed on host or the container is down, cannot continue")
+        BAD(
+            "❌  Weka is NOT installed on host or the container is down, cannot continue"
+        )
         sys.exit(1)
     else:
         GOOD("✅  Weka agent service is running")
@@ -367,6 +379,7 @@ def weka_cluster_checks():
     weka_status = weka_info["status"]
     uuid = weka_info["guid"]
     weka_version = weka_info["release"]
+    usable_capacity = weka_info["capacity"]["total_bytes"]
     GOOD(
         f"✅  CLUSTER:{cluster_name} STATUS:{weka_status} VERSION:{weka_version} UUID:{uuid}"
     )
@@ -622,6 +635,20 @@ def weka_cluster_checks():
             WARN(f"Failed clients detected\n")
             printlist(down_clhost, 5)
 
+    INFO("Validating memory to SSD capacity ratio for upgrade")
+    total_compute_memory = sum(
+        host.memory
+        for host in backend_hosts
+        if "compute" in host.container and host.is_up
+    )
+    ratio = usable_capacity / total_compute_memory
+    if ratio > 4000:
+        BAD(
+            f"❌  Prior to upgrading please contact weka support, due to the current ration of {ratio}, it is recommended to increase compute RAM"
+        )
+    else:
+        GOOD("✅  Memory to SSD ratio validation ok")
+
     INFO("CHECKING CLIENT COMPATIBLE VERSIONS")
     try:
         sw_version = weka_version.split(".")
@@ -838,22 +865,28 @@ def weka_cluster_checks():
         ],
     }
 
+# to handle non-standard PEP440 standard using parse
     INFO("VALIDATING BACKEND SUPPORTED NIC DRIVERS INSTALLED")
     spinner = Spinner("  Processing Data   ", color=colors.OKCYAN)
     spinner.start()
 
     backend_ips = [*{bkhost.ip for bkhost in backend_hosts}]
-
     backend_host_names = [*{bkhost.hostname for bkhost in backend_hosts}]
-
     hostname_from_api = []
 
     cmd = ["weka", "cluster", "host", "info-hw", "-J"]
-
     host_hw_info = json.loads(subprocess.check_output(cmd + backend_ips))
 
     ofed_downlevel = []
     current_version = {}
+
+    def safe_parse(version_string):
+        """Try parsing the version; fallback for non-standard versions."""
+        try:
+            return parse(version_string)
+        except InvalidVersion:
+            # Handle the non-standard version case as legacy or custom
+            return version_string
 
     for key, val in host_hw_info.items():
         if host_hw_info.get(key) is not None:
@@ -866,9 +899,21 @@ def weka_cluster_checks():
                 current_version[key] = []
                 result = val["ofed"]["host"]
                 current_version[key].append(result)
-                hostname_from_api += [key]
-                if (V(result)) < (V("5.1-2.5.8.0")):
-                    ofed_downlevel += (key, result)
+                hostname_from_api.append(key)
+
+                # Use the safe_parse function for robust version handling
+                result_parsed = safe_parse(result)
+                threshold_parsed = safe_parse("5.1-2.5.8.0")
+
+                # Comparison handling for versions
+                if isinstance(result_parsed, Version) and isinstance(threshold_parsed, Version):
+                    if result_parsed < threshold_parsed:
+                        ofed_downlevel.append((key, result))
+                else:
+                    # Custom logic if both versions are not compliant or need manual checks
+                    if result < "5.1-2.5.8.0":
+                        ofed_downlevel.append((key, result))
+
                 if result not in supported_ofed[check_version]:
                     BAD(
                         f'{" " * 5}❌  Host: {key} on weka version {weka_version} does not support OFED version {result}'
@@ -877,8 +922,10 @@ def weka_cluster_checks():
                     GOOD(
                         f'{" " * 5}✅  Host: {key} on weka version {weka_version} is running supported OFED version {result}'
                     )
+
             except Exception as e:
-                pass
+                # Print the exception for debugging purposes
+                print(f"Error processing host {key}: {e}")
 
     for bkhostnames in hostname_from_api:
         if bkhostnames in backend_host_names:
@@ -886,11 +933,11 @@ def weka_cluster_checks():
 
     if not current_version:
         GOOD("✅  Mellanox nics not found")
-    elif backend_host_names != []:
+    elif backend_host_names:
         for bkhostname in backend_host_names:
             WARN(f'{" " * 5}⚠️  Unable to determine Host: {bkhostname} OFED version')
     elif len(set(current_version)) == 1:
-        WARN(f'\n{" " * 5}⚠️  Mismatch ofed version found on backend hosts\n')
+        WARN(f'\n{" " * 5}⚠️  Mismatch OFED version found on backend hosts\n')
         printlist(printlist, 1)
 
     spinner.stop()
@@ -1989,7 +2036,6 @@ supported_os = {
                 "9.1",
                 "9.2",
             ],
-
             "sles": [],
             "ubuntu": [
                 "18.04.0",
@@ -2460,6 +2506,7 @@ def check_os_kernel(host_name, result):
     elif P == "false" or "not_rocky":
         GOOD(f'{" " * 5}✅  Host {host_name}: kernel level supports upgrade')
 
+
 def endpoint_status(host_name, result):
     result_lines = result.splitlines()
     P = None
@@ -2469,11 +2516,36 @@ def endpoint_status(host_name, result):
             break
 
     if P == "running":
-        WARN(f'{" " * 5}⚠️  Host {host_name} CrowdStrike Falcon Sensor is running, recommended to stop the service prior to upgrade')
+        WARN(
+            f'{" " * 5}⚠️  Host {host_name} CrowdStrike Falcon Sensor is running, recommended to stop the service prior to upgrade'
+        )
     elif P == "loaded":
-        WARN(f'{" " * 5}⚠️  Host {host_name} CrowdStrike Falcon Sensor kernel module loaded')
+        WARN(
+            f'{" " * 5}⚠️  Host {host_name} CrowdStrike Falcon Sensor kernel module loaded'
+        )
     elif P == "not_running":
         GOOD(f'{" " * 5}✅  Host {host_name}: Endpoint validation complete')
+
+
+def host_port_connectivity(results):
+    port_status_by_host = {}
+    for host, port_info in results:
+
+        if host not in port_status_by_host:
+            port_status_by_host[host] = []
+
+        port_status_by_host[host].append(port_info)
+
+    for host, port_list in port_status_by_host.items():
+        INFO2(f"Checking weka port connectivity on host {host}:")
+        for port_info in port_list:
+            status, port = port_info.split()
+            if status == "0":
+                GOOD(f'{" " * 5}✅  Connectivity to port {port} ok')
+            else:
+                BAD(
+                    f'{" " * 5}❌  Host Connectivity to port {port} not ok, error {status} need to restart protocol container on Host: {host}'
+                )
 
 
 def parallel_execution(
@@ -2843,7 +2915,7 @@ def backend_host_checks(
         INFO("VALIDATING IPV6")
         results = parallel_execution(
             ssh_bk_hosts,
-            ['test -f /proc/net/if_inet6'],
+            ["test -f /proc/net/if_inet6"],
             use_check_output=False,
             use_call=True,
             ssh_identity=ssh_identity,
@@ -2853,7 +2925,9 @@ def backend_host_checks(
             if result == 0:
                 GOOD(f'{" " * 5}✅  IPv6 is enabled')
             else:
-                BAD(f'{" " * 5}❌  Cannot update to Weka version 4.3.2.x - ipv6 is disabled')
+                BAD(
+                    f'{" " * 5}❌  Cannot update to Weka version 4.3.2.x - ipv6 is disabled'
+                )
 
     if V("4.2.6") <= V(weka_version) <= V("4.2.10"):
         INFO("VALIDATING OS KERNEL UPGRADE ELIGIBILITY")
@@ -2878,7 +2952,7 @@ def backend_host_checks(
         )
         for host_name, result in results:
             if result is None:
-                GOOD(f"Unable to validate Host: {host_name} kernel version")
+                WARN(f"Unable to validate Host: {host_name} kernel version")
             else:
                 check_os_kernel(host_name, result)
 
@@ -2900,11 +2974,42 @@ def backend_host_checks(
     )
     for host_name, result in results:
         if result is None:
-            GOOD(f"Unable to validate Host: {host_name} endpoint status")
+            WARN(f"Unable to validate Host: {host_name} endpoint status")
         else:
             endpoint_status(host_name, result)
 
-# CLIENT CHECKS
+    INFO("VERIFYING BACKEND HOST PORT CONNECTIVITY STATUS")
+
+    api_ports = []
+    ips = []
+
+    con_status = json.loads(subprocess.check_output(["weka", "local", "status", "-J"]))
+
+    for container in con_status:
+        if con_status[container]["type"] == "weka":
+            api_ports.append(con_status[container]["status"]["APIPort"])
+            ip = con_status[container]["resources"]["ips"]
+            first_ip = ip[0]
+            if first_ip not in ips:
+                ips.append(first_ip)
+
+    curl_commands = [
+        f"curl -sL --insecure https://{ips[0]}:{port} -o /dev/null; echo $? {port}"
+        for port in api_ports
+    ]
+
+    results = parallel_execution(
+        ssh_bk_hosts,
+        curl_commands,
+        use_check_output=True,
+        ssh_identity=ssh_identity,
+    )
+    for host_name, result in results:
+        if result is None:
+            WARN(f"Unable to Determine Host: {host_name} port connectivity")
+
+    host_port_connectivity(results)
+
 def client_hosts_checks(weka_version, ssh_cl_hosts, check_version, ssh_identity):
     INFO("CHECKING PASSWORDLESS SSH CONNECTIVITY ON CLIENTS")
     ssh_cl_hosts_dict = [{"name": host} for host in ssh_cl_hosts]
