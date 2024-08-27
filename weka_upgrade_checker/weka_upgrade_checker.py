@@ -16,26 +16,29 @@ import time
 from itertools import chain
 from subprocess import run
 import warnings
-import pkg_resources
-from packaging.version import parse, Version, InvalidVersion
-
 warnings.filterwarnings("ignore", category=DeprecationWarning, module="distutils")
-
-try:
-    pkg_resources.get_distribution("packaging")
-except pkg_resources.DistributionNotFound:
-    print("The 'packaging' module is not installed. Installing it now...")
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "packaging"])
 
 if sys.version_info < (3, 7):
     print("Must have Python version 3.7 or later installed.")
     sys.exit(1)
-elif sys.version_info >= (3, 10):
-    from packaging.version import Version as V
-else:
-    from distutils.version import LooseVersion as V
 
-pg_version = "1.3.37"
+# Install and import the necessary version module based on Python version
+if sys.version_info >= (3, 10):
+    try:
+        import pkg_resources
+        pkg_resources.get_distribution("packaging")
+    except (pkg_resources.DistributionNotFound, ImportError):
+        print("The 'packaging' module is not installed. Installing it now...")
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "packaging"])
+        from packaging.version import parse, Version as V
+    else:
+        from packaging.version import parse, Version as V
+else:
+    # For Python versions 3.7 up to 3.9, use distutils
+    from distutils.version import LooseVersion as V
+    parse = V
+
+pg_version = "1.3.38"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
 
@@ -881,12 +884,12 @@ def weka_cluster_checks():
     current_version = {}
 
     def safe_parse(version_string):
-        """Try parsing the version; fallback for non-standard versions."""
+        """Try parsing the version using packaging; fallback to LooseVersion."""
         try:
             return parse(version_string)
-        except InvalidVersion:
-            # Handle the non-standard version case as legacy or custom
-            return version_string
+        except Exception:
+            # Fallback for non-standard version handling
+            return LooseVersion(version_string)
 
     for key, val in host_hw_info.items():
         if host_hw_info.get(key) is not None:
@@ -906,13 +909,8 @@ def weka_cluster_checks():
                 threshold_parsed = safe_parse("5.1-2.5.8.0")
 
                 # Comparison handling for versions
-                if isinstance(result_parsed, Version) and isinstance(threshold_parsed, Version):
-                    if result_parsed < threshold_parsed:
-                        ofed_downlevel.append((key, result))
-                else:
-                    # Custom logic if both versions are not compliant or need manual checks
-                    if result < "5.1-2.5.8.0":
-                        ofed_downlevel.append((key, result))
+                if result_parsed < threshold_parsed:
+                    ofed_downlevel.append((key, result))
 
                 if result not in supported_ofed[check_version]:
                     BAD(
@@ -3328,3 +3326,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
