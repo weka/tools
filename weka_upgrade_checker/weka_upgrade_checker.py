@@ -16,6 +16,7 @@ import time
 from itertools import chain
 from subprocess import run
 import warnings
+
 warnings.filterwarnings("ignore", category=DeprecationWarning, module="distutils")
 
 if sys.version_info < (3, 7):
@@ -26,6 +27,7 @@ if sys.version_info < (3, 7):
 if sys.version_info >= (3, 10):
     try:
         import pkg_resources
+
         pkg_resources.get_distribution("packaging")
     except (pkg_resources.DistributionNotFound, ImportError):
         print("The 'packaging' module is not installed. Installing it now...")
@@ -36,9 +38,10 @@ if sys.version_info >= (3, 10):
 else:
     # For Python versions 3.7 up to 3.9, use distutils
     from distutils.version import LooseVersion as V
+
     parse = V
 
-pg_version = "1.3.38"
+pg_version = "1.3.39"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
 
@@ -383,6 +386,8 @@ def weka_cluster_checks():
     uuid = weka_info["guid"]
     weka_version = weka_info["release"]
     usable_capacity = weka_info["capacity"]["total_bytes"]
+    weka_buckets = weka_info["buckets"]["total"]
+
     GOOD(
         f"✅  CLUSTER:{cluster_name} STATUS:{weka_status} VERSION:{weka_version} UUID:{uuid}"
     )
@@ -759,6 +764,29 @@ def weka_cluster_checks():
         WARN(f"Following snapshots are uploading\n")
         printlist(snap_upload, 5)
 
+    if V("4.2.12") <= V(weka_version) <= V("4.3.5"):
+        INFO("VERIFYING SNAPSHOT BUCKET COUNT")
+        snap_layers = json.loads(
+            subprocess.check_output(
+                [
+                    "weka",
+                    "debug",
+                    "config",
+                    "show",
+                    "snapLayers[*].stowInfo.LOCAL.bucketsNum",
+                    "-J",
+                ]
+            )
+        )
+        unique_snap_layers = list(set(snap_layers))
+        snap_result = any(x < weka_buckets and x != 0 for x in unique_snap_layers)
+        if snap_result:
+            BAD(
+                "❌  Please contact WEKA Customer Success prior to upgrade, REF# WEKAPP-427366"
+            )
+        else:
+            GOOD("✅  Snapshot bucket count complete")
+
     INFO("CHECKING FOR SMALL WEKA FILE SYSTEMS")
     wekafs = json.loads(subprocess.check_output(["weka", "fs", "-J"]))
     small_wekafs = []
@@ -868,7 +896,7 @@ def weka_cluster_checks():
         ],
     }
 
-# to handle non-standard PEP440 standard using parse
+    # to handle non-standard PEP440 standard using parse
     INFO("VALIDATING BACKEND SUPPORTED NIC DRIVERS INSTALLED")
     spinner = Spinner("  Processing Data   ", color=colors.OKCYAN)
     spinner.start()
@@ -3008,6 +3036,7 @@ def backend_host_checks(
 
     host_port_connectivity(results)
 
+
 def client_hosts_checks(weka_version, ssh_cl_hosts, check_version, ssh_identity):
     INFO("CHECKING PASSWORDLESS SSH CONNECTIVITY ON CLIENTS")
     ssh_cl_hosts_dict = [{"name": host} for host in ssh_cl_hosts]
@@ -3326,4 +3355,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
