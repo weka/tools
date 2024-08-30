@@ -27,21 +27,20 @@ if sys.version_info < (3, 7):
 if sys.version_info >= (3, 10):
     try:
         import pkg_resources
-
         pkg_resources.get_distribution("packaging")
     except (pkg_resources.DistributionNotFound, ImportError):
         print("The 'packaging' module is not installed. Installing it now...")
         subprocess.check_call([sys.executable, "-m", "pip", "install", "packaging"])
-        from packaging.version import parse, Version as V
+        from packaging.version import parse, InvalidVersion, Version as V
     else:
-        from packaging.version import parse, Version as V
+        from packaging.version import parse, InvalidVersion, Version as V
 else:
     # For Python versions 3.7 up to 3.9, use distutils
     from distutils.version import LooseVersion as V
 
     parse = V
 
-pg_version = "1.3.39"
+pg_version = "1.3.40"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
 
@@ -779,7 +778,7 @@ def weka_cluster_checks():
             )
         )
         unique_snap_layers = list(set(snap_layers))
-        snap_result = any(x < weka_buckets and x != 0 for x in unique_snap_layers)
+        snap_result = any(x != weka_buckets and x != 0 for x in unique_snap_layers)
         if snap_result:
             BAD(
                 "❌  Please contact WEKA Customer Success prior to upgrade, REF# WEKAPP-427366"
@@ -914,10 +913,17 @@ def weka_cluster_checks():
     def safe_parse(version_string):
         """Try parsing the version using packaging; fallback to LooseVersion."""
         try:
+            # Try to parse with packaging's version parser (PEP 440 compliant)
             return parse(version_string)
-        except Exception:
+        except InvalidVersion:
             # Fallback for non-standard version handling
-            return LooseVersion(version_string)
+            try:
+                # Clean up version string to handle common formatting issues
+                cleaned_version = version_string.replace("-", ".")
+                return V(cleaned_version)
+            except Exception as e:
+                print(f"Failed to parse version '{version_string}': {e}")
+                return None
 
     for key, val in host_hw_info.items():
         if host_hw_info.get(key) is not None:
