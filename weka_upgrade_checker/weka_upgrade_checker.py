@@ -413,6 +413,7 @@ def weka_cluster_checks():
     weka_alerts = (
         subprocess.check_output(["weka", "alerts", "--no-header"])
         .decode("utf-8")
+        .rstrip("\n")
         .split("\n")
     )
     if len(weka_alerts) == 0:
