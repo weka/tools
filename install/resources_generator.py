@@ -74,6 +74,7 @@ CONST_RESOURCES = dict(
     memory=0,
     mode="BACKEND",
     net_devices=[],
+    ena_llq=True,
 )
 
 def is_cloud_env(check_aws=True, check_oci=True):
