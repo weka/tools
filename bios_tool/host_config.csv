@@ -1,5 +1,11 @@
 name,user,password
-172.29.3.164,ADMIN,_PASSWORD_1!
-172.29.3.1,Administrator,Administrator
-172.29.1.74,root,Administrator
-172.29.1.75,root,Administrator
+192.168.2.1,root,WekaService
+192.168.2.2,root,WekaService
+192.168.2.3,root,WekaService
+192.168.2.4,root,WekaService
+192.168.2.5,root,WekaService
+192.168.2.6,root,WekaService
+192.168.2.7,root,WekaService
+192.168.2.8,root,WekaService
+192.168.2.9,root,WekaService
+
