@@ -41,7 +41,7 @@ else:
 
     parse = V
 
-pg_version = "1.3.41"
+pg_version = "1.3.42"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
 
@@ -719,13 +719,18 @@ def weka_cluster_checks():
         GOOD("✅  Compute processes CPU utilization ok")
 
     INFO("Validating accepted versions list is empty")
-    accepted_version = subprocess.check_output(
-        ["weka", "debug", "upgrade", "accepted-versions", "list"]
+    accepted_version = (
+        subprocess.check_output(
+            ["weka", "debug", "upgrade", "accepted-versions", "list"]
+        )
+        .decode("utf-8")
+        .strip("\n")
     )
-    if accepted_version != []:
+
+    if accepted_version != "[]":
         WARN(
             "⚠️  Weka clients may have issues auto upgrading after rebooting current accepted version: "
-            + " | ".join(accepted_version)
+            + " | ".join(str(v) for v in accepted_version)
         )
     else:
         GOOD("✅  Accepted version list is empty")
@@ -736,7 +741,8 @@ def weka_cluster_checks():
         .decode()
         .strip()
     )
-    if client_target_verion != []:
+
+    if client_target_verion != "":
         WARN(
             f"⚠️  Weka clients will remain on version: {client_target_verion} after upgrading"
         )
@@ -2300,6 +2306,7 @@ def check_os_release(
                     f'{" " * 5}✅  Host {host_name} OS {dict_info["ID"]} {version} is supported with weka '
                     + f"version {weka_version}"
                 )
+
 
 def weka_agent_check(host_name, result):
     weka_agent_status = result
