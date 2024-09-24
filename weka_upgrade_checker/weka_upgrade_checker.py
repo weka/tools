@@ -41,7 +41,7 @@ else:
 
     parse = V
 
-pg_version = "1.3.41"
+pg_version = "1.3.42"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
 
@@ -722,10 +722,11 @@ def weka_cluster_checks():
     accepted_version = subprocess.check_output(
         ["weka", "debug", "upgrade", "accepted-versions", "list"]
     )
-    if accepted_version != []:
+
+    if accepted_version:
         WARN(
             "⚠️  Weka clients may have issues auto upgrading after rebooting current accepted version: "
-            + " | ".join(accepted_version)
+            + " | ".join(str(v) for v in accepted_version)
         )
     else:
         GOOD("✅  Accepted version list is empty")
