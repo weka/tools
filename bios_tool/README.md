@@ -37,7 +37,7 @@ You can either use these default names or override the configuration file names 
 ### host_config.yml or csv
 The host_config.yml/csv defines the list of hosts, and their logon credentials for the BMC (ipmi, iLO, iDRAC).  This may be in YAML or CSV format.  Use the file extension `.yml` or `.csv` to indicate the format.
 
-The format can be standard CSV, as such: (compatible with Excel)
+The default format is be standard CSV, as such: (compatible with Excel)
 ```angular2html
 name,user,password
 172.29.3.164,ADMIN,_PASSWORD_1!
@@ -49,7 +49,6 @@ name,user,password
 The format can also be standard YAML, as such:
 ```angular2html
 hosts:
-  # Hpe servers
   - name: 172.29.3.1
     user: Administrator
     password: Administrator
@@ -62,10 +61,10 @@ You should set all the servers you want to work with here.   Note they may have 
 
 See the section on `--bcm_ips` to configure the hosts on the command line instead of in configuration files.
 
-### bios_config.yml
-The bios_config.yml defines the BIOS settings that you want set on the servers that are defined in the host_config.yml file.
+### bios_config.yml (and others)
+The `bios_config.yml` defines general BIOS settings that you want set on the servers that are defined in the `host_config.yml` file.   There are other settings files provided: `Dell-Genoa-bios.yml` for Dell servers equipped with Genoa generation AMD processors, and `WEKApod.yml`, specifically for WEKApod servers (which come pre-set anyway, but if you want to make the same settings to similar servers, these are the settings).
 
-Again, the format is standard YAML, as such:
+The format of the bios settings file is standard YAML, as such:
 ```angular2html
 server-manufacturer:
   architecture:
@@ -75,31 +74,25 @@ server-manufacturer:
     setting: value
     setting: value
 ```
-The server-manufacturer is matched to the manufacturer ("Oem") listed in the RedFish data so this tool can be used with any manufacturer that supports RedFish.
-Currently known manufacturer names are "Dell", "Hpe", and "Supermicro" and defaults for these manufacturers are in the example file.
+The server-manufacturer is matched to the manufacturer ("Oem") listed in the RedFish data so this tool can be used with most manufacturers that supports RedFish.
+Currently known manufacturer names are "Dell", "Hpe", "Lenovo", and "Supermicro" and defaults for these manufacturers are in the example file.
 
 The architecture can be either "AMD" or "Intel".   No other architectures are currently supported.
 
 See the provided `bios_config.yml` for a full example, but here's what it looks like:
 ```angular2html
 Dell:
-  AMD: {}
-  Intel:
-    PackageCStates: Enabled
-    ProcC1E: Disabled
+  AMD:
+    LogicalProc: Disabled
+    NumaNodesPerSocket: "1"
+    PcieAspmL1: Disabled
     ProcCStates: Disabled
     ProcPwrPerf: MaxPerf
-    SecureBoot: Disabled
-    SriovGlobalEnable: Enabled
-    SubNumaCluster: Disabled
-    WorkloadConfiguration: Balance
-    WorkloadProfile: NotConfigured
+[...snip...]
 ```
 
-Note that we've provided 2 examples - a standard set of BIOS settings, and a set specifically for Dell AMD with Genoa processors.
-
 ## Default Behavior
-With no command-line overrides, bios_tool will scan the hosts in the host_config.yml and note where they differ (if they differ) from the settings in the bios_settings.yml file.
+With no command-line overrides, bios_tool will scan the hosts in the `host_config.csv` and note where they differ (if they differ) from the settings in the `bios_settings.yml` file.
 No changes are made to the servers (read-only mode)
 
 Example output:

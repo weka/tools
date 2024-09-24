@@ -27,6 +27,7 @@ if sys.version_info < (3, 7):
 if sys.version_info >= (3, 10):
     try:
         import pkg_resources
+
         pkg_resources.get_distribution("packaging")
     except (pkg_resources.DistributionNotFound, ImportError):
         print("The 'packaging' module is not installed. Installing it now...")
@@ -40,7 +41,7 @@ else:
 
     parse = V
 
-pg_version = "1.3.40"
+pg_version = "1.3.41"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
 
@@ -643,6 +644,105 @@ def weka_cluster_checks():
             WARN(f"Failed clients detected\n")
             printlist(down_clhost, 5)
 
+    INFO("Validating all containers on the same source version")
+    weka_version_current = (
+        subprocess.check_output(["weka", "version", "current"]).decode().strip()
+    )
+
+    def extract_main_version(version):
+        match = re.match(r"(\d+\.\d+)", version)
+        return match.group(1) if match else version
+
+    weka_main_version_current = extract_main_version(weka_version_current)
+
+    if all(
+        extract_main_version(host.sw_release_string) == weka_main_version_current
+        for host in backend_hosts
+    ):
+        GOOD("✅  All containers are on the same source version")
+    else:
+        WARN(
+            "⚠️  Containers running multiple source versions detected. Please contact WEKA customer success if upgrade is possible ref WEKAPP-434837"
+        )
+
+    INFO("Validating compute containers are on same version")
+    compute_release = []
+    for host in backend_hosts:
+        if host.container.startswith("compute"):
+            compute_release.append(host.sw_release_string)
+
+    if all(version == compute_release[0] for version in compute_release):
+        GOOD("✅  All compute containers are on the same WEKA version")
+    else:
+        BAD(
+            "❌  Multiple version detected for compute containers. All compute containers should be on the same version before upgrading"
+        )
+
+    INFO("Validating compute processes avg CPU utilization")
+    compute_process_ids = json.loads(
+        subprocess.check_output(
+            ["weka", "cluster", "process", "-b", "-F", "role=COMPUTE", "-J"]
+        )
+    )
+    node_ids = [item["node_id"] for item in compute_process_ids]
+    just_node_ids = ",".join(
+        [str(node_id).replace("NodeId<", "").replace(">", "") for node_id in node_ids]
+    )
+    percentage_str = (
+        subprocess.check_output(
+            [
+                "weka",
+                "stats",
+                "--stat",
+                "CPU_UTILIZATION",
+                "--interval",
+                "21600",
+                "--resolution-secs",
+                "21600",
+                "--no-header",
+                "-o",
+                "value",
+                "--process-ids",
+                just_node_ids,
+            ]
+        )
+        .decode("utf-8")
+        .strip()
+    )
+
+    percentage = float(percentage_str.replace("%", ""))
+    if percentage >= 60:
+        WARN(
+            f"⚠️  Compute processes CPU utilization too high at {percentage}%, upgrade may cause performance impact"
+        )
+    else:
+        GOOD("✅  Compute processes CPU utilization ok")
+
+    INFO("Validating accepted versions list is empty")
+    accepted_version = subprocess.check_output(
+        ["weka", "debug", "upgrade", "accepted-versions", "list"]
+    )
+    if accepted_version != []:
+        WARN(
+            "⚠️  Weka clients may have issues auto upgrading after rebooting current accepted version: "
+            + " | ".join(accepted_version)
+        )
+    else:
+        GOOD("✅  Accepted version list is empty")
+
+    INFO("Validating client target version")
+    client_target_verion = (
+        subprocess.check_output(["weka", "cluster", "client-target-version", "show"])
+        .decode()
+        .strip()
+    )
+    if client_target_verion != []:
+        WARN(
+            f"⚠️  Weka clients will remain on version: {client_target_verion} after upgrading"
+        )
+    else:
+        GOOD("✅  Client target version is empty")
+
     INFO("Validating memory to SSD capacity ratio for upgrade")
     total_compute_memory = sum(
         host.memory
@@ -650,9 +750,9 @@ def weka_cluster_checks():
         if "compute" in host.container and host.is_up
     )
     ratio = usable_capacity / total_compute_memory
-    if ratio > 4000:
-        BAD(
-            f"❌  Prior to upgrading please contact weka support, due to the current ration of {ratio}, it is recommended to increase compute RAM"
+    if ratio > 2000:
+        WARN(
+            f"⚠️  The current ratio of {ratio} is below the recommended value, it is recommended to increase compute RAM"
         )
     else:
         GOOD("✅  Memory to SSD ratio validation ok")
@@ -2013,6 +2113,8 @@ supported_os = {
                 "20.04.3",
                 "20.04.4",
                 "20.04.5",
+                "22.04.3",
+                "22.04.4",
             ],
             "amzn": ["17.09", "17.12", "18.03", "2"],
         },
@@ -2198,7 +2300,6 @@ def check_os_release(
                     f'{" " * 5}✅  Host {host_name} OS {dict_info["ID"]} {version} is supported with weka '
                     + f"version {weka_version}"
                 )
-
 
 def weka_agent_check(host_name, result):
     weka_agent_status = result
