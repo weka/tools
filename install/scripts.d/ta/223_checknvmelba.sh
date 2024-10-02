@@ -44,7 +44,7 @@ rc=0
 # Exit with warning if no NVMes are found
 if ! compgen -G /dev/nvme*n* 2> /dev/null; then
 	echo 'No NVMe devices found'
-	exit 254
+	exit 0
 fi
 
 # Populate arrays
