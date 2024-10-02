@@ -1,4 +1,4 @@
-#!/bin/bash                                                                                                                                                                                                                         
+#!/bin/bash
 
 #set -ue # Fail with an error code if there's any sub-command/variable error
 
@@ -9,11 +9,24 @@ WTA_REFERENCE=""
 KB_REFERENCE=""
 RETURN_CODE=0
 
-WEKA_CLUSTER_VERSION=$(weka status --json |  python3 -c 'import sys, json; data = json.load(sys.stdin) ; print(data["release"])')
-CURRENT_AGENT_VERSION=$(weka version | grep '^*' | awk '{print $2}')
+# Check if we can run weka commands
+weka status &> /dev/null
+if [[ $? -ne 0 ]]; then
+    echo "ERROR: Not able to run weka commands"
+    exit 254
+elif [[ $? -eq 127 ]]; then
+    echo "WEKA not found"
+    exit 254
+elif [[ $? -eq 41 ]]; then
+    echo "Unable to login into Weka cluster."
+    exit 254
+fi
+
+WEKA_CLUSTER_VERSION=$(weka status | awk 'NR==1{print $2}' | tr -d 'v')
+CURRENT_AGENT_VERSION=$(weka local status | awk 'NR==1{print $5}' | tr -d ')')
 if [[ ${WEKA_CLUSTER_VERSION} != ${CURRENT_AGENT_VERSION} ]] ; then
     echo "The currently running cluster version ${WEKA_CLUSTER_VERSION} does not match the"
-    echo " default installed local agent version ${CURRENT_AGENT_VERSION}"
+    echo "default installed local agent version ${CURRENT_AGENT_VERSION}"
     RETURN_CODE="254"
 fi
 
