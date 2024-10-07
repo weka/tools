@@ -14,17 +14,15 @@ runtime=30
 ioengine=libaio
 disk_util=0
 direct=1
+numjobs=32
 
 [fio-createfiles-00]
-stonewall
-numjobs=64
 blocksize=1Mi
 description='pre-create files'
 create_only=1
 
 [fio-bandwidthSR-00]
 stonewall
-numjobs=32
 description='Sequential Read bandwidth workload'
 blocksize=1Mi
 rw=read
