@@ -5,15 +5,13 @@ Includes fio both consistency (versions vary) and convienience.
 
 
 ```
-usage: wekatester [-h] [-v] [-c] [-s] [-d DIRECTORY] [-w WORKLOAD] [-o]
-                  [-a] [--no-weka] [--auth AUTHFILE]
-                  [server [server ...]]
+# ./wekatester --help
+usage: wekatester [-h] [-v] [-c] [-s] [-d DIRECTORY] [-w WORKLOAD] [-o] [-a] [--no-weka] [--local-fio LOCAL_FIO] [--auth AUTHFILE] [--version] [server ...]
 
 Acceptance Test a weka cluster
 
 positional arguments:
-  server                One or more Servers to use a workers (weka mode
-                        [default] will get names from the cluster)
+  server                One or more Servers to use a workers (weka mode [default] will get names from the cluster)
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -23,15 +21,14 @@ optional arguments:
   -d DIRECTORY, --directory DIRECTORY
                         target directory for workload (default is /mnt/weka)
   -w WORKLOAD, --workload WORKLOAD
-                        workload definition directory (a subdir of fio-
-                        jobfiles)
+                        workload definition directory (a subdir of fio-jobfiles)
   -o, --output          run fio with output file
-  -a, --autotune        automatically tune num_jobs to maximize performance
-                        (experimental)
+  -a, --autotune        automatically tune num_jobs to maximize performance (experimental)
   --no-weka             force non-weka mode
-  --auth AUTHFILE       auth file for authenticating with weka (default is
-                        auth-token.json)
-
+  --local-fio LOCAL_FIO
+                        Specify the fio binary on the target servers
+  --auth AUTHFILE       auth file for authenticating with weka (default is auth-token.json)
+  --version             Display version number
 ```                        
 
 # Basics
@@ -57,5 +54,7 @@ Servers - a list of weka servers to connect to via the API, or when combined wit
 `-v` Sets verbosity.  `-vv`, and `-vvv` are supported to set ever increasing verbosity.
 
 `--no-weka` Assumes the Servers are not weka servers or clients and just runs the workload on them
+
+`--local-fio` Use the fio binary that is already local to the servers.   Make sure all the servers have the same version.
 
 `--auth` Specify an alternate file instead of the default auth-token.json
