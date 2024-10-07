@@ -16,6 +16,7 @@ import time
 from itertools import chain
 from subprocess import run
 import warnings
+from collections import Counter, defaultdict
 
 warnings.filterwarnings("ignore", category=DeprecationWarning, module="distutils")
 
@@ -41,7 +42,7 @@ else:
 
     parse = V
 
-pg_version = "1.3.42"
+pg_version = "1.3.44"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
 
@@ -341,7 +342,7 @@ def check_version():
 check_version()
 
 
-def weka_cluster_checks():
+def weka_cluster_checks(skip_mtu_check):
     INFO("VERIFYING WEKA AGENT STATUS")
     weka_agent_service = subprocess.call(
         ["sudo", "service", "weka-agent", "status"],
@@ -644,124 +645,272 @@ def weka_cluster_checks():
             WARN(f"Failed clients detected\n")
             printlist(down_clhost, 5)
 
-    INFO("Validating all containers on the same source version")
-    weka_version_current = (
-        subprocess.check_output(["weka", "version", "current"]).decode().strip()
-    )
-
-    def extract_main_version(version):
-        match = re.match(r"(\d+\.\d+)", version)
-        return match.group(1) if match else version
-
-    weka_main_version_current = extract_main_version(weka_version_current)
-
-    if all(
-        extract_main_version(host.sw_release_string) == weka_main_version_current
-        for host in backend_hosts
-    ):
-        GOOD("✅  All containers are on the same source version")
-    else:
-        WARN(
-            "⚠️  Containers running multiple source versions detected. Please contact WEKA customer success if upgrade is possible ref WEKAPP-434837"
+    if V(weka_version) >= V("4.0"):
+        INFO("Validating all containers on the same source version")
+        weka_version_current = (
+            subprocess.check_output(["weka", "version", "current"]).decode().strip()
         )
 
-    INFO("Validating compute containers are on same version")
-    compute_release = []
-    for host in backend_hosts:
-        if host.container.startswith("compute"):
-            compute_release.append(host.sw_release_string)
+        def extract_main_version(version):
+            if isinstance(version, str) and version:  # Check if it's a non-empty string
+                match = re.match(r"(\d+\.\d+)", version)
+                return match.group(1) if match else version
+            else:
+                WARN(f"Unable to determine sw_release_string: {version}")
+                return None
 
-    if all(version == compute_release[0] for version in compute_release):
-        GOOD("✅  All compute containers are on the same WEKA version")
-    else:
-        BAD(
-            "❌  Multiple version detected for compute containers. All compute containers should be on the same version before upgrading"
-        )
+        weka_main_version_current = extract_main_version(weka_version_current)
+
+        if all(
+            extract_main_version(host.sw_release_string) == weka_main_version_current
+            for host in backend_hosts
+        ):
+            GOOD("✅  All containers are on the same source version")
+        else:
+            WARN(
+                "⚠️  Containers running multiple source versions detected. Please contact WEKA customer success if upgrade is possible ref WEKAPP-434837"
+            )
+    if V(weka_version) >= V("4.0"):
+        INFO("Validating compute containers are on same version")
+        compute_release = []
+        for host in backend_hosts:
+            if host.container.startswith("compute"):
+                compute_release.append(host.sw_release_string)
+
+        if all(version == compute_release[0] for version in compute_release):
+            GOOD("✅  All compute containers are on the same WEKA version")
+        else:
+            BAD(
+                "❌  Multiple version detected for compute containers. All compute containers should be on the same version before upgrading"
+            )
 
     INFO("Validating compute processes avg CPU utilization")
-    compute_process_ids = json.loads(
-        subprocess.check_output(
-            ["weka", "cluster", "process", "-b", "-F", "role=COMPUTE", "-J"]
-        )
-    )
-    node_ids = [item["node_id"] for item in compute_process_ids]
-    just_node_ids = ",".join(
-        [str(node_id).replace("NodeId<", "").replace(">", "") for node_id in node_ids]
-    )
-    percentage_str = (
-        subprocess.check_output(
+    spinner = Spinner("  Processing Data   ", color=colors.OKCYAN)
+    spinner.start()
+    try:
+        if V(weka_version) >= V("4.0"):
+            compute_process_ids = json.loads(
+                subprocess.check_output(
+                    ["weka", "cluster", "process", "-b", "-F", "role=COMPUTE", "-J"]
+                )
+            )
+        else:
+            compute_process_ids = json.loads(
+                subprocess.check_output(
+                    ["weka", "cluster", "nodes", "-b", "-F", "role=COMPUTE", "-J"]
+                )
+            )
+        node_ids = [item["node_id"] for item in compute_process_ids]
+        just_node_ids = ",".join(
             [
-                "weka",
-                "stats",
-                "--stat",
-                "CPU_UTILIZATION",
-                "--interval",
-                "21600",
-                "--resolution-secs",
-                "21600",
-                "--no-header",
-                "-o",
-                "value",
-                "--process-ids",
-                just_node_ids,
+                str(node_id).replace("NodeId<", "").replace(">", "")
+                for node_id in node_ids
             ]
         )
-        .decode("utf-8")
-        .strip()
-    )
+        if V(weka_version) >= V("4.0"):
+            percentage_str = (
+                subprocess.check_output(
+                    [
+                        "weka",
+                        "stats",
+                        "--stat",
+                        "CPU_UTILIZATION",
+                        "--interval",
+                        "21600",
+                        "--resolution-secs",
+                        "21600",
+                        "--no-header",
+                        "-o",
+                        "value",
+                        "--process-ids",
+                        just_node_ids,
+                    ]
+                )
+                .decode("utf-8")
+                .strip()
+            )
+        else:
+            percentage_str = (
+                subprocess.check_output(
+                    [
+                        "weka",
+                        "stats",
+                        "--stat",
+                        "CPU_UTILIZATION",
+                        "--interval",
+                        "21600",
+                        "--resolution-secs",
+                        "21600",
+                        "--no-header",
+                        "-o",
+                        "value",
+                        "--node-ids",
+                        just_node_ids,
+                    ]
+                )
+                .decode("utf-8")
+                .strip()
+            )
+        percentage = float(percentage_str.replace("%", ""))
+        if percentage >= 60:
+            WARN(
+                f"⚠️  Compute processes CPU utilization too high at {percentage}%, upgrade may cause performance impact"
+            )
+        else:
+            GOOD("✅  Compute processes CPU utilization ok")
+    except subprocess.CalledProcessError as e:
+        WARN(f"⚠️  Error executing command: {e.output.decode('utf-8').strip()}")
+    except ValueError as ve:
+        WARN(f"⚠️  Error parsing CPU utilization value: {ve}")
+    except Exception as ex:
+        WARN(f"⚠️  Unexpected error: {str(ex)}")
 
-    percentage = float(percentage_str.replace("%", ""))
-    if percentage >= 60:
-        WARN(
-            f"⚠️  Compute processes CPU utilization too high at {percentage}%, upgrade may cause performance impact"
-        )
+    spinner.stop()
+
+    host_to_process = {}
+
+    def process_in_batches(host_to_process, max_parallel_executions=6):
+        mtu_results = []
+        batch_size = max_parallel_executions
+        node_ids = list(host_to_process.values())
+        for i in range(0, len(node_ids), batch_size):
+            batch = node_ids[i : i + batch_size]
+            with concurrent.futures.ThreadPoolExecutor(
+                max_workers=batch_size
+            ) as executor:
+                futures = [executor.submit(run_command, node_id) for node_id in batch]
+                for future in concurrent.futures.as_completed(futures):
+                    mtu_results.append(future.result())
+            time.sleep(2)
+        return mtu_results
+
+    if not skip_mtu_check:
+        INFO("Checking client side MTU mismatch")
+        spinner = Spinner("  Processing Data   ", color=colors.OKCYAN)
+        spinner.start()
+
+        if V(weka_version) >= V("4.0"):
+            drive_process_ids = json.loads(
+                subprocess.check_output(
+                    ["weka", "cluster", "process", "-b", "-F", "role=DRIVES", "-J"]
+                )
+            )
+        else:
+            drive_process_ids = json.loads(
+                subprocess.check_output(
+                    ["weka", "cluster", "nodes", "-b", "-F", "role=DRIVES", "-J"]
+                )
+            )
+
+        for id in drive_process_ids:
+            process_id = id["node_id"]
+            container_id = id["host_id"]
+            if container_id not in host_to_process:
+                host_to_process[container_id] = process_id
+
+        for host_id, node_id in host_to_process.items():
+            just_node_ids = str(node_id).replace("NodeId<", "").replace(">", "")
+            host_to_process[host_id] = just_node_ids
+
+        def run_command(node_id):
+            try:
+                command = [
+                    "weka",
+                    "debug",
+                    "net",
+                    "peers",
+                    "--no-header",
+                    node_id,
+                    "--output",
+                    "inMTU,outMTU",
+                ]
+                result = subprocess.check_output(command).decode("utf-8").strip()
+                return f"Node {node_id}: {result}"
+            except subprocess.CalledProcessError as e:
+                return f"Node {node_id}: Error {str(e)}"
+
+        mtu_results = process_in_batches(host_to_process, max_parallel_executions=2)
+
+        mismatched_mtus = []
+
+        for result in mtu_results:
+            if "Node" in result:
+                parts = result.split()
+                node_id = parts[1].replace(":", "")
+                inMTU = parts[2]
+                outMTU = parts[3]
+            else:
+                parts = result.split()
+                inMTU = parts[0]
+                outMTU = parts[1]
+
+            if inMTU != outMTU:
+                mismatched_mtus.append(node_id)
+
+        if mismatched_mtus != []:
+            for node_id in mismatched_mtus:
+                node_idx = f"NodeId<{node_id}>"
+                for process in drive_process_ids:
+                    if process["node_id"] == node_idx:
+                        WARN(
+                            f"⚠️  Asymmetric MTU detected for at least one peer of {process['nodeInfo']['hostname']}, ProcessId: {node_idx}"
+                        )
+        else:
+            GOOD("✅  MTU check completed successfully")
     else:
-        GOOD("✅  Compute processes CPU utilization ok")
+        INFO("MTU mismatch check skipped.")
 
-    INFO("Validating accepted versions list is empty")
-    accepted_version = (
-        subprocess.check_output(
-            ["weka", "debug", "upgrade", "accepted-versions", "list"]
+    spinner.stop()
+
+    mtu_results = process_in_batches(host_to_process, max_parallel_executions=6)
+
+    if V(weka_version) >= V("4.0"):
+        INFO("Validating accepted versions list is empty")
+        accepted_version = json.loads(
+            subprocess.check_output(
+                ["weka", "debug", "upgrade", "accepted-versions", "list"]
+            )
         )
-        .decode("utf-8")
-        .strip("\n")
-    )
 
-    if accepted_version != "[]":
-        WARN(
-            "⚠️  Weka clients may have issues auto upgrading after rebooting current accepted version: "
-            + " | ".join(str(v) for v in accepted_version)
+        if accepted_version and isinstance(accepted_version, list):
+            WARN(
+                "⚠️  Weka clients may have issues auto upgrading after rebooting current accepted version: "
+                + ", ".join(accepted_version)
+            )
+        else:
+            GOOD("✅  Accepted version list is empty")
+
+    if V(weka_version) >= V("4.0"):
+        INFO("Validating client target version")
+        client_target_verion = (
+            subprocess.check_output(
+                ["weka", "cluster", "client-target-version", "show"]
+            )
+            .decode()
+            .strip()
         )
-    else:
-        GOOD("✅  Accepted version list is empty")
 
-    INFO("Validating client target version")
-    client_target_verion = (
-        subprocess.check_output(["weka", "cluster", "client-target-version", "show"])
-        .decode()
-        .strip()
-    )
+        if client_target_verion != "":
+            WARN(
+                f"⚠️  Weka clients will remain on version: {client_target_verion} after upgrading"
+            )
+        else:
+            GOOD("✅  Client target version is empty")
 
-    if client_target_verion != "":
-        WARN(
-            f"⚠️  Weka clients will remain on version: {client_target_verion} after upgrading"
+    if V(weka_version) >= V("4.0"):
+        INFO("Validating memory to SSD capacity ratio for upgrade")
+        total_compute_memory = sum(
+            host.memory
+            for host in backend_hosts
+            if "compute" in host.container and host.is_up
         )
-    else:
-        GOOD("✅  Client target version is empty")
-
-    INFO("Validating memory to SSD capacity ratio for upgrade")
-    total_compute_memory = sum(
-        host.memory
-        for host in backend_hosts
-        if "compute" in host.container and host.is_up
-    )
-    ratio = usable_capacity / total_compute_memory
-    if ratio > 2000:
-        WARN(
-            f"⚠️  The current ratio of {ratio} is below the recommended value, it is recommended to increase compute RAM"
-        )
-    else:
-        GOOD("✅  Memory to SSD ratio validation ok")
+        ratio = usable_capacity / total_compute_memory
+        if ratio > 2000:
+            WARN(
+                f"⚠️  The current ratio of {ratio} is below the recommended value, it is recommended to increase compute RAM"
+            )
+        else:
+            GOOD("✅  Memory to SSD ratio validation ok")
 
     INFO("CHECKING CLIENT COMPATIBLE VERSIONS")
     try:
@@ -1023,9 +1172,7 @@ def weka_cluster_checks():
             # Try to parse with packaging's version parser (PEP 440 compliant)
             return parse(version_string)
         except InvalidVersion:
-            # Fallback for non-standard version handling
             try:
-                # Clean up version string to handle common formatting issues
                 cleaned_version = version_string.replace("-", ".")
                 return V(cleaned_version)
             except Exception as e:
@@ -1045,11 +1192,9 @@ def weka_cluster_checks():
                 current_version[key].append(result)
                 hostname_from_api.append(key)
 
-                # Use the safe_parse function for robust version handling
                 result_parsed = safe_parse(result)
                 threshold_parsed = safe_parse("5.1-2.5.8.0")
 
-                # Comparison handling for versions
                 if result_parsed < threshold_parsed:
                     ofed_downlevel.append((key, result))
 
@@ -1063,7 +1208,6 @@ def weka_cluster_checks():
                     )
 
             except Exception as e:
-                # Print the exception for debugging purposes
                 print(f"Error processing host {key}: {e}")
 
     for bkhostnames in hostname_from_api:
@@ -1382,7 +1526,7 @@ def weka_cluster_checks():
                         host_id = container["cores_ids"][0]
                     elif container["cores_ids"][0] != host_id:
                         WARN(
-                            f'⚠️  Container {container["container"]} core_ids set to AUTO while other containers manually set to core_id. Containers should have manually assigned core ids'
+                            f'⚠️  Container {container["container"]} core ids set to AUTO while other containers manually set to core_id. Containers should have manually assigned core ids'
                         )
                         has_error = True
 
@@ -1418,12 +1562,12 @@ def weka_cluster_checks():
         for hostname, containers in combined_data.items():
             if check_duplicate_core_ids(containers):
                 WARN(
-                    f"⚠️  Duplicate core_ids found in different containers on host {hostname}."
+                    f"⚠️  Duplicate core ids found in different containers on host {hostname}."
                 )
 
             if validate_core_ids(containers):
                 WARN(
-                    f"⚠️  Core_ids set to AUTO in one container on host {hostname} while other containers have manually assigned core_ids."
+                    f"⚠️  Core ids set to AUTO in one container on host {hostname} while other containers have manually assigned core_ids."
                 )
 
         if not any(
@@ -2221,25 +2365,28 @@ def ssh_check(host_name, result, ssh_bk_hosts):
     return ssh_bk_hosts
 
 
+check_rhel_systemd_hosts = []
+
+
 def check_os_release(
     host_name, result, weka_version, check_version, backend=True, client=False
 ):
+    global check_rhel_systemd_hosts
     if "CentOS" in result:
         result = result.split()
-        result = result[3]
-        version = result.split(".")
+        version = result[3].split(".")
         version = ".".join(version[:2])
 
         if backend:
             if version not in supported_os[check_version]["backends_clients"]["centos"]:
                 BAD(
-                    f'{" " * 5}❌  Host {host_name} OS {"centos"} {version} is not supported with '
-                    + f"weka version {weka_version}"
+                    f'{" " * 5}❌  Host {host_name} OS CentOS {version} is not supported with '
+                    f"weka version {weka_version}"
                 )
             else:
                 GOOD(
-                    f'{" " * 5}✅  Host {host_name} OS {"centos"} {version} is supported with weka '
-                    + f"version {weka_version}"
+                    f'{" " * 5}✅  Host {host_name} OS CentOS {version} is supported with '
+                    f"weka version {weka_version}"
                 )
         elif client:
             if (
@@ -2247,65 +2394,89 @@ def check_os_release(
                 and supported_os[check_version]["clients_only"]["centos"]
             ):
                 BAD(
-                    f'{" " * 5}❌  Host {host_name} OS {"centos"} {version} is not supported with weka '
-                    + f"version {weka_version}"
+                    f'{" " * 5}❌  Host {host_name} OS CentOS {version} is not supported with '
+                    f"weka version {weka_version}"
                 )
             else:
                 GOOD(
-                    f'{" " * 5}✅  Host {host_name} OS {"centos"} {version} is supported with weka '
-                    + f"version {weka_version}"
+                    f'{" " * 5}✅  Host {host_name} OS CentOS {version} is supported with '
+                    f"weka version {weka_version}"
                 )
+
     else:
-        info_str = (result).replace("=", ":")
-        info_list = info_str.split("\n")
-        info_list = [item for item in info_list if item]
+        info_str = result.replace("=", ":")
+        info_list = [item for item in info_str.split("\n") if item]
 
         dict_info = {}
         for item in info_list:
             key, value = item.split(":", 1)
             dict_info[key] = value.strip('"')
 
-        if dict_info["ID"] == "ubuntu":
+        os_id = dict_info["ID"]
+        version = dict_info.get("VERSION_ID", "Unknown")
+
+        # Match version for Ubuntu
+        if os_id == "ubuntu":
             version_match = re.search(r"\b\d+(\.\d+){0,2}\b", dict_info["VERSION"])
             version = version_match.group() if version_match else "Unknown"
-        elif dict_info["ID"] == "rocky" or "rhel":
-            version = dict_info["VERSION_ID"]
-        else:
-            version = dict_info["VERSION"]
 
+        # Handling Rocky or RHEL
+        elif os_id in ["rocky", "rhel"] and float(version) >= 9.0:
+            check_rhel_systemd_hosts.append(host_name)
+
+        # OS validation for backends
         if backend:
-            if dict_info["ID"] not in supported_os[check_version]["backends_clients"]:
+            if os_id not in supported_os[check_version]["backends_clients"]:
+                BAD(f'{" " * 5}❌  Host {host_name} OS {os_id} is not recognized')
+            elif version not in supported_os[check_version]["backends_clients"][os_id]:
                 BAD(
-                    f'{" " * 5}❌  Host {host_name} OS {dict_info["ID"]} is not recognized'
-                )
-            elif (
-                version
-                not in supported_os[check_version]["backends_clients"][dict_info["ID"]]
-            ):
-                BAD(
-                    f'{" " * 5}❌  Host {host_name} OS {dict_info["ID"]} {version} is not supported with '
-                    + f"weka version {weka_version}"
+                    f'{" " * 5}❌  Host {host_name} OS {os_id} {version} is not supported with '
+                    f"weka version {weka_version}"
                 )
             else:
                 GOOD(
-                    f'{" " * 5}✅  Host {host_name} OS {dict_info["ID"]} {version} is supported with weka '
-                    + f"version {weka_version}"
+                    f'{" " * 5}✅  Host {host_name} OS {os_id} {version} is supported with '
+                    f"weka version {weka_version}"
                 )
+
+        # OS validation for clients
         elif client:
             if (
-                version
-                not in supported_os[check_version]["backends_clients"][dict_info["ID"]]
-                and supported_os[check_version]["clients_only"][dict_info["ID"]]
+                version not in supported_os[check_version]["backends_clients"][os_id]
+                and supported_os[check_version]["clients_only"][os_id]
             ):
                 BAD(
-                    f'{" " * 5}❌  Host {host_name} OS {dict_info["ID"]} {version} is not supported with weka '
-                    + "version {weka_version}"
+                    f'{" " * 5}❌  Host {host_name} OS {os_id} {version} is not supported with '
+                    f"weka version {weka_version}"
                 )
             else:
                 GOOD(
-                    f'{" " * 5}✅  Host {host_name} OS {dict_info["ID"]} {version} is supported with weka '
-                    + f"version {weka_version}"
+                    f'{" " * 5}✅  Host {host_name} OS {os_id} {version} is supported with '
+                    f"weka version {weka_version}"
                 )
+
+
+def weka_agent_unit_type(host_name, result):
+    result_lines = result.splitlines()
+    SRV = None
+
+    for line in result_lines:
+        if line.startswith("SRV="):
+            SRV = line.split("=", 1)[1]
+            break
+
+    if SRV == "init.d":
+        GOOD(
+            f'{" " * 5}✅  Host {host_name}: weka-agent.service running as init.d service'
+        )
+    elif SRV == "systemd":
+        BAD(
+            f'{" " * 5}❌  Host {host_name} weka-agent.service running as systemd service, please contact weka support prior to upgrade'
+        )
+    else:
+        WARN(
+            f'{" " * 5}⚠️  Host {host_name}: Unable to determine weka-agent service type'
+        )
 
 
 def weka_agent_check(host_name, result):
@@ -2455,10 +2626,10 @@ def frontend_check(host_name, result):
     frontend_mounts = result
     if frontend_mounts != "0":
         WARN(
-            f'{" " * 5}⚠️  Weka Frontend Process in use on host: {host_name}, contact Weka Support prior to upgrading'
+            f'{" " * 5}⚠️  Weka frontend process in use on host: {host_name}, contact Weka Support prior to upgrading'
         )
     else:
-        GOOD(f'{" " * 5}✅  Weka Frontend Process OK on host: {host_name}')
+        GOOD(f'{" " * 5}✅  Weka frontend process OK on host: {host_name}')
 
 
 def protocol_host(backend_hosts, s3_enabled):
@@ -2575,6 +2746,59 @@ def invalid_endpoints(host_name, result, backend_ips):
                     )
 
     ip_by_containers(result)
+
+
+all_secrets = []
+container_data = {}
+
+
+def check_join_secrets(results):
+    global container_data
+
+    # Convert the list of tuples into a dictionary
+    for host, json_str in results:
+        try:
+            cleaned_json_str = json_str.strip()
+            parsed_data = json.loads(cleaned_json_str)
+            container_data[host] = parsed_data
+
+            # Collect all secrets globally
+            for container, secrets in parsed_data.items():
+                secret_set = set(secrets)
+                if secret_set:
+                    all_secrets.extend(secret_set)
+
+        except json.JSONDecodeError as e:
+            print(f"Error decoding JSON for host {host}: {e}")
+            continue
+
+
+def find_key_secret():
+    """
+    Identify the most common secret globally.
+    """
+    secret_counter = Counter(all_secrets)
+    if secret_counter:
+        key_secret, _ = secret_counter.most_common(1)[0]
+    else:
+        key_secret = None
+    return key_secret
+
+
+def compare_global_secrets(hosts_data, key_secret):
+    missing_secrets = []
+    for host_name, result in hosts_data.items():
+        for container, secrets in result.items():
+            secret_set = set(secrets)
+            if not secret_set:  # If the secret set is empty
+                missing_secrets.append((host_name, container, "missing"))
+            elif (
+                key_secret not in secret_set
+            ):  # If the key secret isn't found in the container's secrets
+                missing_secrets.append(
+                    (host_name, container, "does not match key secret")
+                )
+    return missing_secrets
 
 
 def data_dir_check(host_name, result):
@@ -2786,6 +3010,7 @@ def backend_host_checks(
     backend_ips,
     ssh_identity,
     s3_enabled,
+    check_rhel_systemd_hosts,
 ):
     INFO("CHECKING PASSWORDLESS SSH CONNECTIVITY")
     results = parallel_execution(
@@ -2828,6 +3053,31 @@ def backend_host_checks(
                 )
             else:
                 WARN(f"Unable to determine Host: {host_name} OS version")
+
+    relevant_hosts = [host for host in check_rhel_systemd_hosts]
+
+    if check_rhel_systemd_hosts:
+        INFO("CHECKING IF WEKA AGENT SERVICE TYPE")
+        command = r"""
+        if [ -f "/etc/init.d/weka-agent" ]; then
+            echo "SRV=init.d";
+        else
+            echo "SRV=systemd";
+        fi
+        """
+        results = parallel_execution(
+            relevant_hosts,
+            [command],
+            use_check_output=True,
+            ssh_identity=ssh_identity,
+        )
+        for host_name, result in results:
+            if result is not None:
+                weka_agent_unit_type(host_name, result)
+            else:
+                WARN(
+                    f"Unable to determine Host: {host_name} weka agent service unit type"
+                )
 
     INFO("CHECKING WEKA AGENT STATUS ON BACKENDS")
     results = parallel_execution(
@@ -2911,6 +3161,8 @@ def backend_host_checks(
             if result is None:
                 WARN(f"Unable to determine Host: {host_name} available space")
 
+        free_space_check_data(results)
+
     INFO("CHECKING WEKA LOGS DIRECTORY SPACE USAGE ON BACKENDS")
     results = parallel_execution(
         ssh_bk_hosts,
@@ -2952,18 +3204,19 @@ def backend_host_checks(
 
     weka_mounts(results)
 
-    INFO("CHECKING IF WEKA FRONTEND IN USE")
-    results = parallel_execution(
-        ssh_bk_hosts,
-        ['find /sys/class/bdi -name "wekafs*" | wc -l'],
-        use_check_output=True,
-        ssh_identity=ssh_identity,
-    )
-    for host_name, result in results:
-        if result is not None:
-            frontend_check(host_name, result)
-        else:
-            WARN(f"Unable to determine frontend status on Host: {host_name}")
+    if V(weka_version) < V("4.1"):
+        INFO("CHECKING IF WEKA FRONTEND IN USE")
+        results = parallel_execution(
+            ssh_bk_hosts,
+            ['find /sys/class/bdi -name "wekafs*" | wc -l'],
+            use_check_output=True,
+            ssh_identity=ssh_identity,
+        )
+        for host_name, result in results:
+            if result is not None:
+                frontend_check(host_name, result)
+            else:
+                WARN(f"Unable to determine frontend status on Host: {host_name}")
 
     INFO("CHECKING NUMBER OF RUNNING PROTOCOLS ON BACKENDS")
     protocol_host(backend_hosts, s3_enabled)
@@ -2982,6 +3235,60 @@ def backend_host_checks(
             WARN(f"Unable to determine weka mounts on Host: {host_name}")
         else:
             invalid_endpoints(host_name, result, backend_ips)
+
+    INFO("CHECKING FOR MISSING / INVALID JOIN-SECRETS ON BACKENDS")
+    command = r"""
+    container_name=$(weka local ps --no-header -o name | egrep -v 'samba|s3|ganesha|envoy|smbw');
+    echo -n "{";
+    first=true;
+    for cname in $container_name; do
+        if [ "$first" = true ]; then first=false; else echo -n ","; fi
+        echo -n "\"$cname\":";
+
+        # Determine if Python or Python3 is available
+        python_cmd=""
+        if command -v python &>/dev/null; then
+            python_cmd="python"
+        elif command -v python3 &>/dev/null; then
+            python_cmd="python3"
+        else
+            echo "[]";
+            continue
+        fi
+
+        join_secret=$(sudo weka local resources -C "$cname" -J | $python_cmd -c 'import sys, json; resource = sys.stdin.read(); data = json.loads(resource); join_secret = data.get("join_secret", []); print(json.dumps(join_secret))')
+
+        echo -n "$join_secret"
+    done;
+    echo -n "}"
+    """
+    results = parallel_execution(
+        ssh_bk_hosts,
+        [command],
+        use_check_output=True,
+        ssh_identity=ssh_identity,
+    )
+    for host_name, result in results:
+        if result is None:
+            WARN(f"Unable to determine weka mounts on Host: {host_name}")
+
+    check_join_secrets(results)
+    key_secret = find_key_secret()
+    if not key_secret:
+        GOOD(f'{" " * 5}✅  No secret found across all hosts')
+    else:
+        INFO2(f"Global key secret: {key_secret}")
+
+        missing_secrets = compare_global_secrets(container_data, key_secret)
+
+        if missing_secrets:
+            INFO2("Hosts with missing or non-matching secrets:")
+            for host_name, container, issue in missing_secrets:
+                WARN(
+                    f'{" " * 5}⚠️  "Host: {host_name}, Container: {container}, Issue: {issue}'
+                )
+        else:
+            GOOD(f'{" " * 5}✅  All containers on all hosts have matching secrets')
 
     INFO("CHECKING WEKA DATA DIRECTORY SIZE ON BACKENDS")
     data_dir = "/opt/weka/data/"
@@ -3119,37 +3426,40 @@ def backend_host_checks(
         else:
             endpoint_status(host_name, result)
 
-    INFO("VERIFYING BACKEND HOST PORT CONNECTIVITY STATUS")
+    if V(weka_version) >= V("4.0"):
+        INFO("VERIFYING BACKEND HOST PORT CONNECTIVITY STATUS")
 
-    api_ports = []
-    ips = []
+        api_ports = []
+        ips = []
 
-    con_status = json.loads(subprocess.check_output(["weka", "local", "status", "-J"]))
+        con_status = json.loads(
+            subprocess.check_output(["weka", "local", "status", "-J"])
+        )
 
-    for container in con_status:
-        if con_status[container]["type"] == "weka":
-            api_ports.append(con_status[container]["status"]["APIPort"])
-            ip = con_status[container]["resources"]["ips"]
-            first_ip = ip[0]
-            if first_ip not in ips:
-                ips.append(first_ip)
+        for container in con_status:
+            if con_status[container]["type"] == "weka":
+                api_ports.append(con_status[container]["status"]["APIPort"])
+                ip = con_status[container]["resources"]["ips"]
+                first_ip = ip[0]
+                if first_ip not in ips:
+                    ips.append(first_ip)
 
-    curl_commands = [
-        f"curl -sL --insecure https://{ips[0]}:{port} -o /dev/null; echo $? {port}"
-        for port in api_ports
-    ]
+        curl_commands = [
+            f"curl -sL --insecure https://{ips[0]}:{port} -o /dev/null; echo $? {port}"
+            for port in api_ports
+        ]
 
-    results = parallel_execution(
-        ssh_bk_hosts,
-        curl_commands,
-        use_check_output=True,
-        ssh_identity=ssh_identity,
-    )
-    for host_name, result in results:
-        if result is None:
-            WARN(f"Unable to Determine Host: {host_name} port connectivity")
+        results = parallel_execution(
+            ssh_bk_hosts,
+            curl_commands,
+            use_check_output=True,
+            ssh_identity=ssh_identity,
+        )
+        for host_name, result in results:
+            if result is None:
+                WARN(f"Unable to Determine Host: {host_name} port connectivity")
 
-    host_port_connectivity(results)
+        host_port_connectivity(results)
 
 
 def client_hosts_checks(weka_version, ssh_cl_hosts, check_version, ssh_identity):
@@ -3328,7 +3638,7 @@ create_tar_file(log_file_path, "./weka_upgrade_checker.tar.gz")
 def cluster_summary():
     INFO("CLUSTER SUMMARY:")
     GOOD(f'{" " * 5}✅  Total Checks Passed: {num_good}')
-    WARN(f'{" " * 5}⚠️   Total Warnings: {num_warn}')
+    WARN(f'{" " * 5}⚠️  Total Warnings: {num_warn}')
     BAD(f'{" " * 5}❌  Total Checks Failed: {num_bad}')
 
 
@@ -3341,7 +3651,7 @@ def main():
         dest="check_specific_backend_hosts",
         default=False,
         nargs="+",
-        help="Provide one or more ips or fqdn of hosts to check, seperated by space",
+        help="Provide one or more ips or fqdn of hosts to check, separated by space",
     )
     parser.add_argument(
         "-d",
@@ -3349,7 +3659,7 @@ def main():
         dest="cluster_checks_only",
         action="store_true",
         default=False,
-        help="Will only preform cluster checks will skip all other checks",
+        help="Will only perform cluster checks, skipping all other checks",
     )
     parser.add_argument(
         "-c",
@@ -3365,7 +3675,7 @@ def main():
         dest="run_all_checks",
         action="store_true",
         default=False,
-        help="Run check on entire cluster including backend hosts and client hosts",
+        help="Run checks on the entire cluster, including backend hosts and client hosts",
     )
     parser.add_argument(
         "-i",
@@ -3382,6 +3692,9 @@ def main():
         default=False,
         help="weka_upgrade_check.py version info",
     )
+    parser.add_argument(
+        "--skip-mtu-check", action="store_true", help="Skip the MTU mismatch check."
+    )
 
     args = parser.parse_args()
 
@@ -3392,7 +3705,7 @@ def main():
         sys.exit(0)
 
     if args.run_all_checks:
-        weka_cluster_results = weka_cluster_checks()
+        weka_cluster_results = weka_cluster_checks(skip_mtu_check=args.skip_mtu_check)
         backend_hosts = weka_cluster_results[0]
         ssh_bk_hosts = weka_cluster_results[1]
         client_hosts = weka_cluster_results[2]
@@ -3410,18 +3723,21 @@ def main():
             backend_ips,
             ssh_identity,
             s3_enabled,
+            check_rhel_systemd_hosts,
         )
         client_hosts_checks(weka_version, ssh_cl_hosts, check_version, ssh_identity)
         cluster_summary()
         INFO(f"Cluster upgrade checks complete!")
         sys.exit(0)
+
     elif args.cluster_checks_only:
-        weka_cluster_checks()
+        weka_cluster_checks(skip_mtu_check=args.skip_mtu_check)
         cluster_summary()
         INFO(f"Cluster upgrade checks complete!")
         sys.exit(0)
+
     elif args.check_specific_backend_hosts:
-        weka_cluster_results = weka_cluster_checks()
+        weka_cluster_results = weka_cluster_checks(skip_mtu_check=args.skip_mtu_check)
         backend_hosts = weka_cluster_results[0]
         ssh_bk_hosts = weka_cluster_results[1]
         client_hosts = weka_cluster_results[2]
@@ -3439,12 +3755,14 @@ def main():
             backend_ips,
             ssh_identity,
             s3_enabled,
+            check_rhel_systemd_hosts,
         )
         cluster_summary()
         INFO(f"Cluster upgrade checks complete!")
         sys.exit(0)
+
     elif args.skip_client_checks:
-        weka_cluster_results = weka_cluster_checks()
+        weka_cluster_results = weka_cluster_checks(skip_mtu_check=args.skip_mtu_check)
         backend_hosts = weka_cluster_results[0]
         ssh_bk_hosts = weka_cluster_results[1]
         client_hosts = weka_cluster_results[2]
@@ -3462,6 +3780,7 @@ def main():
             backend_ips,
             ssh_identity,
             s3_enabled,
+            check_rhel_systemd_hosts,
         )
         cluster_summary()
         INFO(f"Cluster upgrade checks complete!")
