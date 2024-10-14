@@ -42,7 +42,7 @@ else:
 
     parse = V
 
-pg_version = "1.3.44"
+pg_version = "1.3.45"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
 
@@ -412,18 +412,26 @@ def weka_cluster_checks(skip_mtu_check):
                 self.containers = machine_json["hosts"]["map"]
 
     INFO("CHECKING FOR WEKA ALERTS")
-    weka_alerts = (
-        subprocess.check_output(["weka", "alerts", "--no-header"])
-        .decode("utf-8")
-        .rstrip("\n")
-        .split("\n")
-    )
-    if len(weka_alerts) == 0:
-        GOOD("✅  No Weka alerts present")
-    else:
-        WARN(f"⚠️  {len(weka_alerts)} Weka alerts present")
-        for alert in weka_alerts:
-            logging.warning(alert)
+    try:
+        # Capture the output, handle potential non-UTF-8 characters
+        weka_alerts = (
+            subprocess.check_output(["weka", "alerts", "--no-header"], stderr=subprocess.STDOUT)
+            .decode("utf-8", errors="replace")
+            .rstrip("\n")
+            .split("\n")
+        )
+
+        if len(weka_alerts) == 0 or (len(weka_alerts) == 1 and weka_alerts[0] == ""):
+            GOOD("✅  No Weka alerts present")
+        else:
+            WARN(f"⚠️  {len(weka_alerts)} Weka alerts present")
+            for alert in weka_alerts:
+                logging.warning(alert)
+
+    except subprocess.CalledProcessError as e:
+        error_output = e.output.decode('utf-8', errors='replace')
+        logging.error(f"Error checking Weka alerts: {error_output}")
+        WARN(f"⚠️  Weka alerts check failed with exit code {e.returncode}")
 
     INFO("VERIFYING CUSTOM SSL CERT")
     try:
@@ -769,21 +777,6 @@ def weka_cluster_checks(skip_mtu_check):
 
     host_to_process = {}
 
-    def process_in_batches(host_to_process, max_parallel_executions=6):
-        mtu_results = []
-        batch_size = max_parallel_executions
-        node_ids = list(host_to_process.values())
-        for i in range(0, len(node_ids), batch_size):
-            batch = node_ids[i : i + batch_size]
-            with concurrent.futures.ThreadPoolExecutor(
-                max_workers=batch_size
-            ) as executor:
-                futures = [executor.submit(run_command, node_id) for node_id in batch]
-                for future in concurrent.futures.as_completed(futures):
-                    mtu_results.append(future.result())
-            time.sleep(2)
-        return mtu_results
-
     if not skip_mtu_check:
         INFO("Checking client side MTU mismatch")
         spinner = Spinner("  Processing Data   ", color=colors.OKCYAN)
@@ -829,7 +822,11 @@ def weka_cluster_checks(skip_mtu_check):
             except subprocess.CalledProcessError as e:
                 return f"Node {node_id}: Error {str(e)}"
 
-        mtu_results = process_in_batches(host_to_process, max_parallel_executions=2)
+        mtu_results = []
+        with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
+            futures = [executor.submit(run_command, node_id) for node_id in host_to_process.values()]
+            for future in concurrent.futures.as_completed(futures):
+                mtu_results.append(future.result())
 
         mismatched_mtus = []
 
@@ -861,8 +858,6 @@ def weka_cluster_checks(skip_mtu_check):
         INFO("MTU mismatch check skipped.")
 
     spinner.stop()
-
-    mtu_results = process_in_batches(host_to_process, max_parallel_executions=6)
 
     if V(weka_version) >= V("4.0"):
         INFO("Validating accepted versions list is empty")
