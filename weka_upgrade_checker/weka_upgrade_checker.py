@@ -42,7 +42,7 @@ else:
 
     parse = V
 
-pg_version = "1.3.45"
+pg_version = "1.3.46"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
 
@@ -349,6 +349,14 @@ def weka_cluster_checks(skip_mtu_check):
         stdout=subprocess.DEVNULL,
         stderr=subprocess.STDOUT,
     )
+
+    if weka_agent_service !=0:
+        weka_agent_service = subprocess.call(
+            ["sudo", "systemctl", "status", "weka-agent"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.STDOUT,
+        )
+
     if weka_agent_service != 0:
         BAD(
             "❌  Weka is NOT installed on host or the container is down, cannot continue"
@@ -415,23 +423,30 @@ def weka_cluster_checks(skip_mtu_check):
     try:
         # Capture the output, handle potential non-UTF-8 characters
         weka_alerts = (
-            subprocess.check_output(["weka", "alerts", "--no-header"], stderr=subprocess.STDOUT)
+            subprocess.check_output(["weka", "alerts", "--no-header", "-J"], stderr=subprocess.STDOUT)
             .decode("utf-8", errors="replace")
             .rstrip("\n")
             .split("\n")
         )
+        weka_alerts_json_string = "\n".join(weka_alerts)
 
-        if len(weka_alerts) == 0 or (len(weka_alerts) == 1 and weka_alerts[0] == ""):
+        weka_alerts_data = json.loads(weka_alerts_json_string)
+
+        if len(weka_alerts_data) == 0:
             GOOD("✅  No Weka alerts present")
         else:
-            WARN(f"⚠️  {len(weka_alerts)} Weka alerts present")
-            for alert in weka_alerts:
-                logging.warning(alert)
+            WARN(f"⚠️  {len(weka_alerts_data)} Weka alerts present")
+            for alert in weka_alerts_data:
+                logging.warning(alert['description'])
 
     except subprocess.CalledProcessError as e:
         error_output = e.output.decode('utf-8', errors='replace')
         logging.error(f"Error checking Weka alerts: {error_output}")
         WARN(f"⚠️  Weka alerts check failed with exit code {e.returncode}")
+
+    except json.JSONDecodeError as e:
+        logging.error(f"Failed to parse JSON: {e}")
+        WARN("⚠️  Failed to decode Weka alerts JSON")
 
     INFO("VERIFYING CUSTOM SSL CERT")
     try:
@@ -823,6 +838,7 @@ def weka_cluster_checks(skip_mtu_check):
                 return f"Node {node_id}: Error {str(e)}"
 
         mtu_results = []
+
         with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
             futures = [executor.submit(run_command, node_id) for node_id in host_to_process.values()]
             for future in concurrent.futures.as_completed(futures):
@@ -849,8 +865,9 @@ def weka_cluster_checks(skip_mtu_check):
                 node_idx = f"NodeId<{node_id}>"
                 for process in drive_process_ids:
                     if process["node_id"] == node_idx:
+                        hostname = process.get("nodeInfo", {}).get("hostname", "Unknown Host")
                         WARN(
-                            f"⚠️  Asymmetric MTU detected for at least one peer of {process['nodeInfo']['hostname']}, ProcessId: {node_idx}"
+                            f"⚠️  Asymmetric MTU detected for at least one peer of {hostname}, ProcessId: {node_idx}"
                         )
         else:
             GOOD("✅  MTU check completed successfully")
@@ -875,7 +892,7 @@ def weka_cluster_checks(skip_mtu_check):
         else:
             GOOD("✅  Accepted version list is empty")
 
-    if V(weka_version) >= V("4.0"):
+    if V(weka_version) >= V("4.2"):
         INFO("Validating client target version")
         client_target_verion = (
             subprocess.check_output(
@@ -892,7 +909,7 @@ def weka_cluster_checks(skip_mtu_check):
         else:
             GOOD("✅  Client target version is empty")
 
-    if V(weka_version) >= V("4.0"):
+    if V(weka_version) >= V("4.1"):
         INFO("Validating memory to SSD capacity ratio for upgrade")
         total_compute_memory = sum(
             host.memory
@@ -2476,7 +2493,7 @@ def weka_agent_unit_type(host_name, result):
 
 def weka_agent_check(host_name, result):
     weka_agent_status = result
-    if weka_agent_status != 0:
+    if weka_agent_status == "not running":
         BAD(f'{" " * 5}❌  Weka Agent Service is NOT running on host: {host_name}')
     else:
         GOOD(f'{" " * 5}✅  Weka Agent Service is running on host: {host_name}')
@@ -3075,9 +3092,21 @@ def backend_host_checks(
                 )
 
     INFO("CHECKING WEKA AGENT STATUS ON BACKENDS")
+    command = r"""
+    if ! sudo service weka-agent status > /dev/null 2>&1; then
+    # Fallback to checking with systemctl if the 'service' command fails
+        if [ "$(sudo systemctl is-active weka-agent)" == "active" ]; then
+            echo "running"
+        else
+            echo "not running"
+        fi
+    else
+        echo "running"
+    fi
+    """
     results = parallel_execution(
         ssh_bk_hosts,
-        ["sudo service weka-agent status"],
+        [command],
         use_check_output=False,
         use_call=True,
         ssh_identity=ssh_identity,
