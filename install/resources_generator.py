@@ -842,8 +842,8 @@ class ResourcesGenerator:
         # estimate the number of compute nodes we can support
         non_compute_rss = ((self.total_drive_rss + self.total_frontend_rss +
                             self.total_mgmt_rss) / len(self.numa_nodes_info))
-        available = numa_total_memory - non_compute_rss
-        available_for_compute = available - non_compute_hugepages
+        total_non_compute = (non_compute_rss + non_compute_hugepages) * 1.05   # fudge factor
+        available_for_compute = numa_total_memory - total_non_compute
         min_per_compute = (WEKANODE_BUCKET_PROCESS_MEMORY + DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES) * 1.05 #fudge factor
         return math.floor(available_for_compute/min_per_compute)
 
