@@ -923,12 +923,12 @@ class ResourcesGenerator:
         logger.debug("_get_hugepages_memory_per_compute_node non_compute_nodes_hugepages_memory=%s GiB (%s non compute nodes)",
                      non_compute_nodes_hugepages_memory / GiB, non_compute_nodes_count)
 
-        #supportable_compute = self._estimate_supportable_compute_nodes(numa_total_memory, non_compute_nodes_hugepages_memory)
-        #logger.debug(f"Max supportable compute nodes is {supportable_compute}, requested is {num_compute_nodes}")
-        #if supportable_compute < num_compute_nodes:
-        #    logger.error(f"Not enough memory to support {num_compute_nodes} compute nodes")
-        #    logger.error(f"Max supportable compute nodes is {supportable_compute}, requested is {num_compute_nodes}")
-        #    sys.exit(1)
+        supportable_compute = self._estimate_supportable_compute_nodes(numa_total_memory, non_compute_nodes_hugepages_memory)
+        logger.debug(f"Max supportable compute nodes is {supportable_compute}, requested is {num_compute_nodes}")
+        if supportable_compute < num_compute_nodes:
+            logger.error(f"Not enough memory to support {num_compute_nodes} compute nodes")
+            logger.error(f"Max supportable compute nodes is {supportable_compute}, requested is {num_compute_nodes}")
+            sys.exit(1)
 
         available_for_compute = available - non_compute_nodes_hugepages_memory
         logger.debug("_get_hugepages_memory_per_compute_node: available_for_compute=%s GiB", available_for_compute / GiB)
