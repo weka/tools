@@ -925,7 +925,7 @@ class ResourcesGenerator:
         supportable_compute = self._estimate_supportable_compute_nodes(numa_total_memory, non_compute_nodes_hugepages_memory)
         logger.debug(f"Max supportable compute nodes is {supportable_compute}, requested is {num_compute_nodes}")
         if supportable_compute < num_compute_nodes:
-            logger.error(f"Not enough memory to support {num_compute_nodes}")
+            logger.error(f"Not enough memory to support {num_compute_nodes} compute nodes")
             logger.error(f"Max supportable compute nodes is {supportable_compute}, requested is {num_compute_nodes}")
             sys.exit(1)
 
