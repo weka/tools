@@ -922,12 +922,12 @@ class ResourcesGenerator:
         logger.debug("_get_hugepages_memory_per_compute_node non_compute_nodes_hugepages_memory=%s GiB (%s non compute nodes)",
                      non_compute_nodes_hugepages_memory / GiB, non_compute_nodes_count)
 
-        supportable_compute = self._estimate_supportable_compute_nodes(numa_total_memory, non_compute_nodes_hugepages_memory)
-        logger.debug(f"Max supportable compute nodes is {supportable_compute}, requested is {num_compute_nodes}")
-        if supportable_compute < num_compute_nodes:
-            logger.error(f"Not enough memory to support {num_compute_nodes} compute nodes")
-            logger.error(f"Max supportable compute nodes is {supportable_compute}, requested is {num_compute_nodes}")
-            sys.exit(1)
+        #supportable_compute = self._estimate_supportable_compute_nodes(numa_total_memory, non_compute_nodes_hugepages_memory)
+        #logger.debug(f"Max supportable compute nodes is {supportable_compute}, requested is {num_compute_nodes}")
+        #if supportable_compute < num_compute_nodes:
+        #    logger.error(f"Not enough memory to support {num_compute_nodes} compute nodes")
+        #    logger.error(f"Max supportable compute nodes is {supportable_compute}, requested is {num_compute_nodes}")
+        #    sys.exit(1)
 
         available_for_compute = available - non_compute_nodes_hugepages_memory
         logger.debug("_get_hugepages_memory_per_compute_node: available_for_compute=%s GiB", available_for_compute / GiB)
@@ -940,7 +940,7 @@ class ResourcesGenerator:
         if per_compute_node_memory < DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES:
             logger.error(f"_get_hugepages_memory_per_compute_node: Not enough memory available for compute")
             max_compute_by_ram = available_for_compute / DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES
-            logger.error(f"_get_hugepages_memory_per_compute_node: only enough for {max_compute_by_ram} compute nodes")
+            logger.error(f"_get_hugepages_memory_per_compute_node: only enough for {math.floor(max_compute_by_ram)} compute nodes")
             sys.exit(1)
         logger.debug("_get_hugepages_memory_per_compute_node per_compute_node_memory=%s", per_compute_node_memory)
         return per_compute_node_memory
@@ -1100,7 +1100,7 @@ class ResourcesGenerator:
                     resources_filenames_file.write(resources_path + '\n')
 
     def _setup_logging(self):
-        logging.basicConfig(format='%(levelname)s: %(message)s')
+        logging.basicConfig(format='%(levelname)s: %(message)s' if not self.args.verbose else '%(filename)s:%(lineno)s:%(funcName)s():%(levelname)s:%(message)s')
         logger.setLevel(logging.DEBUG if self.args.verbose else logging.INFO)
 
     def generate(self):
