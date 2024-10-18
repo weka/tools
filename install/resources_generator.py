@@ -908,7 +908,7 @@ class ResourcesGenerator:
         hugepages_memory = hugepages_count * HUGEPAGE_SIZE_BYTES
         per_compute_node_memory = hugepages_memory / num_compute_nodes
         logger.debug("_get_hugepages_memory_per_compute_node per_compute_node_memory=%s", per_compute_node_memory)
-        return max(DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES, per_compute_node_memory)
+        return per_compute_node_memory
 
     def _get_compute_slot_memory_requirement(self):
         long_max = minimal_per_compute_node_memory = sys.maxsize
@@ -930,6 +930,11 @@ class ResourcesGenerator:
                 continue
             minimal_per_compute_node_memory = min(minimal_per_compute_node_memory, per_compute_node_memory)
 
+            if per_compute_node_memory < DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES:
+                logger.error(f"Not enough memory in NUMA {numa.id} to support {len(io_nodes_on_numa)} compute processes")
+                max_nodes = (numa.memory - reserved_memory_per_numa) / DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES
+                logger.error(f"Only enough memory to support {max_nodes} compute processes")
+                sys.exit(1)     # Terminate now!  No sense in continuing?
             if minimal_per_compute_node_memory <= DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES:
                 # If the memory for compute nodes is already at the minimum, we can stop iterating
                 logger.debug("NUMA %s minimal_per_compute_node_memory (%s GiB) is now at the minimum, stopping the search",
