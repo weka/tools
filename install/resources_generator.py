@@ -891,12 +891,14 @@ class ResourcesGenerator:
         if num_compute_nodes == 0:
             logger.debug("_get_hugepages_memory_per_compute_node no compute nodes, will return 0")
             return 0
+        # calculate total RSS needed - wekanodes_memory
         wekanodes_memory = self._estimate_nodes_resident_memory_size(io_nodes) * wekanodes_memory_factor
         logger.debug("_get_hugepages_memory_per_compute_node WEKANODES RSS MEMORY: %s GiB", round(wekanodes_memory / GiB, 2))
         available = numa_total_memory - wekanodes_memory
         if available <= 0:
-            logger.warning("_get_hugepages_memory_per_compute_node not enough available memory, will set memory to the minimal")
-            return DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES
+            logger.error(f"_get_hugepages_memory_per_compute_node not enough available memory! {available/GiB} GiB available")
+            sys.exit(1)
+            # return DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES - causes OOM
         non_compute_nodes_count = len(io_nodes) - num_compute_nodes
         non_compute_nodes_hugepages_memory = DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES * non_compute_nodes_count
         logger.debug("_get_hugepages_memory_per_compute_node non_compute_nodes_hugepages_memory=%s GiB (%s non compute nodes)",
@@ -904,9 +906,17 @@ class ResourcesGenerator:
 
         available_for_compute = available - non_compute_nodes_hugepages_memory
         logger.debug("_get_hugepages_memory_per_compute_node: available_for_compute=%s GiB", available_for_compute / GiB)
+        if available_for_compute <= 0:
+            logger.error(f"_get_hugepages_memory_per_compute_node: No memory available for compute")
+            sys.exit(1)
         hugepages_count = available_for_compute / (HUGEPAGE_SIZE_BYTES + OVERHEAD_PER_HUGEPAGE)
         hugepages_memory = hugepages_count * HUGEPAGE_SIZE_BYTES
         per_compute_node_memory = hugepages_memory / num_compute_nodes
+        if per_compute_node_memory < DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES:
+            logger.error(f"_get_hugepages_memory_per_compute_node: Not enough memory available for compute")
+            max_compute_by_ram = available_for_compute / DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES
+            logger.error(f"_get_hugepages_memory_per_compute_node: only enough for {max_compute_by_ram} compute nodes")
+            sys.exit(1)
         logger.debug("_get_hugepages_memory_per_compute_node per_compute_node_memory=%s", per_compute_node_memory)
         return per_compute_node_memory
 
@@ -932,7 +942,7 @@ class ResourcesGenerator:
 
             if per_compute_node_memory < DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES:
                 logger.error(f"Not enough memory in NUMA {numa.id} to support {len(io_nodes_on_numa)} compute processes")
-                max_nodes = (numa.memory - reserved_memory_per_numa) / DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES
+                max_nodes = (numa_non_reserved_memory) / DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES
                 logger.error(f"Only enough memory to support {max_nodes} compute processes")
                 sys.exit(1)     # Terminate now!  No sense in continuing?
             if minimal_per_compute_node_memory <= DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES:
