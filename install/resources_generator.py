@@ -2,6 +2,7 @@
 
 import hashlib
 import logging
+import math
 import os
 import re
 import sys
@@ -837,6 +838,14 @@ class ResourcesGenerator:
         min_ram_portion_denom = 50  # 2 % of total memory
         return max(total_memory / min_ram_portion_denom, MIN_OS_RESERVED_MEMORY)
 
+    def _estimate_supportable_compute_nodes(self, numa_total_memory, non_compute_hugepages):
+        # estimate the number of compute nodes we can support
+        non_compute_rss = ((self.total_drive_rss + self.total_frontend_rss +
+                            self.total_mgmt_rss) / len(self.numa_nodes_info))
+        available_for_compute = numa_total_memory - non_compute_rss - non_compute_hugepages
+        min_per_compute = WEKANODE_BUCKET_PROCESS_MEMORY + DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES
+        return math.floor(available_for_compute/min_per_compute)
+
     def _estimate_nodes_resident_memory_size(self, nodes=None):
         if nodes:
             compute_count = len([n for n in nodes if COMPUTE_ROLE in n.roles]) if nodes else len(self.compute_nodes)
@@ -849,9 +858,17 @@ class ResourcesGenerator:
         mgmt_count = len(self.num_containers_by_role)
         logger.debug("_estimate_nodes_resident_memory_size: compute_count=%s, drive_count=%s, frontend=%s, mgmt_count=%s",
                      compute_count, drive_count, frontend_count, mgmt_count)
-        return (compute_count * WEKANODE_BUCKET_PROCESS_MEMORY) + (drive_count * WEKANODE_SSD_PROCESS_MEMORY) + \
-            (frontend_count * WEKANODE_FRONTEND_PROCESS_MEMORY) + \
-            (mgmt_count * WEKANODE_MANAGER_PROCESS_MEMORY / len(self.numa_nodes_info))
+        self.total_compute_rss = compute_count * WEKANODE_BUCKET_PROCESS_MEMORY
+        self.total_drive_rss = drive_count * WEKANODE_SSD_PROCESS_MEMORY
+        self.total_frontend_rss = drive_count * WEKANODE_SSD_PROCESS_MEMORY
+        self.total_mgmt_rss = mgmt_count * WEKANODE_MANAGER_PROCESS_MEMORY
+        return (self.total_compute_rss +
+                self.total_drive_rss +
+                self.total_frontend_rss +
+                self.total_mgmt_rss) / len(self.numa_nodes_info)   # not sure bracing is correct
+        #return (compute_count * WEKANODE_BUCKET_PROCESS_MEMORY) + (drive_count * WEKANODE_SSD_PROCESS_MEMORY) + \
+        #    (frontend_count * WEKANODE_FRONTEND_PROCESS_MEMORY) + \
+        #    (mgmt_count * WEKANODE_MANAGER_PROCESS_MEMORY / len(self.numa_nodes_info))
 
     def _get_reserved_memory(self):
         """Return how many bytes cannot be allocated for wekanodes' hugepages"""
@@ -891,18 +908,26 @@ class ResourcesGenerator:
         if num_compute_nodes == 0:
             logger.debug("_get_hugepages_memory_per_compute_node no compute nodes, will return 0")
             return 0
-        # calculate total RSS needed - wekanodes_memory
+        # calculate total RSS needed - wekanodes_memory - per numa
         wekanodes_memory = self._estimate_nodes_resident_memory_size(io_nodes) * wekanodes_memory_factor
         logger.debug("_get_hugepages_memory_per_compute_node WEKANODES RSS MEMORY: %s GiB", round(wekanodes_memory / GiB, 2))
         available = numa_total_memory - wekanodes_memory
-        if available <= 0:
-            logger.error(f"_get_hugepages_memory_per_compute_node not enough available memory! {available/GiB} GiB available")
-            sys.exit(1)
-            # return DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES - causes OOM
+        #if available <= 0:
+        #    # not enough RAM to allocate any hugepages!  ie: too many cores
+        #    logger.error(f"_get_hugepages_memory_per_compute_node: not enough available memory! {available/GiB} GiB available")
+        #    sys.exit(1)
+        #    # return DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES - causes OOM
         non_compute_nodes_count = len(io_nodes) - num_compute_nodes
         non_compute_nodes_hugepages_memory = DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES * non_compute_nodes_count
         logger.debug("_get_hugepages_memory_per_compute_node non_compute_nodes_hugepages_memory=%s GiB (%s non compute nodes)",
                      non_compute_nodes_hugepages_memory / GiB, non_compute_nodes_count)
+
+        supportable_compute = self._estimate_supportable_compute_nodes(numa_total_memory, non_compute_nodes_hugepages_memory)
+        logger.debug(f"Max supportable compute nodes is {supportable_compute}, requested is {num_compute_nodes}")
+        if supportable_compute < num_compute_nodes:
+            logger.error(f"Not enough memory to support {num_compute_nodes}")
+            logger.error(f"Max supportable compute nodes is {supportable_compute}, requested is {num_compute_nodes}")
+            sys.exit(1)
 
         available_for_compute = available - non_compute_nodes_hugepages_memory
         logger.debug("_get_hugepages_memory_per_compute_node: available_for_compute=%s GiB", available_for_compute / GiB)
