@@ -12,8 +12,10 @@ from ipaddress import ip_address, IPv4Address
 from math import ceil
 from urllib import request, error
 from socket import timeout
-logging.basicConfig()
-logger = logging.getLogger('resources generator')
+#logging.basicConfig()
+#log = logging.getLogger('resources generator')
+# get the default log
+log = logging.getLogger()
 
 DEFAULT_MAX_IO_NODES_PER_CONTAINER = 19
 KB = 10 ** 3
@@ -35,6 +37,15 @@ WEKANODE_BUCKET_PROCESS_MEMORY = 3.9 * GiB
 WEKANODE_SSD_PROCESS_MEMORY = 2.2 * GiB
 WEKANODE_FRONTEND_PROCESS_MEMORY = 2.3 * GiB
 WEKANODE_MANAGER_PROCESS_MEMORY = 2.1 * GiB
+
+# override... release being tested is higher (as shown in `top`)
+WEKANODE_SSD_PROCESS_MEMORY = 2.5 * GiB
+WEKANODE_FRONTEND_PROCESS_MEMORY = 2.5 * GiB
+
+# don't forget shared memory
+CONTAINER_SHARED_MEMORY = 1.2 * GiB  # per container
+
+RDMA_RESERVED_MEMORY = 2 * GiB
 
 OVERHEAD_PER_MBUF = 202 + 72 + 16 + 30  # GenericBaseBlock + QueuedBlock + Cache entries + unknown respectively
 MBUFS_IN_HUGEPAGE = 481  # max N such that `align4K(256*N) + 4096*N <= 2MB
@@ -119,7 +130,7 @@ with os.scandir('/sys/class/net/') as nets:
                     mac = file.read().replace('\n', '')
                     MAC_TO_NICS_MAP[net.name] = {'mac': mac}
             except OSError:
-                logger.warning(
+                log.warning(
                     "Couldn't get hardware address for %s, skipping" % net.name
                 )
                 continue
@@ -265,37 +276,37 @@ class ResourcesGenerator:
         def _validate_positive(value):
             int_val = int(value)
             if int_val <= 0:
-                logger.error("%s is an invalid positive int value" % value)
+                log.error("%s is an invalid positive int value" % value)
                 quit(1)
             return int_val
 
         def _validate_cores_per_container(value):
             int_val = int(value)
             if int_val not in range(1, DEFAULT_MAX_IO_NODES_PER_CONTAINER + 1):
-                logger.error("--max-cores-per-container is expecting an int value between 1 and %s" % DEFAULT_MAX_IO_NODES_PER_CONTAINER)
+                log.error("--max-cores-per-container is expecting an int value between 1 and %s" % DEFAULT_MAX_IO_NODES_PER_CONTAINER)
                 quit(1)
             return int_val
 
         def _validate_non_negative(value):
             int_val = int(value)
             if int_val < 0:
-                logger.error("%s is an invalid non negative int value" % value)
+                log.error("%s is an invalid non negative int value" % value)
                 quit(1)
             return int_val
 
         def _validate_path(p):
             if not os.path.isdir(p):
-                logger.error("Path argument must be a directory")
+                log.error("Path argument must be a directory")
                 quit(1)
             return p
 
         def _verify_core_ids(core_ids):
             for core_id in core_ids:
                 if core_ids.count(core_id) > 1:
-                    logger.error("CPU id: %s was passed multiple times" % core_id)
+                    log.error("CPU id: %s was passed multiple times" % core_id)
                     quit(1)
                 if not os.path.isdir("/sys/devices/system/cpu/cpu{cpu_id}".format(cpu_id=core_id)):
-                    logger.error("Could not find core id %s", core_id)
+                    log.error("Could not find core id %s", core_id)
                     quit(1)
                 _validate_non_negative(core_id)
             return core_ids
@@ -303,7 +314,7 @@ class ResourcesGenerator:
         def _verify_compatible_num_cores():
             if self.args.num_cores and self.args.core_ids:
                 if self.args.num_cores != len(self.args.core_ids):
-                    logger.error("The amount of cores requested (%s) is not equal to the number of specified core-ids (%s)",
+                    log.error("The amount of cores requested (%s) is not equal to the number of specified core-ids (%s)",
                                  self.args.num_cores, len(self.args.core_ids))
                     quit(1)
 
@@ -313,7 +324,7 @@ class ResourcesGenerator:
             nic_error = False
 
             if not self.args.net:
-                logger.error("At least 1 net device is required")
+                log.error("At least 1 net device is required")
                 quit(1)
             nics = [net_arg.split('/')[0] for net_arg in self.args.net]
 
@@ -344,19 +355,19 @@ class ResourcesGenerator:
             if len(present_dupe_nics) > 0 or len(missing_dupe_nics) > 0 \
                     or len(missing_nics) > 0:
                 nic_error = True
-                logger.error("Detected net devices: %s", MAC_TO_NICS_MAP)
+                log.error("Detected net devices: %s", MAC_TO_NICS_MAP)
 
             # Print duplicated NICs passed as arguments
             if len(present_dupe_nics) > 0:
-                logger.error('Detected NICs were passed multiple times: %s'
+                log.error('Detected NICs were passed multiple times: %s'
                         % present_dupe_nics)
             if len(missing_dupe_nics) > 0:
-                logger.error('Missing NICs were passed multiple times: %s'
+                log.error('Missing NICs were passed multiple times: %s'
                         % missing_dupe_nics)
 
             missing_nics = set(missing_nics)  # To strip duplicates
             if len(missing_nics) > 0:
-                logger.error('Missing NICs were passed: %s' % missing_nics)
+                log.error('Missing NICs were passed: %s' % missing_nics)
 
             if nic_error:
                 quit(1)
@@ -388,10 +399,10 @@ class ResourcesGenerator:
             unit_lst = list(filter(lambda s: s.isalpha(), vals))
             unit = unit_lst[0] if unit_lst else 'B'
             if not _is_num(number):
-                logger.error("Invalid numeric value: %s", number)
+                log.error("Invalid numeric value: %s", number)
                 quit(1)
             if unit.upper() not in units:
-                logger.error("Unknown unit: %s", unit)
+                log.error("Unknown unit: %s", unit)
                 quit(1)
             return int(float(number) * units[unit.upper()])
 
@@ -545,7 +556,7 @@ class ResourcesGenerator:
             else:
                 container.net_devices = self.net_devices[:]
             self.containers[role].append(container)
-            logger.info("Added %s container resources", role)
+            log.info("Added %s container resources", role)
 
     def _init_num_containers_by_role(self):
         nodes_per_roles = zip([self.frontend_nodes, self.drive_nodes, self.compute_nodes], [FRONTEND_ROLE, DRIVE_ROLE, COMPUTE_ROLE])
@@ -553,7 +564,7 @@ class ResourcesGenerator:
             nodes_count = len(nodes)
             num_containers = int(ceil(float(nodes_count) / self.args.max_cores_per_container))
             self.num_containers_by_role[role] = num_containers
-            logger.info("num_containers_by_role[%s]: %s, nodes count: %s", role, num_containers, nodes_count)
+            log.info("num_containers_by_role[%s]: %s, nodes count: %s", role, num_containers, nodes_count)
 
     def _add_drives(self):
         num_drives = len(self.args.drives) if self.args.drives else len(self.drive_nodes)
@@ -599,7 +610,7 @@ class ResourcesGenerator:
                 ip_address(ip)
                 return ip
             except ValueError as err:
-                logger.error(err)
+                log.error(err)
                 quit(1)
 
         def _is_ipv4(ip):
@@ -614,7 +625,7 @@ class ResourcesGenerator:
                 max_bits = 128
 
             if not netmask.isdecimal() or int(netmask) not in range(min_bits, max_bits+1):
-                logger.error("Invalid value for netmask: %s", netmask)
+                log.error("Invalid value for netmask: %s", netmask)
                 quit(1)
             return netmask
 
@@ -638,7 +649,7 @@ class ResourcesGenerator:
             # _validate_net_dev; these functions should perhaps be incorporated
             # together in the future.
             elif _is_slave(name):
-                logger.warning('Selecting %s as %s (%s) is slave device of %s'
+                log.warning('Selecting %s as %s (%s) is slave device of %s'
                         % (MAC_TO_NICS_MAP[name]['master'], name,
                             MAC_TO_NICS_MAP[name]['mac'],
                             MAC_TO_NICS_MAP[name]['master']))
@@ -661,7 +672,7 @@ class ResourcesGenerator:
                 kwargs['network_label'] = network_label
             kwargs['use_only_nic_identifier'] = self.args.use_only_nic_identifier
             net_dev = NetDevice(name=name, **kwargs)
-            logger.debug("Added net device: %s", net_dev.__dict__)
+            log.debug("Added net device: %s", net_dev.__dict__)
             self.net_devices.append(net_dev)
 
     def _get_all_cpus(self):
@@ -671,7 +682,7 @@ class ResourcesGenerator:
     def _get_siblings_cpus(self):
         cmd = "cat /sys/devices/system/cpu/cpu*/topology/thread_siblings_list"
         cpu_pairs_ids = set(os.popen(cmd).read().strip().splitlines())
-        logger.debug("cpu_pairs_ids before removing siblings: %s", cpu_pairs_ids)
+        log.debug("cpu_pairs_ids before removing siblings: %s", cpu_pairs_ids)
         cpu_per_core = [int(re.split(',|-', pair)[0]) for pair in cpu_pairs_ids]
         return cpu_per_core
 
@@ -689,25 +700,25 @@ class ResourcesGenerator:
             numa.memory = _get_numa_total_memory_bytes(numa_node_id)
             self.numa_nodes_info.append(numa)
             self.numa_to_ionodes[numa_node_id] = []
-            logger.info("NUMA %s cores: %s, total memory: %s GiB",
+            log.info("NUMA %s cores: %s, total memory: %s GiB",
                         numa_node_id,
                         [c.cpu_id for c in numa.pre_allocated_cores],
                         numa.memory / GiB)
 
     def _verify_cpu0_not_included(self, core_ids):
         if DEFAULT_SPARE_CPU_ID in core_ids:
-            logger.warning("cpu 0 was found among specified core ids, that is highly unrecommended")
+            log.warning("cpu 0 was found among specified core ids, that is highly unrecommended")
             self.check_if_should_continue()
 
     def _verify_at_least_one_spare_cores(self, core_ids):
         if len(core_ids) == len(self.all_available_cpus):
-            logger.warning(
+            log.warning(
                 "no spare cores were left for the os, consider allocate less cores for wekanodes if possible")
             self.check_if_should_continue()
 
     def _validate_spare_cores(self):
         if self.args.spare_cores > len(self.all_available_cpus):
-            logger.error("the specified spare-corse value is greater than the total number of available cores")
+            log.error("the specified spare-corse value is greater than the total number of available cores")
             quit(1)
 
     def set_cores(self):
@@ -726,15 +737,15 @@ class ResourcesGenerator:
             if should_reserve_core_0:
                 usable_cpus.remove(DEFAULT_SPARE_CPU_ID)
         self.num_available_cores = specified_num_cores if specified_num_cores else (len(self.all_available_cpus) - self.args.spare_cores)
-        logger.debug("num available cores: %s", self.num_available_cores)
-        logger.debug("num-cores specified by user: %s", self.args.num_cores)
-        logger.debug("spare cores: %s", self.args.spare_cores)
+        log.debug("num available cores: %s", self.num_available_cores)
+        log.debug("num-cores specified by user: %s", self.args.num_cores)
+        log.debug("spare cores: %s", self.args.spare_cores)
         if specified_num_cores:
             cores_available_for_weka = len(self.all_available_cpus) - self.args.spare_cores
             if specified_num_cores > cores_available_for_weka:
                 msg = "not enough cores for allocating %s as requested (available: %s), "\
                       "consider either specifying less or decreasing spare-cores"
-                logger.error(msg, specified_num_cores, cores_available_for_weka)
+                log.error(msg, specified_num_cores, cores_available_for_weka)
                 quit(1)
 
         self.cores = [Core(cpu_id=cpu_id) for cpu_id in usable_cpus]
@@ -746,7 +757,7 @@ class ResourcesGenerator:
         available_cpus = self._get_all_cpus()
         for core_id in self.args.frontend_core_ids + self.args.compute_core_ids + self.args.drive_core_ids:
             if core_id not in available_cpus:
-                logger.error("Core id: %s was not found, please make sure to pass values from the following available"
+                log.error("Core id: %s was not found, please make sure to pass values from the following available"
                              "CPUS: \n%s", core_id, sorted(available_cpus))
                 quit(1)
             core = Core(cpu_id=core_id)
@@ -761,7 +772,7 @@ class ResourcesGenerator:
                           (frontend_cores, drive_cores, compute_cores))
 
         for role, cores in roles_cores:
-            logger.info("ROLE: %s, CPU ids: %s", role, [c.cpu_id for c in cores])
+            log.info("ROLE: %s, CPU ids: %s", role, [c.cpu_id for c in cores])
             for core in cores:
                 node = Node(core_id=core.cpu_id)
                 node.roles.append(role)
@@ -786,7 +797,7 @@ class ResourcesGenerator:
         net_devs_counter = len(self.net_devices)
         if user_specified_num_cores:
             if self.exclusive_nics_policy and user_specified_num_cores > net_devs_counter:
-                logger.error("Not enough net devices to serve %s nodes, maximum possible: %s",
+                log.error("Not enough net devices to serve %s nodes, maximum possible: %s",
                              user_specified_num_cores, net_devs_counter)
                 quit(1)
         num_drive_nodes = self.args.drive_dedicated_cores if self.args.drive_dedicated_cores is not None else len(self.drives)
@@ -802,11 +813,11 @@ class ResourcesGenerator:
               f"Available net devices: {len(self.net_devices)}\nAvailable cores: {self.num_available_cores}"
         if weka_required_cores > available_cores_counter:
             prefix = f"Not enough resources to serve {weka_required_cores} nodes:"
-            logger.error(prefix + msg)
+            log.error(prefix + msg)
             quit(1)
         if not no_compute_by_request and num_compute_nodes < 1:
             prefix = "Not enough resources for COMPUTE nodes:"
-            logger.error(prefix + msg)
+            log.error(prefix + msg)
             quit(1)
 
         cores_to_allocate = []
@@ -847,7 +858,7 @@ class ResourcesGenerator:
             drive_count = len(self.drive_nodes)
             frontend_count = len(self.frontend_nodes)
         mgmt_count = len(self.num_containers_by_role)
-        logger.debug("_estimate_nodes_resident_memory_size: compute_count=%s, drive_count=%s, frontend=%s, mgmt_count=%s",
+        log.debug("_estimate_nodes_resident_memory_size: compute_count=%s, drive_count=%s, frontend=%s, mgmt_count=%s",
                      compute_count, drive_count, frontend_count, mgmt_count)
         return (compute_count * WEKANODE_BUCKET_PROCESS_MEMORY) + (drive_count * WEKANODE_SSD_PROCESS_MEMORY) + \
             (frontend_count * WEKANODE_FRONTEND_PROCESS_MEMORY) + \
@@ -855,91 +866,128 @@ class ResourcesGenerator:
 
     def _get_reserved_memory(self):
         """Return how many bytes cannot be allocated for wekanodes' hugepages"""
-        #protocols_reserved_memory = 8 * GiB  # vince - This should be a parameter? (it's too small)
-        RDMA_reserved_memory = 2 * GiB
-        # max_reserved_portion_denom = 5  # 20% of total memory  (huh?)
+        max_reserved_percent = .2  # 20% of total memory
         total_memory_bytes = self._get_total_memory_bytes()
-        logger.debug("Total memory: %s MiB", total_memory_bytes / MiB)
+        log.debug(f"Total memory: {total_memory_bytes / MiB} MiB/{total_memory_bytes / GiB} GiB")
         # total_reserve = auto_os_reserved_memory = self._get_os_reserved_memory(total_memory_bytes)
         total_reserve = auto_os_reserved_memory = MIN_OS_RESERVED_MEMORY
+
+        # shared memory
+        shared_memory = sum(self.num_containers_by_role.values()) * CONTAINER_SHARED_MEMORY
+        total_reserve += shared_memory
+        log.debug(f"shared memory {shared_memory / GiB} GiB")
+
         if self.args.spare_memory:
-            if self.args.spare_memory < auto_os_reserved_memory:
-                logger.warning("The spare-memory requested: %s bytes is lower than the minimum recommended memory for this "
-                               "machine: %s bytes", self.args.spare_memory, auto_os_reserved_memory)
-                self.check_if_should_continue()
+            # why does this matter?  We're ADDING the spare_memory to the total_reserve below...
+            #if self.args.spare_memory < auto_os_reserved_memory:
+            #    log.warning("The spare-memory requested: %s bytes is lower than the minimum recommended memory for this "
+            #                   "machine: %s bytes", self.args.spare_memory, auto_os_reserved_memory)
+            #    self.check_if_should_continue()
             total_reserve += self.args.spare_memory
+            log.debug(f'spare memory {round(self.args.spare_memory / GiB, 1)} GiB')
         if self.args.protocols_memory:
             total_reserve += self.args.protocols_memory
-            logger.debug(f'_get_reserved_memory: protocols memory {round(self.args.protocols_memory / GiB, 1)} GiB')
+            log.debug(f'protocols memory {round(self.args.protocols_memory / GiB, 1)} GiB')
 
         #total_reserve = os_reserved_memory
         if not self.args.no_rdma:
-            total_reserve += RDMA_reserved_memory
-            logger.debug("_get_reserved_memory: reserving %s MiB for RDMA", RDMA_reserved_memory / MiB)
-        #if not self.args.spare_memory and total_reserve > total_memory_bytes / max_reserved_portion_denom:
-        #    fixed_total_reserve = total_memory_bytes / max_reserved_portion_denom   # vince- WRONG!  High-mem systems this is ok
-        #    logger.warning("we need reserves of %s GiB which is too much (host has %s GiB), we'll settle with %s GiB reserved"
-        #                   , total_reserve / GiB, total_memory_bytes / GiB, fixed_total_reserve / GiB)
-        #    total_reserve = fixed_total_reserve
-        logger.debug(f'_get_reserved_memory: total reserved memory {round(total_reserve / GiB, 1)} GiB')
+            total_reserve += RDMA_RESERVED_MEMORY
+            log.debug("reserving %s MiB for RDMA", RDMA_RESERVED_MEMORY / MiB)
+        if not self.args.spare_memory and total_reserve > total_memory_bytes * max_reserved_percent:
+            fixed_total_reserve = total_memory_bytes * max_reserved_percent
+            log.warning("we need reserves of %s GiB which is too much (host has %s GiB), we'll settle with %s GiB reserved"
+                           , total_reserve / GiB, total_memory_bytes / GiB, fixed_total_reserve / GiB)
+            total_reserve = fixed_total_reserve
+        log.debug(f'total reserved memory {round(total_reserve / GiB, 1)} GiB')
         return total_reserve
 
-    def _get_hugepages_memory_per_compute_node(self, numa_total_memory, io_nodes):
-        wekanodes_memory_factor = 1.05
-        num_compute_nodes = len([n for n in io_nodes if n.is_compute()])
-        logger.debug("_get_hugepages_memory_per_compute_node: num_compute_nodes: %s", num_compute_nodes)
+    def _get_hugepages_memory_per_compute_node(self, numa_net_memory, io_nodes):
+        nodes_rss_factor = 1.05     # why the fudge factor here? (vince)
+        compute_nodes = [n for n in io_nodes if n.is_compute()]
+        non_compute_nodes = [n for n in io_nodes if not n.is_compute()]
+        num_compute_nodes = len(compute_nodes)
+        log.debug(f"num_compute_nodes: {num_compute_nodes}")
         if num_compute_nodes == 0:
-            logger.debug("_get_hugepages_memory_per_compute_node no compute nodes, will return 0")
+            log.debug("no compute nodes, will return 0")
             return 0
-        wekanodes_memory = self._estimate_nodes_resident_memory_size(io_nodes) * wekanodes_memory_factor
-        logger.debug("_get_hugepages_memory_per_compute_node WEKANODES RSS MEMORY: %s GiB", round(wekanodes_memory / GiB, 2))
-        available = numa_total_memory - wekanodes_memory
-        if available <= 0:
-            logger.warning("_get_hugepages_memory_per_compute_node not enough available memory, will set memory to the minimal")
-            return DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES
-        non_compute_nodes_count = len(io_nodes) - num_compute_nodes
-        non_compute_nodes_hugepages_memory = DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES * non_compute_nodes_count
-        logger.debug("_get_hugepages_memory_per_compute_node non_compute_nodes_hugepages_memory=%s GiB (%s non compute nodes)",
-                     non_compute_nodes_hugepages_memory / GiB, non_compute_nodes_count)
+        all_nodes_rss = self._estimate_nodes_resident_memory_size(io_nodes) * nodes_rss_factor
+        log.debug("WEKANODES RSS MEMORY: %s GiB", round(all_nodes_rss / GiB, 2))
+        available = numa_net_memory - all_nodes_rss   # this is how much we have available for hugepages
+        #if available <= 0:  # this is actually a hard error.  returning default will cause the server to OOM
+        #    #log.warning("_get_hugepages_memory_per_compute_node not enough available memory, will set memory to the minimal")
+        #    #return DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES
+        #    log.error("not enough memory available to support specified compute nodes")
+        #    # should give some diagnostics here, such as how much ram is available, and how much we need (TODO)
+        #    # as well as how many compute cores we CAN support with the available memory
+        #    sys.exit(1)
+        #non_compute_nodes_count = len(io_nodes) - num_compute_nodes
+        non_compute_nodes_count = len(non_compute_nodes)
+        # do non-compute nodes really allocate hugepages? (vince)   also, do rounding
+        #non_compute_nodes_hugepage = DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES * non_compute_nodes_count
+        non_compute_nodes_hugepage = ((DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES * non_compute_nodes_count) /
+                                     (HUGEPAGE_SIZE_BYTES + OVERHEAD_PER_HUGEPAGE)) * HUGEPAGE_SIZE_BYTES
+        non_compute_nodes_rss = self._estimate_nodes_resident_memory_size(nodes=[n for n in io_nodes if not n.is_compute()])
 
-        available_for_compute = available - non_compute_nodes_hugepages_memory
-        logger.debug("_get_hugepages_memory_per_compute_node: available_for_compute=%s GiB", available_for_compute / GiB)
-        hugepages_count = available_for_compute / (HUGEPAGE_SIZE_BYTES + OVERHEAD_PER_HUGEPAGE)
-        hugepages_memory = hugepages_count * HUGEPAGE_SIZE_BYTES
+        log.debug("non_compute_nodes_hugepage=%s GiB (%s non compute nodes)",
+                     non_compute_nodes_hugepage/ GiB, non_compute_nodes_count)
+        log.debug(f"non_compute_nodes_rss={non_compute_nodes_rss / GiB} GiB")
+
+        available_hugepage_for_compute = available - non_compute_nodes_hugepage
+        log.debug("available_hugepage_for_compute=%s GiB", available_hugepage_for_compute / GiB)
+
+        # round up hugepages to full pages, accounting for overhead (do same for non-compute hugepages?)
+        #hugepages_count = available_hugepage_for_compute / (HUGEPAGE_SIZE_BYTES + OVERHEAD_PER_HUGEPAGE)
+        #hugepages_memory = hugepages_count * HUGEPAGE_SIZE_BYTES
+        hugepages_memory = (available_hugepage_for_compute /
+                            (HUGEPAGE_SIZE_BYTES + OVERHEAD_PER_HUGEPAGE)) * HUGEPAGE_SIZE_BYTES
+
         per_compute_node_memory = hugepages_memory / num_compute_nodes
-        logger.debug("_get_hugepages_memory_per_compute_node per_compute_node_memory=%s", per_compute_node_memory)
-        return max(DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES, per_compute_node_memory)
+        log.debug(f"per_compute_node_memory={per_compute_node_memory / GiB} GiB")
+        #return max(DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES, per_compute_node_memory) # don't return default (vince)
+        available_for_compute = numa_net_memory - non_compute_nodes_rss - non_compute_nodes_hugepage
+        needed_per_compute = WEKANODE_BUCKET_PROCESS_MEMORY + DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES
+        supportable_compute = available_for_compute / needed_per_compute
+        if per_compute_node_memory < DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES:
+            # we don't have enough ram to support the requested number of compute nodes
+            log.debug(f"available_for_compute={available_for_compute/GiB} GiB, needed_per_compute={needed_per_compute/GiB} GiB")
+            log.error(f"Not enough memory to support {num_compute_nodes} cores: max is {int(supportable_compute)} cores")
+            sys.exit(1)
+        log.debug(
+            f"available_for_compute={available_for_compute / GiB} GiB, min needed_per_compute={needed_per_compute / GiB} GiB")
+        log.debug(f"can support up to {int(supportable_compute)} cores")
+        return per_compute_node_memory
 
     def _get_compute_slot_memory_requirement(self):
         long_max = minimal_per_compute_node_memory = sys.maxsize
         numa_nodes_count = len(self.numa_nodes_info)
         total_reserved = self._get_reserved_memory()
         reserved_memory_per_numa = total_reserved / numa_nodes_count
-        logger.debug("reserved memory: %s MiB", total_reserved / MiB)
-        logger.debug("numa_nodes_count: %s", numa_nodes_count)
-        logger.debug("reserved_memory_per_numa: %s MiB", reserved_memory_per_numa / MiB)
+        log.debug("reserved memory: %s MiB", total_reserved / MiB)
+        log.debug("numa_nodes_count: %s", numa_nodes_count)
+        log.debug("reserved_memory_per_numa: %s MiB", reserved_memory_per_numa / MiB)
         for numa in self.numa_nodes_info:
             io_nodes_on_numa = self.numa_to_ionodes[numa.id]
-            logger.info("%s io nodes on NUMA %s", len(io_nodes_on_numa), numa.id)
+            log.info("%s io nodes on NUMA %s", len(io_nodes_on_numa), numa.id)
             numa_non_reserved_memory = numa.memory - reserved_memory_per_numa
-            logger.debug("non-reserved memory on numa %s: %s MiB", numa.id, numa_non_reserved_memory / MiB)
+            log.debug(f"non-reserved memory on numa {numa.id}: {numa_non_reserved_memory/MiB} MiB / {numa_non_reserved_memory/GiB} GiB")
             per_compute_node_memory = self._get_hugepages_memory_per_compute_node(numa.memory - reserved_memory_per_numa, io_nodes_on_numa)
-            logger.debug("_get_compute_slot_memory_requirement: per_compute_node_memory: %s MiB, (numa %s)", per_compute_node_memory / MiB, numa.id)
+            log.debug("_get_compute_slot_memory_requirement: per_compute_node_memory: %s MiB / %s GiB, (numa %s)",
+                      per_compute_node_memory / MiB, per_compute_node_memory / GiB, numa.id)
             if per_compute_node_memory == 0:
-                logger.debug("No compute nodes on NUMA %s", numa.id)
+                log.debug("No compute nodes on NUMA %s", numa.id)
                 continue
             minimal_per_compute_node_memory = min(minimal_per_compute_node_memory, per_compute_node_memory)
 
             if minimal_per_compute_node_memory <= DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES:
                 # If the memory for compute nodes is already at the minimum, we can stop iterating
-                logger.debug("NUMA %s minimal_per_compute_node_memory (%s GiB) is now at the minimum, stopping the search",
+                log.debug("NUMA %s minimal_per_compute_node_memory (%s GiB) is now at the minimum, stopping the search",
                              numa.id, minimal_per_compute_node_memory / GiB)
                 break
 
         if minimal_per_compute_node_memory == long_max:
             # If no value was determined for some reason (e.g not enough memory on any numa)
             minimal_per_compute_node_memory = DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES
-        logger.debug("minimal_per_compute_node_memory=%sGiB = %sB", minimal_per_compute_node_memory / GiB, minimal_per_compute_node_memory)
+        log.debug("minimal_per_compute_node_memory=%s GiB = %s B", minimal_per_compute_node_memory / GiB, minimal_per_compute_node_memory)
         return int(minimal_per_compute_node_memory)
 
     def _get_validated_compute_memory_arg(self, specified_compute_memory):
@@ -947,30 +995,30 @@ class ResourcesGenerator:
         compute_nodes_count = len(self.compute_nodes)
         compute_node_hugaepages_memory = int(specified_compute_memory / compute_nodes_count)
         if compute_node_hugaepages_memory > auto_compute_node_hugaepages_memory:
-            logger.warning("The specified memory per compute node is higher than the automatically computed value. "
+            log.warning("The specified memory per compute node is higher than the automatically computed value. "
                            "That might result in some lack of memory on 1 or more numa nodes for some containers")
             self.check_if_should_continue()
         available_memory = self._get_total_memory_bytes() - self._get_reserved_memory()
         if specified_compute_memory > available_memory:
-            logger.warning(
+            log.warning(
                 "Total requested memory for compute nodes: %s GiB is higher than available memory found on this server: %s GiB",
                 specified_compute_memory, available_memory)
             self.check_if_should_continue()
         if compute_node_hugaepages_memory <= 0:
-            logger.error("Not enough memory for compute nodes")
+            log.error("Not enough memory for compute nodes")
             quit(1)
         if compute_node_hugaepages_memory < DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES:
-            logger.warning("The requested memory per compute node: %s GiB is lower than the default minimum: %s GiB",
+            log.warning("The requested memory per compute node: %s GiB is lower than the default minimum: %s GiB",
                            compute_node_hugaepages_memory / GiB, DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES / GiB)
             self.check_if_should_continue()
         return compute_node_hugaepages_memory
 
     def _get_compute_mem_from_specified_total(self):
         non_compute_ionodes_counter = len(self.drive_nodes + self.frontend_nodes)
-        logger.debug("non_compute_ionodes_counter: %s", non_compute_ionodes_counter)
+        log.debug("non_compute_ionodes_counter: %s", non_compute_ionodes_counter)
         total_compute_memory = self.args.weka_hugepages_memory - (DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES * non_compute_ionodes_counter)
-        logger.debug("weka total memory specified by user: %s GiB", self.args.weka_hugepages_memory / GiB)
-        logger.debug("total_compute_memory: %s GiB", total_compute_memory / GiB)
+        log.debug("weka total memory specified by user: %s GiB", self.args.weka_hugepages_memory / GiB)
+        log.debug("total_compute_memory: %s GiB", total_compute_memory / GiB)
         return total_compute_memory
 
     def set_memory(self):
@@ -978,7 +1026,7 @@ class ResourcesGenerator:
         if self.containers[COMPUTE_ROLE]:
             if self.args.minimal_memory:
                 if self.args.compute_memory:
-                    logger.error("minimal-memory and compute-memory cannot be specified together")
+                    log.error("minimal-memory and compute-memory cannot be specified together")
                     quit(1)
                 compute_node_hugepages_memory = DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES
             elif self.args.weka_hugepages_memory:
@@ -995,7 +1043,7 @@ class ResourcesGenerator:
                     compute_nodes_count = len(list(filter(lambda n: n.is_compute(), container.nodes.values())))
                     memory = compute_node_hugepages_memory * compute_nodes_count
                     container.memory = memory
-                    logger.info("allocating %s GiB for %s container, (%s nodes)", memory / GiB, role, compute_nodes_count)
+                    log.info("allocating %s GiB for %s container, (%s nodes)", memory / GiB, role, compute_nodes_count)
                 else:
                     container.memory = 0
 
@@ -1031,17 +1079,17 @@ class ResourcesGenerator:
         relevant_devices = [dev[0] for dev in devices if _is_relevand_device(dev)]
         self.drives = [{"path": "/dev/" + dev} for dev in relevant_devices]
         self.drives.sort(key=lambda s: s["path"])
-        logger.info("Drives to be allocated: %s", self.drives)
+        log.info("Drives to be allocated: %s", self.drives)
 
     def set_specified_drives(self):
         devices = ['/dev/' + dev for dev in os.popen("lsblk -d -o name").read().splitlines()[1:]]
         for dev in self.args.drives:
             if dev not in devices:
-                logger.warning("Drive: %s was not found on the server", dev)
-                logger.warning("Known devices: %s", devices)
+                log.warning("Drive: %s was not found on the server", dev)
+                log.warning("Known devices: %s", devices)
                 self.check_if_should_continue()
             self.drives.append({"path": dev})
-        logger.info("Drives to be allocated: %s", self.drives)
+        log.info("Drives to be allocated: %s", self.drives)
 
     def create_resources_files(self):
         """For each required container generates resources json file"""
@@ -1053,15 +1101,22 @@ class ResourcesGenerator:
                     container.create_json()
                     resources_path = os.path.join(self.args.path, role.lower() + str(i) + '.json')
                     if os.path.isfile(resources_path):
-                        logger.warning("Resources file: %s already exists, continuing the current run will overwrite it" % resources_path)
+                        log.warning("Resources file: %s already exists, continuing the current run will overwrite it" % resources_path)
                         self.check_if_should_continue()
                     with open(resources_path, 'w') as f:
                         f.write(container.resources_json + '\n')
                     resources_filenames_file.write(resources_path + '\n')
 
     def _setup_logging(self):
-        logging.basicConfig(format='%(levelname)s: %(message)s')
-        logger.setLevel(logging.DEBUG if self.args.verbose else logging.INFO)
+        DEBUG_FORMAT="%(asctime)s:%(filename)s:%(lineno)s:%(funcName)s():%(levelname)s:%(message)s"
+        logging.basicConfig(format='%(levelname)s: %(message)s' if not self.args.verbose else DEBUG_FORMAT)
+        log.setLevel(logging.DEBUG if self.args.verbose else logging.INFO)
+
+        # add a new logging handler to capture debug output to a file
+        logfile_handler = logging.FileHandler("resources_generator.log")
+        logfile_handler.setLevel(logging.DEBUG)
+        logfile_handler.setFormatter(logging.Formatter(DEBUG_FORMAT))
+        log.addHandler(logfile_handler)
 
     def generate(self):
         """Run the whole flow from parsing command-line arguments to generate all the required json files"""
