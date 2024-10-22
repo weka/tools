@@ -464,6 +464,8 @@ class ResourcesGenerator:
                             help="Specify the directory path to which the resources files will be written, default is '.'")
         parser.add_argument("--use-only-nic-identifier", action='store_true', dest='use_only_nic_identifier',
                             help="use only the nic identifier when allocating the nics")
+        parser.add_argument("--ucx", action='store_true',
+                            help="Create UCX endpoints for use with Infiniband")
 
         # Create a mutually exclusive group
         group = parser.add_mutually_exclusive_group()
@@ -527,6 +529,8 @@ class ResourcesGenerator:
             mgmt_node = Node(dedicate_core=False, http_port=base_port, rpc_port=base_port)
             mgmt_node.roles.append(MANAGEMENT_ROLE)
             container.nodes[str(slot_id)] = mgmt_node
+            if self.args.ucx:
+                container.ucx = self.args.ucx
             while nodes and slot_id < self.args.max_cores_per_container:
                 slot_id += 1
                 node = nodes.pop()
