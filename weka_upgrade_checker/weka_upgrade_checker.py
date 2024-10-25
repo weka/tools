@@ -28,7 +28,6 @@ if sys.version_info < (3, 7):
 if sys.version_info >= (3, 10):
     try:
         import pkg_resources
-
         pkg_resources.get_distribution("packaging")
     except (pkg_resources.DistributionNotFound, ImportError):
         print("The 'packaging' module is not installed. Installing it now...")
@@ -39,10 +38,11 @@ if sys.version_info >= (3, 10):
 else:
     # For Python versions 3.7 up to 3.9, use distutils
     from distutils.version import LooseVersion as V
-
     parse = V
+    Version = V  # Ensure Version is defined for older versions
+    InvalidVersion = ValueError  # Since distutils doesn't have InvalidVersion, we use a generic exception
 
-pg_version = "1.3.47"
+pg_version = "1.3.48"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
 
@@ -388,24 +388,30 @@ def weka_cluster_checks(skip_mtu_check):
     else:
         GOOD("✅  Weka user login successful")
 
+    def clean_version_string(version_string):
+        """Remove non-numeric suffixes from version string to use with python3.10"""
+        return version_string.split("-")[0]
+
     INFO("WEKA IDENTIFIED")
     weka_info = json.loads(subprocess.check_output(["weka", "status", "-J"]))
     cluster_name = weka_info["name"]
     weka_status = weka_info["status"]
     uuid = weka_info["guid"]
-    weka_version = weka_info["release"]
+    weka_versions = weka_info["release"]
     usable_capacity = weka_info["capacity"]["total_bytes"]
     weka_buckets = weka_info["buckets"]["total"]
 
     GOOD(
-        f"✅  CLUSTER:{cluster_name} STATUS:{weka_status} VERSION:{weka_version} UUID:{uuid}"
+        f"✅  CLUSTER:{cluster_name} STATUS:{weka_status} VERSION:{weka_versions} UUID:{uuid}"
     )
 
-    if any(c.isalpha() for c in weka_version) and not weka_version.endswith("-hcfs"):
+    if any(c.isalpha() for c in weka_versions) and not weka_versions.endswith("-hcfs"):
         INFO("CHECKING WEKA HOTFIX VERSION")
         WARN(
-            f"⚠️  The cluster maybe running a specialized hotfix version of Weka {weka_version}; confirm that required hotfixes are included in upgrade target version."
+            f"⚠️  The cluster maybe running a specialized hotfix version of Weka {weka_versions}; confirm that required hotfixes are included in upgrade target version."
         )
+
+    weka_version = clean_version_string(weka_versions)
 
     class Machine:
         def __init__(self, machine_json):
@@ -1198,14 +1204,20 @@ def weka_cluster_checks(skip_mtu_check):
     ofed_downlevel = []
     current_version = {}
 
+    def clean_version_string(version_string):
+        """Remove non-numeric suffixes from version string."""
+        return version_string.split("-")[0]
+
     def safe_parse(version_string):
         """Try parsing the version using packaging; fallback to LooseVersion."""
+        cleaned_version = clean_version_string(version_string)
         try:
             # Try to parse with packaging's version parser (PEP 440 compliant)
-            return parse(version_string)
+            return parse(cleaned_version)
         except InvalidVersion:
             try:
-                cleaned_version = version_string.replace("-", ".")
+                # Fallback to LooseVersion
+                cleaned_version = cleaned_version.replace("-", ".")
                 return V(cleaned_version)
             except Exception as e:
                 print(f"Failed to parse version '{version_string}': {e}")
@@ -1618,7 +1630,7 @@ def weka_cluster_checks(skip_mtu_check):
             subprocess.check_output(["weka", "debug", "override", "list", "-J"])
         )
         if manual_overrides:
-            WARN("Manual Weka overrides found")
+            WARN("Manual Weka overrides found\n")
             for override in manual_overrides:
                 override_list += [
                     override["override_id"],
@@ -1745,7 +1757,7 @@ def weka_cluster_checks(skip_mtu_check):
         s3_cluster_hosts = json.loads(
             subprocess.check_output(["weka", "s3", "cluster", "status", "-J"])
         )
-        if V(weka_version) <= V("4.2"):
+        if V(weka_version) <= V("4.3"):
             for host, status in s3_cluster_hosts.items():
                 if not status:
                     bad_s3_hosts.append(host)
@@ -1757,7 +1769,7 @@ def weka_cluster_checks(skip_mtu_check):
             if not bad_s3_hosts:
                 GOOD(f'{" " * 5}✅  No failed s3 hosts found')
             else:
-                WARN(f'{" " * 5}⚠️  Found s3 cluster hosts in not ready status:\n')
+                WARN(f'Found s3 cluster hosts in not ready status:\n')
                 for s3host in bad_s3_hosts:
                     for bkhost in backend_hosts:
                         if s3host == bkhost.typed_id:
@@ -1851,7 +1863,7 @@ def weka_cluster_checks(skip_mtu_check):
                 if not bad_nfs_hosts:
                     GOOD(f'{" " * 5}✅  No failed NFS hosts found')
                 else:
-                    WARN(f'{" " * 5} Found NFS cluster hosts in bad status:\n')
+                    WARN(f'Found NFS cluster hosts in bad status:\n')
                     for nfshost in bad_nfs_hosts:
                         for bkhost in backend_hosts:
                             if nfshost == bkhost.typed_id:
@@ -1943,6 +1955,7 @@ def weka_cluster_checks(skip_mtu_check):
         check_version,
         backend_ips,
         s3_status,
+        weka_version
     )
 
 
@@ -2733,7 +2746,7 @@ def protocol_host(backend_hosts, s3_enabled, weka_version):
             subprocess.check_output(["weka", "s3", "cluster", "status", "-J"])
         )
         if weka_s3:
-            if V(weka_version) <= V("4.2"):
+            if V(weka_version) <= V("4.3"):
                 S3 = list(weka_s3)
             else:
                 S3 = [f"HostId<{entry['host_id']}>" for entry in weka_s3]
@@ -3820,7 +3833,7 @@ def main():
         client_hosts = weka_cluster_results[2]
         ssh_cl_hosts = weka_cluster_results[3]
         weka_info = weka_cluster_results[4]
-        weka_version = weka_info["release"]
+        weka_version = weka_cluster_results[8]
         check_version = weka_cluster_results[5]
         backend_ips = weka_cluster_results[6]
         s3_enabled = weka_cluster_results[7]
@@ -3852,7 +3865,7 @@ def main():
         client_hosts = weka_cluster_results[2]
         ssh_cl_hosts = weka_cluster_results[3]
         weka_info = weka_cluster_results[4]
-        weka_version = weka_info["release"]
+        weka_version = weka_cluster_results[8]
         check_version = weka_cluster_results[5]
         backend_ips = weka_cluster_results[6]
         s3_enabled = weka_cluster_results[7]
@@ -3877,7 +3890,7 @@ def main():
         client_hosts = weka_cluster_results[2]
         ssh_cl_hosts = weka_cluster_results[3]
         weka_info = weka_cluster_results[4]
-        weka_version = weka_info["release"]
+        weka_version = weka_cluster_results[8]
         check_version = weka_cluster_results[5]
         backend_ips = weka_cluster_results[6]
         s3_enabled = weka_cluster_results[7]
