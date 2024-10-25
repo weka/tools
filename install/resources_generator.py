@@ -54,6 +54,7 @@ PAGE_2M_SIZE = 2 * MiB
 HUGEPAGE_SIZE_BYTES = PAGE_2M_SIZE
 DPDK_MEM_PER_NODE = 2 * MiB
 DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES = 1.4 * GiB
+#DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES = 700 * MiB
 MIN_OS_RESERVED_MEMORY = 8 * GiB
 FRONTEND_ROLE = "FRONTEND"
 DRIVE_ROLE = "DRIVES"
@@ -427,7 +428,7 @@ class ResourcesGenerator:
                             help="Sets console log level to DEBUG")
         parser.add_argument("-f", "--force", action="count", default=0,
                             help="Force continue in cases of prompts")
-        parser.add_argument("--minimal-memory", action="count", default=0,
+        parser.add_argument("--minimal-memory", action="count",
                             help="Set each container hugepages memory to %s GiB * number of io nodes on the container" %
                                  (DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES / GiB))
         parser.add_argument("--spare-cores", default=1, type=_validate_non_negative,
@@ -868,7 +869,7 @@ class ResourcesGenerator:
         """Return how many bytes cannot be allocated for wekanodes' hugepages"""
         max_reserved_percent = .2  # 20% of total memory
         total_memory_bytes = self._get_total_memory_bytes()
-        log.debug(f"Total memory: {total_memory_bytes / MiB} MiB/{total_memory_bytes / GiB} GiB")
+        log.debug(f"Total memory: {total_memory_bytes / MiB} MiB/{round(total_memory_bytes / GiB,2)} GiB")
         # total_reserve = auto_os_reserved_memory = self._get_os_reserved_memory(total_memory_bytes)
         total_reserve = auto_os_reserved_memory = MIN_OS_RESERVED_MEMORY
 
@@ -906,7 +907,7 @@ class ResourcesGenerator:
         compute_nodes = [n for n in io_nodes if n.is_compute()]
         non_compute_nodes = [n for n in io_nodes if not n.is_compute()]
         num_compute_nodes = len(compute_nodes)
-        log.debug(f"num_compute_nodes: {num_compute_nodes}")
+        log.debug(f"numa_net_memory: {round(numa_net_memory/GiB,2)} GiB, num_compute_nodes: {num_compute_nodes}")
         if num_compute_nodes == 0:
             log.debug("no compute nodes, will return 0")
             return 0
@@ -922,40 +923,47 @@ class ResourcesGenerator:
         #    sys.exit(1)
         #non_compute_nodes_count = len(io_nodes) - num_compute_nodes
         non_compute_nodes_count = len(non_compute_nodes)
+        log.debug(f"non_compute_nodes_count={non_compute_nodes_count}")
         # do non-compute nodes really allocate hugepages? (vince)   also, do rounding
-        #non_compute_nodes_hugepage = DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES * non_compute_nodes_count
-        non_compute_nodes_hugepage = ((DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES * non_compute_nodes_count) /
-                                     (HUGEPAGE_SIZE_BYTES + OVERHEAD_PER_HUGEPAGE)) * HUGEPAGE_SIZE_BYTES
+        non_compute_nodes_hugepage = DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES * non_compute_nodes_count
+        # this calculation make the non_compute_nodes_hugepage *smaller*
+        #non_compute_nodes_hugepage = ((DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES * non_compute_nodes_count) /
+        #                             (HUGEPAGE_SIZE_BYTES + OVERHEAD_PER_HUGEPAGE)) * HUGEPAGE_SIZE_BYTES
         non_compute_nodes_rss = self._estimate_nodes_resident_memory_size(nodes=[n for n in io_nodes if not n.is_compute()])
 
         log.debug("non_compute_nodes_hugepage=%s GiB (%s non compute nodes)",
-                     non_compute_nodes_hugepage/ GiB, non_compute_nodes_count)
+                     round(non_compute_nodes_hugepage/ GiB,2), non_compute_nodes_count)
         log.debug(f"non_compute_nodes_rss={non_compute_nodes_rss / GiB} GiB")
 
         available_hugepage_for_compute = available - non_compute_nodes_hugepage
-        log.debug("available_hugepage_for_compute=%s GiB", available_hugepage_for_compute / GiB)
+        log.debug("available_hugepage_for_compute=%s GiB", round(available_hugepage_for_compute / GiB,2))
 
         # round up hugepages to full pages, accounting for overhead (do same for non-compute hugepages?)
         #hugepages_count = available_hugepage_for_compute / (HUGEPAGE_SIZE_BYTES + OVERHEAD_PER_HUGEPAGE)
+        hugepage_overhead = (HUGEPAGE_SIZE_BYTES + OVERHEAD_PER_HUGEPAGE) / HUGEPAGE_SIZE_BYTES
+        hugepage_overhead_factor = HUGEPAGE_SIZE_BYTES / (HUGEPAGE_SIZE_BYTES + OVERHEAD_PER_HUGEPAGE)
+        log.debug(f"hugepage_overhead: {hugepage_overhead}, factor: {hugepage_overhead_factor}")
         #hugepages_memory = hugepages_count * HUGEPAGE_SIZE_BYTES
         hugepages_memory = (available_hugepage_for_compute /
                             (HUGEPAGE_SIZE_BYTES + OVERHEAD_PER_HUGEPAGE)) * HUGEPAGE_SIZE_BYTES
-
-        per_compute_node_memory = hugepages_memory / num_compute_nodes
-        log.debug(f"per_compute_node_memory={per_compute_node_memory / GiB} GiB")
+        log.debug(f"hugepages_memory={round(hugepages_memory/GiB,2)} GiB")
+        per_compute_node_hp_memory = hugepages_memory / num_compute_nodes
+        log.debug(f"per_compute_node_hp_memory={round(per_compute_node_hp_memory / GiB,2)} GiB")
         #return max(DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES, per_compute_node_memory) # don't return default (vince)
-        available_for_compute = numa_net_memory - non_compute_nodes_rss - non_compute_nodes_hugepage
-        needed_per_compute = WEKANODE_BUCKET_PROCESS_MEMORY + DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES
-        supportable_compute = available_for_compute / needed_per_compute
-        if per_compute_node_memory < DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES:
+
+        # Try to calculate what the max number of cores should be
+        #available_for_compute = numa_net_memory - non_compute_nodes_rss - non_compute_nodes_hugepage
+        #needed_per_compute = WEKANODE_BUCKET_PROCESS_MEMORY + DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES
+        #supportable_compute = available_for_compute / needed_per_compute
+        #if per_compute_node_hp_memory < DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES:
             # we don't have enough ram to support the requested number of compute nodes
-            log.debug(f"available_for_compute={available_for_compute/GiB} GiB, needed_per_compute={needed_per_compute/GiB} GiB")
-            log.error(f"Not enough memory to support {num_compute_nodes} cores: max is {int(supportable_compute)} cores")
-            sys.exit(1)
-        log.debug(
-            f"available_for_compute={available_for_compute / GiB} GiB, min needed_per_compute={needed_per_compute / GiB} GiB")
-        log.debug(f"can support up to {int(supportable_compute)} cores")
-        return per_compute_node_memory
+            #log.debug(f"available_for_compute={round(available_for_compute/GiB,2)} GiB, needed_for_compute={round(needed_per_compute/GiB * num_compute_nodes,2)} GiB")
+            #log.error(f"Not enough memory to support {num_compute_nodes} cores: max is {int(supportable_compute)} cores")
+            #sys.exit(1)
+        #log.debug(
+        #    f"available_for_compute={round(available_for_compute / GiB,2)} GiB, min needed_per_compute={round(needed_per_compute / GiB,2)} GiB")
+        #log.debug(f"can support up to {int(supportable_compute)} cores")
+        return per_compute_node_hp_memory
 
     def _get_compute_slot_memory_requirement(self):
         long_max = minimal_per_compute_node_memory = sys.maxsize
@@ -964,15 +972,15 @@ class ResourcesGenerator:
         reserved_memory_per_numa = total_reserved / numa_nodes_count
         log.debug("reserved memory: %s MiB", total_reserved / MiB)
         log.debug("numa_nodes_count: %s", numa_nodes_count)
-        log.debug("reserved_memory_per_numa: %s MiB", reserved_memory_per_numa / MiB)
+        log.debug(f"reserved_memory_per_numa: {round(reserved_memory_per_numa / MiB, 2)} MiB")
         for numa in self.numa_nodes_info:
             io_nodes_on_numa = self.numa_to_ionodes[numa.id]
             log.info("%s io nodes on NUMA %s", len(io_nodes_on_numa), numa.id)
             numa_non_reserved_memory = numa.memory - reserved_memory_per_numa
-            log.debug(f"non-reserved memory on numa {numa.id}: {numa_non_reserved_memory/MiB} MiB / {numa_non_reserved_memory/GiB} GiB")
+            log.debug(f"non-reserved memory on numa {numa.id}: {round(numa_non_reserved_memory/MiB,2)} MiB / {round(numa_non_reserved_memory/GiB,2)} GiB")
             per_compute_node_memory = self._get_hugepages_memory_per_compute_node(numa.memory - reserved_memory_per_numa, io_nodes_on_numa)
             log.debug("_get_compute_slot_memory_requirement: per_compute_node_memory: %s MiB / %s GiB, (numa %s)",
-                      per_compute_node_memory / MiB, per_compute_node_memory / GiB, numa.id)
+                      round(per_compute_node_memory / MiB,2), round(per_compute_node_memory / GiB,2), numa.id)
             if per_compute_node_memory == 0:
                 log.debug("No compute nodes on NUMA %s", numa.id)
                 continue
@@ -981,20 +989,21 @@ class ResourcesGenerator:
             if minimal_per_compute_node_memory <= DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES:
                 # If the memory for compute nodes is already at the minimum, we can stop iterating
                 log.debug("NUMA %s minimal_per_compute_node_memory (%s GiB) is now at the minimum, stopping the search",
-                             numa.id, minimal_per_compute_node_memory / GiB)
+                             numa.id, round(minimal_per_compute_node_memory / GiB, 2))
                 break
 
         if minimal_per_compute_node_memory == long_max:
             # If no value was determined for some reason (e.g not enough memory on any numa)
+            log.info(f"*** Overriding Hugepage Calculations, and using default! ***")
             minimal_per_compute_node_memory = DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES
         log.debug("minimal_per_compute_node_memory=%s GiB = %s B", minimal_per_compute_node_memory / GiB, minimal_per_compute_node_memory)
         return int(minimal_per_compute_node_memory)
 
     def _get_validated_compute_memory_arg(self, specified_compute_memory):
-        auto_compute_node_hugaepages_memory = self._get_compute_slot_memory_requirement()
+        auto_compute_node_hugepages_memory = self._get_compute_slot_memory_requirement()
         compute_nodes_count = len(self.compute_nodes)
-        compute_node_hugaepages_memory = int(specified_compute_memory / compute_nodes_count)
-        if compute_node_hugaepages_memory > auto_compute_node_hugaepages_memory:
+        compute_node_hugepages_memory = int(specified_compute_memory / compute_nodes_count)
+        if compute_node_hugepages_memory > auto_compute_node_hugepages_memory:
             log.warning("The specified memory per compute node is higher than the automatically computed value. "
                            "That might result in some lack of memory on 1 or more numa nodes for some containers")
             self.check_if_should_continue()
@@ -1004,14 +1013,14 @@ class ResourcesGenerator:
                 "Total requested memory for compute nodes: %s GiB is higher than available memory found on this server: %s GiB",
                 specified_compute_memory, available_memory)
             self.check_if_should_continue()
-        if compute_node_hugaepages_memory <= 0:
+        if compute_node_hugepages_memory <= 0:
             log.error("Not enough memory for compute nodes")
             quit(1)
-        if compute_node_hugaepages_memory < DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES:
+        if compute_node_hugepages_memory < DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES:
             log.warning("The requested memory per compute node: %s GiB is lower than the default minimum: %s GiB",
-                           compute_node_hugaepages_memory / GiB, DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES / GiB)
+                           compute_node_hugepages_memory / GiB, DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES / GiB)
             self.check_if_should_continue()
-        return compute_node_hugaepages_memory
+        return compute_node_hugepages_memory
 
     def _get_compute_mem_from_specified_total(self):
         non_compute_ionodes_counter = len(self.drive_nodes + self.frontend_nodes)
@@ -1023,19 +1032,23 @@ class ResourcesGenerator:
 
     def set_memory(self):
         """Determine how much memory will be allocated for compute nodes, and set memory member of each container"""
+        log.debug("Setting Memory")
         if self.containers[COMPUTE_ROLE]:
             if self.args.minimal_memory:
                 if self.args.compute_memory:
                     log.error("minimal-memory and compute-memory cannot be specified together")
                     quit(1)
-                compute_node_hugepages_memory = DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES
+                # Force it to the minimum
+                compute_node_hugepages_memory = DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES * GiB
             elif self.args.weka_hugepages_memory:
                 compute_memory = self._get_compute_mem_from_specified_total()
                 compute_node_hugepages_memory = self._get_validated_compute_memory_arg(compute_memory)
             else:
-                compute_node_hugepages_memory = self._get_compute_slot_memory_requirement()
                 if self.args.compute_memory:  # user specified compute-memory
                     compute_node_hugepages_memory = self._get_validated_compute_memory_arg(self.args.compute_memory)
+                else:
+                    compute_node_hugepages_memory = self._get_compute_slot_memory_requirement()
+            log.debug(f"compute_node_hugepages_memory={round(compute_node_hugepages_memory/GiB,2)} GiB")
 
         for role in self.containers:
             for container in self.containers[role]:
@@ -1109,8 +1122,16 @@ class ResourcesGenerator:
 
     def _setup_logging(self):
         DEBUG_FORMAT="%(asctime)s:%(filename)s:%(lineno)s:%(funcName)s():%(levelname)s:%(message)s"
-        logging.basicConfig(format='%(levelname)s: %(message)s' if not self.args.verbose else DEBUG_FORMAT)
-        log.setLevel(logging.DEBUG if self.args.verbose else logging.INFO)
+        console_format='%(levelname)s: %(message)s' if not self.args.verbose else DEBUG_FORMAT
+        #logging.basicConfig(format='%(levelname)s: %(message)s' if not self.args.verbose else DEBUG_FORMAT)
+        # create handler to log to console
+        console_handler = logging.StreamHandler()
+        console_handler.setFormatter(logging.Formatter(console_format))
+        log.addHandler(console_handler)
+
+        print(f"verbose={self.args.verbose}")
+        log_level=logging.DEBUG if self.args.verbose else logging.INFO
+        log.setLevel(log_level)
 
         # add a new logging handler to capture debug output to a file
         logfile_handler = logging.FileHandler("resources_generator.log")
