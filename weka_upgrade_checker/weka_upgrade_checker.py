@@ -20,7 +20,7 @@ from collections import Counter, defaultdict
 
 warnings.filterwarnings("ignore", category=DeprecationWarning, module="distutils")
 
-if sys.version_info < (3, 7):
+if sys.version_info < (3,7):
     print("Must have Python version 3.7 or later installed.")
     sys.exit(1)
 
@@ -42,7 +42,7 @@ else:
     Version = V  # Ensure Version is defined for older versions
     InvalidVersion = ValueError  # Since distutils doesn't have InvalidVersion, we use a generic exception
 
-pg_version = "1.3.48"
+pg_version = "1.3.49"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
 
@@ -1757,7 +1757,7 @@ def weka_cluster_checks(skip_mtu_check):
         s3_cluster_hosts = json.loads(
             subprocess.check_output(["weka", "s3", "cluster", "status", "-J"])
         )
-        if V(weka_version) <= V("4.3"):
+        if V(weka_version) <= V("4.4"):
             for host, status in s3_cluster_hosts.items():
                 if not status:
                     bad_s3_hosts.append(host)
@@ -1766,27 +1766,27 @@ def weka_cluster_checks(skip_mtu_check):
                 if host["service_status"] != "Ready":
                     bad_s3_hosts.append(f"HostId<{host['host_id']}>")
 
-            if not bad_s3_hosts:
-                GOOD(f'{" " * 5}✅  No failed s3 hosts found')
-            else:
-                WARN(f'Found s3 cluster hosts in not ready status:\n')
-                for s3host in bad_s3_hosts:
-                    for bkhost in backend_hosts:
-                        if s3host == bkhost.typed_id:
-                            failed_s3host.append(
-                                dict(
-                                    id=bkhost.typed_id,
-                                    hostname=bkhost.hostname,
-                                    ip=bkhost.ip,
-                                    version=bkhost.sw_version,
-                                    mode=bkhost.mode,
-                                )
+        if not bad_s3_hosts:
+            GOOD(f'{" " * 5}✅  No failed s3 hosts found')
+        else:
+            WARN(f'Found s3 cluster hosts in not ready status:\n')
+            for s3host in bad_s3_hosts:
+                for bkhost in backend_hosts:
+                    if s3host == bkhost.typed_id:
+                        failed_s3host.append(
+                            dict(
+                                id=bkhost.typed_id,
+                                hostname=bkhost.hostname,
+                                ip=bkhost.ip,
+                                version=bkhost.sw_version,
+                                mode=bkhost.mode,
                             )
+                        )
 
-                for host_info in failed_s3host:
-                    WARN(
-                        f'{" " * 5}⚠️  Host: {host_info["id"]} {host_info["hostname"]} {host_info["ip"]} {host_info["version"]} {host_info["mode"]}'
-                    )
+            for host_info in failed_s3host:
+                WARN(
+                    f'{" " * 5}⚠️  Host: {host_info["id"]} {host_info["hostname"]} {host_info["ip"]} {host_info["version"]} {host_info["mode"]}'
+                )
 
     if s3_status:
         INFO("CHECKING WEKA S3 MOUNT OPTIONS")
@@ -2746,7 +2746,7 @@ def protocol_host(backend_hosts, s3_enabled, weka_version):
             subprocess.check_output(["weka", "s3", "cluster", "status", "-J"])
         )
         if weka_s3:
-            if V(weka_version) <= V("4.3"):
+            if V(weka_version) < V("4.4"):
                 S3 = list(weka_s3)
             else:
                 S3 = [f"HostId<{entry['host_id']}>" for entry in weka_s3]
@@ -3244,7 +3244,8 @@ def backend_host_checks(
             "weka_driver",
         }
         subdirectories = [
-            d for d in os.listdir(data_dir) if "_" not in d and d not in excluded_dirs
+            d for d in subprocess.check_output(['sudo', 'ls', data_dir]).decode().splitlines()
+            if "_" not in d and d not in excluded_dirs
         ]
 
         commands = [
