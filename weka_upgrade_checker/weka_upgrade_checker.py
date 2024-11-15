@@ -42,7 +42,7 @@ else:
     Version = V  # Ensure Version is defined for older versions
     InvalidVersion = ValueError  # Since distutils doesn't have InvalidVersion, we use a generic exception
 
-pg_version = "1.3.49"
+pg_version = "1.3.50"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
 
@@ -456,19 +456,42 @@ def weka_cluster_checks(skip_mtu_check):
         logging.error(f"Failed to parse JSON: {e}")
         WARN("⚠️  Failed to decode Weka alerts JSON")
 
-    INFO("VERIFYING CUSTOM SSL CERT")
+    INFO("VERIFYING CUSTOM TLS CERT")
     try:
-        file_path = f"/opt/weka/dist/release/{weka_version}.spec"
+        file_path = os.path.abspath(f"/opt/weka/dist/release/{weka_versions}.spec")
         with open(file_path, "r") as file:
             content = file.read()
             if "SSL_CERT_FILE" in content:
                 BAD(
-                    "❌  Custom ssl certificate detected, please contact Weka Support before upgrading"
+                    "❌  Custom tls certificate detected, please contact Weka Support before upgrading"
                 )
             else:
-                GOOD("✅  No custom ssl certificate found")
+                GOOD("✅  No custom tls certificate found")
     except FileNotFoundError:
-        BAD("❌  Unable to determine if custom ssl certificate is installed.")
+        BAD("❌  Unable to determine if custom tls certificate is installed.")
+
+    INFO("VALIDATING SSL CERT KEY SIZE")
+    cert = os.path.abspath("/opt/weka/data/drives0/tls/certificate.pem")
+    if not os.path.exists(cert):
+        WARN(f"⚠️  Certificate file does not exist: {cert}")
+    else:
+        try:
+            # Run openssl command to get certificate details
+            result = subprocess.run(
+                ["openssl", "x509", "-in", cert, "-noout", "-text"],
+                capture_output=True, text=True, check=True
+            )
+            match = re.search(r"Public-Key: \((\d+) bit\)", result.stdout)
+            if match:
+                key_size = int(match.group(1))
+                if key_size < 2048:
+                    BAD(f"❌  SSL cert key size is smaller than 2048 bits: current size {key_size} bits")
+                else:
+                    GOOD(f"✅  SSL cert key size is 2048 bits or larger: current size {key_size} bits")
+            else:
+                WARN("⚠️  Could not find key size in the certificate.")
+        except subprocess.CalledProcessError:
+            WARN("⚠️  Failed to read the certificate. Ensure the file path is correct and openssl is installed.")
 
     INFO("CHECKING REBUILD STATUS")
     rebuild_status = json.loads(
@@ -805,7 +828,7 @@ def weka_cluster_checks(skip_mtu_check):
         spinner = Spinner("  Processing Data   ", color=colors.OKCYAN)
         spinner.start()
 
-        if V(weka_version) >= V("4.0"):
+        if V(weka_version) >= V("4.0.5.39"):
             drive_process_ids = json.loads(
                 subprocess.check_output(
                     ["weka", "cluster", "process", "-b", "-F", "role=DRIVES", "-J"]
@@ -1757,7 +1780,7 @@ def weka_cluster_checks(skip_mtu_check):
         s3_cluster_hosts = json.loads(
             subprocess.check_output(["weka", "s3", "cluster", "status", "-J"])
         )
-        if V(weka_version) <= V("4.4"):
+        if V(weka_version) < V("4.3.5.105"):
             for host, status in s3_cluster_hosts.items():
                 if not status:
                     bad_s3_hosts.append(host)
@@ -2746,7 +2769,7 @@ def protocol_host(backend_hosts, s3_enabled, weka_version):
             subprocess.check_output(["weka", "s3", "cluster", "status", "-J"])
         )
         if weka_s3:
-            if V(weka_version) < V("4.4"):
+            if V(weka_version) < V("4.3.5.105"):
                 S3 = list(weka_s3)
             else:
                 S3 = [f"HostId<{entry['host_id']}>" for entry in weka_s3]
