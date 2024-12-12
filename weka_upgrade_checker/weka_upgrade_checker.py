@@ -20,7 +20,7 @@ from collections import Counter, defaultdict
 
 warnings.filterwarnings("ignore", category=DeprecationWarning, module="distutils")
 
-if sys.version_info < (3,7):
+if sys.version_info < (3, 7):
     print("Must have Python version 3.7 or later installed.")
     sys.exit(1)
 
@@ -28,6 +28,7 @@ if sys.version_info < (3,7):
 if sys.version_info >= (3, 10):
     try:
         import pkg_resources
+
         pkg_resources.get_distribution("packaging")
     except (pkg_resources.DistributionNotFound, ImportError):
         print("The 'packaging' module is not installed. Installing it now...")
@@ -38,11 +39,12 @@ if sys.version_info >= (3, 10):
 else:
     # For Python versions 3.7 up to 3.9, use distutils
     from distutils.version import LooseVersion as V
+
     parse = V
     Version = V  # Ensure Version is defined for older versions
     InvalidVersion = ValueError  # Since distutils doesn't have InvalidVersion, we use a generic exception
 
-pg_version = "1.3.50"
+pg_version = "1.4"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
 
@@ -367,11 +369,21 @@ def weka_cluster_checks(skip_mtu_check):
 
     INFO("VERIFYING WEKA LOCAL CONTAINER STATUS")
     running_container = []
-    con_status = json.loads(subprocess.check_output(["weka", "local", "status", "-J"]))
+    try:
+        con_status = subprocess.check_output(
+            ["weka", "local", "status", "-J"], stderr=subprocess.STDOUT
+        )
+        con_status = con_status.decode("utf-8").strip()
+        if not con_status:
+            raise ValueError("Empty output from 'weka local status -J'")
+        con_status = json.loads(con_status)
+    except (subprocess.CalledProcessError, ValueError, json.JSONDecodeError) as e:
+        BAD(f"❌  Error checking Weka local container status: {str(e)}")
+        sys.exit(1)
+
     for container in con_status:
-        if (
-            con_status[container]["type"] == "weka"
-            and con_status[container]["isRunning"]
+        if con_status[container].get("type") == "weka" and con_status[container].get(
+            "isRunning"
         ):
             GOOD("✅  Weka local container is running")
             running_container += [container]
@@ -400,6 +412,7 @@ def weka_cluster_checks(skip_mtu_check):
     weka_versions = weka_info["release"]
     usable_capacity = weka_info["capacity"]["total_bytes"]
     weka_buckets = weka_info["buckets"]["total"]
+    link_type = weka_info["net"]["link_layer"]
 
     GOOD(
         f"✅  CLUSTER:{cluster_name} STATUS:{weka_status} VERSION:{weka_versions} UUID:{uuid}"
@@ -479,19 +492,27 @@ def weka_cluster_checks(skip_mtu_check):
             # Run openssl command to get certificate details
             result = subprocess.run(
                 ["openssl", "x509", "-in", cert, "-noout", "-text"],
-                capture_output=True, text=True, check=True
+                capture_output=True,
+                text=True,
+                check=True,
             )
             match = re.search(r"Public-Key: \((\d+) bit\)", result.stdout)
             if match:
                 key_size = int(match.group(1))
                 if key_size < 2048:
-                    BAD(f"❌  SSL cert key size is smaller than 2048 bits: current size {key_size} bits")
+                    BAD(
+                        f"❌  SSL cert key size is smaller than 2048 bits: current size {key_size} bits"
+                    )
                 else:
-                    GOOD(f"✅  SSL cert key size is 2048 bits or larger: current size {key_size} bits")
+                    GOOD(
+                        f"✅  SSL cert key size is 2048 bits or larger: current size {key_size} bits"
+                    )
             else:
                 WARN("⚠️  Could not find key size in the certificate.")
         except subprocess.CalledProcessError:
-            WARN("⚠️  Failed to read the certificate. Ensure the file path is correct and openssl is installed.")
+            WARN(
+                "⚠️  Failed to read the certificate. Ensure the file path is correct and openssl is installed."
+            )
 
     INFO("CHECKING REBUILD STATUS")
     rebuild_status = json.loads(
@@ -1033,6 +1054,10 @@ def weka_cluster_checks(skip_mtu_check):
         WARN(f"Failed WEKA processes detected\n")
         printlist(down_node, 5)
 
+    obj_store_enabled = json.loads(
+        subprocess.check_output(["weka", "fs", "tier", "s3", "-J"])
+    )
+
     # need to check element names
     INFO("VERIFYING WEKA FS SNAPSHOTS UPLOAD STATUS")
     weka_snapshot = json.loads(
@@ -1322,7 +1347,6 @@ def weka_cluster_checks(skip_mtu_check):
 
     if V("3.13") <= V(weka_version) < V("3.14"):
         INFO("VERIFYING UPGRADE ELIGIBILITY")
-        link_type = weka_info["net"]["link_layer"]
         if link_type != "ETH":
             WARN(f"⚠️  Must upgrade to 3.14.3.16")
         elif ofed_downlevel:
@@ -1792,7 +1816,7 @@ def weka_cluster_checks(skip_mtu_check):
         if not bad_s3_hosts:
             GOOD(f'{" " * 5}✅  No failed s3 hosts found')
         else:
-            WARN(f'Found s3 cluster hosts in not ready status:\n')
+            WARN(f"Found s3 cluster hosts in not ready status:\n")
             for s3host in bad_s3_hosts:
                 for bkhost in backend_hosts:
                     if s3host == bkhost.typed_id:
@@ -1886,7 +1910,7 @@ def weka_cluster_checks(skip_mtu_check):
                 if not bad_nfs_hosts:
                     GOOD(f'{" " * 5}✅  No failed NFS hosts found')
                 else:
-                    WARN(f'Found NFS cluster hosts in bad status:\n')
+                    WARN(f"Found NFS cluster hosts in bad status:\n")
                     for nfshost in bad_nfs_hosts:
                         for bkhost in backend_hosts:
                             if nfshost == bkhost.typed_id:
@@ -1978,7 +2002,9 @@ def weka_cluster_checks(skip_mtu_check):
         check_version,
         backend_ips,
         s3_status,
-        weka_version
+        weka_version,
+        link_type,
+        obj_store_enabled,
     )
 
 
@@ -2630,21 +2656,23 @@ def free_space_check_data(results):
     for host_name, result in results:
         with results_lock:
             if host_name not in results_by_host:
-                results_by_host[host_name] = {'sizes': [], 'used': 0}
+                results_by_host[host_name] = {"sizes": [], "used": 0}
 
             try:
-                weka_partition_size, weka_partition_used = map(int, result.strip().split(":"))
-                if not results_by_host[host_name]['sizes']:
-                    results_by_host[host_name]['sizes'].append(weka_partition_size)
-                results_by_host[host_name]['used'] += weka_partition_used
+                weka_partition_size, weka_partition_used = map(
+                    int, result.strip().split(":")
+                )
+                if not results_by_host[host_name]["sizes"]:
+                    results_by_host[host_name]["sizes"].append(weka_partition_size)
+                results_by_host[host_name]["used"] += weka_partition_used
             except ValueError:
-                WARN(f'⚠️  Could not parse space data for host: {host_name}')
+                WARN(f"⚠️  Could not parse space data for host: {host_name}")
                 continue
 
     for host_name, data in results_by_host.items():
-        if data['sizes']:
-            weka_partition_size = data['sizes'][0]
-            total_weka_used = data['used']
+        if data["sizes"]:
+            weka_partition_size = data["sizes"][0]
+            total_weka_used = data["used"]
             free_capacity_needed = total_weka_used * 1.5
 
             if free_capacity_needed > weka_partition_size:
@@ -2843,7 +2871,21 @@ def client_web_test(results):
             )
 
 
-def invalid_endpoints(host_name, result, backend_ips):
+backend_containers = json.loads(
+    subprocess.check_output(["weka", "cluster", "container", "-b", "-J"])
+)
+
+backend_ips_set = [
+    ip
+    for entry in backend_containers
+    if isinstance(entry, dict)
+    for ip in entry.get("ips", [])
+]
+
+
+def invalid_endpoints(host_name, result, backend_ips_set):
+    backend_ips_set = set([ip for entry in backend_containers for ip in entry["ips"]])
+
     result = (
         result.replace(", ]}]", "]}]")
         .replace("container", '"container"')
@@ -2852,21 +2894,24 @@ def invalid_endpoints(host_name, result, backend_ips):
         .replace("},", '",')
     )
 
-    result = result.split("\n")[:]
+    result_lines = result.split("\n")
 
-    def ip_by_containers(result):
-        INFO2("{}Validating endpoint-ips on host {}:".format(" " * 2, host_name))
-        for line in result:
+    ip_by_containers(host_name, result_lines, backend_ips_set)
+
+
+def ip_by_containers(host_name, result_lines, backend_ips_set):
+    INFO2(f"  Validating endpoint-ips on host {host_name}:")
+    for line in result_lines:
+        try:
             endpoint_data = json.loads(line)
-            bad_backend_ip = []
-            for container, ips in endpoint_data:
-                container = endpoint_data[0]["container"]
-                ips = endpoint_data[0]["ip"]
-                for ip in ips:
-                    if ip not in backend_ips or ip == "0.0.0.0":
-                        bad_backend_ip += [ip]
+            for entry in endpoint_data:
+                container = entry["container"]
+                ips = set(entry["ip"])
 
-                if bad_backend_ip == []:
+                bad_backend_ip = [
+                    ip for ip in ips if ip not in backend_ips_set or ip == "0.0.0.0"
+                ]
+                if not bad_backend_ip:
                     GOOD(
                         f'{" " * 5}✅  No invalid endpoint ips found on host: {host_name} container: {container}'
                     )
@@ -2875,8 +2920,8 @@ def invalid_endpoints(host_name, result, backend_ips):
                         f'{" " * 5}⚠️  Invalid endpoint ips found on host: {host_name} container: '
                         + f"{container} invalid ips: {bad_backend_ip}"
                     )
-
-    ip_by_containers(result)
+        except json.JSONDecodeError:
+            WARN(f"  ⚠️  Failed to decode JSON line: {line}")
 
 
 all_secrets = []
@@ -3267,7 +3312,10 @@ def backend_host_checks(
             "weka_driver",
         }
         subdirectories = [
-            d for d in subprocess.check_output(['sudo', 'ls', data_dir]).decode().splitlines()
+            d
+            for d in subprocess.check_output(["sudo", "ls", data_dir])
+            .decode()
+            .splitlines()
             if "_" not in d and d not in excluded_dirs
         ]
 
@@ -3788,24 +3836,233 @@ def cluster_summary():
     BAD(f'{" " * 5}❌  Total Checks Failed: {num_bad}')
 
 
+def check_known_issues(
+    upgrade_hops,
+    known_issues_file,
+    s3_enabled,
+    weka_nfs,
+    weka_smb,
+    link_type,
+    obj_store_enabled,
+):
+    """
+    Checks each version in the upgrade hops list against known issues,
+    considering configured protocols, link type, version_from, and object store status.
+    The upgrade map requires upgrade_path.json and the code traverses from bottom to top in the list or oldest to newest from that list.
+    Once the upgrade path is determined then we check for any know issues outlined in known_issues.json.
+    """
+    try:
+        with open(known_issues_file, "r") as file:
+            known_issues = json.load(file)
+
+        if not isinstance(known_issues, dict):
+            WARN(
+                f"Error: Invalid format in {known_issues_file}. Expected a dictionary."
+            )
+            return
+
+        # Determine enabled protocols
+        enabled_protocols = set()
+        if s3_enabled:
+            enabled_protocols.add("s3")
+        if weka_nfs:
+            enabled_protocols.add("nfs")
+        if weka_smb:
+            enabled_protocols.add("smb")
+
+        for i, version in enumerate(upgrade_hops):
+            issues = known_issues.get(version, [])
+            if not issues:
+                print(
+                    f"{colors.OKCYAN}No known issues for version {version}.{colors.ENDC}"
+                )
+                continue
+
+            # Set previous_version to the current version if it's the only version in the path
+            previous_version = upgrade_hops[i - 1] if i > 0 else upgrade_hops[0]
+
+            WARN(f"\nKnown issues for version {version}:\n")
+            for issue in issues:
+                description = issue.get("description", "No description available.")
+                related_protocols = set(issue.get("related_protocols", []))
+                related_link_types = set(issue.get("link_types", []))
+                version_from = issue.get("version_from", [])
+                requires_obj_store = issue.get("obj_store", False)
+
+                # Normalize version_from to a list
+                if not isinstance(version_from, list):
+                    version_from = [version_from]
+
+                # Initialize skipped reason
+                skipped_reason = []
+
+                # Check if the current version matches any version_from values
+                if version_from:
+                    if not any(V(previous_version) == V(vf) for vf in version_from):
+                        skipped_reason.append(
+                            f"Upgrade not from expected version(s): {', '.join(version_from)}"
+                        )
+
+                # Check protocols
+                if related_protocols and not (related_protocols & enabled_protocols):
+                    skipped_reason.append(
+                        f"Protocols not enabled: {', '.join(related_protocols)}"
+                    )
+
+                # Check link type
+                if related_link_types and link_type not in related_link_types:
+                    skipped_reason.append(
+                        f"Link type mismatch: {', '.join(related_link_types)}"
+                    )
+
+                # Check object store
+                if requires_obj_store and not obj_store_enabled:
+                    skipped_reason.append("Object store not enabled")
+
+                # Print issue or skipped reason
+                if not skipped_reason:
+                    WARN(f'{" " * 5}⚠️   {description}')
+                else:
+                    GOOD(
+                        f'{" " * 5}✅  [SKIPPED] {description} ({" + ".join(skipped_reason)})'
+                    )
+
+    except FileNotFoundError:
+        WARN(f"Error: {known_issues_file} not found.")
+    except json.JSONDecodeError:
+        WARN(f"Error: {known_issues_file} contains invalid JSON.")
+
+
+def target_version_check(
+    weka_version,
+    target_version,
+    upgrade_path,
+    s3_enabled,
+    weka_nfs,
+    weka_smb,
+    link_type,
+    obj_store_enabled,
+):
+    INFO("VALIDATING UPGRADE PATH AND KNOWN ISSUES")
+
+    def load_upgrade_map(upgrade_path):
+        try:
+            with open(upgrade_path, "r") as f:
+                upgrade_map = json.load(f)
+
+            # Validate the structure of upgrade_map
+            for ver, min_ver in upgrade_map.items():
+                if not isinstance(min_ver, list) or len(min_ver) == 0:
+                    WARN(f"Invalid entry in upgrade_map for version {ver}: {min_ver}")
+
+            return upgrade_map
+
+        except FileNotFoundError:
+            WARN(f"Error: Upgrade path file '{upgrade_path}' not found.")
+            return {}
+        except json.JSONDecodeError:
+            WARN(f"Error: Failed to parse JSON file '{upgrade_path}'.")
+            return {}
+        except ValueError as e:
+            WARN(f"Error in upgrade map: {e}")
+            return {}
+
+    def parse_version(version):
+        """Converts a version string into a Version object for comparison."""
+        return V(version)
+
+    def find_upgrade_path(weka_version, target_version, upgrade_map):
+        path = [weka_version]  # Start the path with the current version
+        weka_version = parse_version(weka_version)
+        target_version = parse_version(target_version)
+
+        while weka_version < target_version:
+            next_versions = [
+                (ver, parse_version(ver))
+                for ver, min_ver in upgrade_map.items()
+                if isinstance(min_ver, list)
+                and len(min_ver) > 0
+                and parse_version(min_ver[0]) <= weka_version
+                and parse_version(ver) > weka_version
+            ]
+
+            if not next_versions:
+                WARN(f"No valid upgrade path from {weka_version} to {target_version}")
+                return []
+
+            next_version = max(next_versions, key=lambda v: v[1])[0]
+            path.append(next_version)
+            weka_version = parse_version(next_version)
+
+        if weka_version != target_version:
+            WARN(f"Could not reach target version {target_version} from {weka_version}")
+
+        return path
+
+    try:
+        upgrade_map = load_upgrade_map(upgrade_path)
+        if not upgrade_map:
+            WARN(
+                "Invalid or empty upgrade map. Ensure upgrade_path.json exists and not empty."
+            )
+            return
+
+        upgrade_hops = find_upgrade_path(weka_version, target_version, upgrade_map)
+
+        if isinstance(upgrade_hops, list):
+            if len(upgrade_hops) >= 1:
+                total_hops = len(upgrade_hops) - 1
+                if total_hops == 1:
+                    total_hops = "Direct path upgrade"
+                    print(
+                        f"{colors.OKCYAN}Total upgrade hops: {total_hops}.{colors.ENDC}"
+                    )
+                elif len(upgrade_hops) > 1:
+                    print(
+                        f"{colors.OKCYAN}Total upgrade hops: {total_hops}.{colors.ENDC}"
+                    )
+
+            print(
+                f"{colors.OKCYAN}Upgrade path: {' > '.join(upgrade_hops)}{colors.ENDC}"
+            )
+
+            # Check for known issues with protocol filtering
+            check_known_issues(
+                upgrade_hops,
+                "known_issues.json",
+                s3_enabled,
+                weka_nfs,
+                weka_smb,
+                link_type,
+                obj_store_enabled,
+            )
+        else:
+            WARN("Error: Upgrade path is not a valid list.")
+    except (FileNotFoundError, ValueError) as e:
+        WARN("Error:", e)
+
+
 def main():
-    parser = argparse.ArgumentParser(description="Weka Upgrade Checker")
+
+    parser = argparse.ArgumentParser(
+        description="Weka Upgrade Checker",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
 
     parser.add_argument(
         "-b",
         "--check-specific-backend-hosts",
         dest="check_specific_backend_hosts",
-        default=False,
         nargs="+",
-        help="Provide one or more ips or fqdn of hosts to check, separated by space",
+        default=False,
+        help="Provide one or more IPs or FQDNs of hosts to check, separated by space.",
     )
     parser.add_argument(
         "-d",
         "--cluster-checks-only",
         dest="cluster_checks_only",
         action="store_true",
-        default=False,
-        help="Will only perform cluster checks, skipping all other checks",
+        help="Perform only cluster checks, skipping all other checks.",
     )
     parser.add_argument(
         "-c",
@@ -3813,33 +4070,40 @@ def main():
         dest="skip_client_checks",
         action="store_true",
         default=True,
-        help="Skipping all client checks",
+        help="Skip all client checks.",
     )
     parser.add_argument(
         "-a",
         "--run-all-checks",
         dest="run_all_checks",
         action="store_true",
-        default=False,
-        help="Run checks on the entire cluster, including backend hosts and client hosts",
+        help="Run checks on the entire cluster, including backend hosts and client hosts.",
     )
     parser.add_argument(
-        "-i",
-        "--ssh_identity",
-        default=None,
-        type=str,
-        help="Path to identity file for SSH",
+        "-i", "--ssh_identity", default=None, help="Path to identity file for SSH."
     )
     parser.add_argument(
         "-v",
         "--version",
-        dest="version",
         action="store_true",
-        default=False,
-        help="weka_upgrade_check.py version info",
+        help="Show Weka Upgrade Checker version info.",
     )
     parser.add_argument(
-        "--skip-mtu-check", action="store_true", help="Skip the MTU mismatch check."
+        "-s",
+        "--skip-mtu-check",
+        action="store_true",
+        help="Skip the MTU mismatch check.",
+    )
+    parser.add_argument(
+        "-t",
+        "--target-version",
+        help="Specify the target version for upgrade path calculation.",
+    )
+    parser.add_argument(
+        "-p",
+        "--upgrade-path",
+        default="upgrade_path.json",
+        help="Path to the upgrade map JSON file.",
     )
 
     args = parser.parse_args()
@@ -3918,6 +4182,8 @@ def main():
         check_version = weka_cluster_results[5]
         backend_ips = weka_cluster_results[6]
         s3_enabled = weka_cluster_results[7]
+        link_type = weka_cluster_results[9]
+        obj_store_enabled = weka_cluster_results[10]
         backend_host_checks(
             backend_hosts,
             ssh_bk_hosts,
@@ -3930,6 +4196,17 @@ def main():
         )
         cluster_summary()
         INFO(f"Cluster upgrade checks complete!")
+        if args.target_version:
+            target_version_check(
+                weka_version,
+                args.target_version,
+                args.upgrade_path,
+                s3_enabled,
+                weka_nfs,
+                weka_smb,
+                link_type,
+                obj_store_enabled,
+            )
         sys.exit(0)
 
 
