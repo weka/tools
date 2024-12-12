@@ -1,0 +1,50 @@
+{
+    "4.4.1-2": [
+        {
+            "description": "Will need to backup and remove WEKA SMB configuration prior upgrading to 4.4.1-2",
+            "related_protocols": ["smb"],
+            "link_types": [],
+            "version_from": ["4.4.1"],
+            "obj_store": false
+        },
+        {
+            "description": "SMB Broken. Should be skipped since its also IB",
+            "related_protocols": ["NFS"],
+            "link_types": ["IB"],
+            "version_from": ["3.3.1", "4.2.6"],
+            "obj_store": false
+        },
+        {
+            "description": "Shazad is the Greatest!. Should be skipped since its s3 which is disabled.",
+            "related_protocols": ["s3"],
+            "link_types": [],
+            "version_from": ["3.3.1", "4.2.6"],
+            "obj_store": false
+        },
+        {
+            "description": "Jacks favorite link type IB. Should be skipped since the cluster is ETH.",
+            "related_protocols": [],
+            "link_types": ["IB"],
+            "version_from": [],
+            "obj_store": true
+        }
+    ],
+    "4.2.12": [
+        {
+            "description": "Memory leak during rebalancing.",
+            "related_protocols": [],
+            "link_types": [],
+            "version_from": [],
+            "obj_store": false
+        }
+    ],
+    "4.2.13": [
+        {
+            "description": "Incompatibility with older S3 clients.",
+            "related_protocols": ["s3"],
+            "link_types": ["ETH", "IB"],
+            "version_from": [],
+            "obj_store": false
+        }
+    ]
+}
