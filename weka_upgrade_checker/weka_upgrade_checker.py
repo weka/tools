@@ -45,7 +45,9 @@ else:
     Version = V  # Ensure Version is defined for older versions
     InvalidVersion = ValueError  # Since distutils doesn't have InvalidVersion, we use a generic exception
 
+
 pg_version = "1.4.02"
+
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
 
