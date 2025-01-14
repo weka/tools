@@ -46,7 +46,7 @@ else:
     InvalidVersion = ValueError  # Since distutils doesn't have InvalidVersion, we use a generic exception
 
 
-pg_version = "1.4.02"
+pg_version = "1.4.03"
 
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
@@ -1915,6 +1915,8 @@ def weka_cluster_checks(skip_mtu_check):
             )
             if custom_options["customNfsOptions"]:
                 BAD(f'Custom NFS options specified -- please review with Weka CS')
+            else:
+                GOOD(f'No custom NFS options specified')
 
             INFO("CHECKING WEKA NFS SERVER HEALTH")
             if nfs_server_hosts[0]["status"] == "OK":
