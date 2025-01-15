@@ -10,7 +10,7 @@
     ],
     "4.2.18": [
         {
-            "description": "If the weka-agent init.d or systemd unit files have been modified, remove them up before upgrading.",
+            "description": "If the weka-agent init.d or systemd unit files have been modified, remove them before upgrading.",
             "related_protocols": [],
             "link_types": [],
             "version_from": [],
@@ -19,7 +19,7 @@
     ],
     "4.2.15": [
         {
-            "description": "If the weka-agent init.d or systemd unit files have been modified, remove them up before upgrading.",
+            "description": "If the weka-agent init.d or systemd unit files have been modified, remove them before upgrading.",
             "related_protocols": [],
             "link_types": [],
             "version_from": [],
@@ -28,7 +28,7 @@
     ],
     "4.2.12": [
         {
-            "description": "If the weka-agent init.d or systemd unit files have been modified, remove them up before upgrading.",
+            "description": "If the weka-agent init.d or systemd unit files have been modified, remove them before upgrading.",
             "related_protocols": [],
             "link_types": [],
             "version_from": [],
