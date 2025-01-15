@@ -30,6 +30,11 @@ RAM_TO_SSD_RATIO=$(echo "${WEKA_SSD_CAPACITY}/${WEKA_COMPUTE_RAM}" | bc)
 if [[ ${RAM_TO_SSD_RATIO} -gt 4000 ]]; then
     echo "Warning: there is more than 4000 times the RAM capacity in total NVME capacity"
     echo "This may lead to Weka bucket startup issues. Refer to ${JIRA_REFERENCE}"
+    echo "Recommended Resolution: add more memory to cluster - options include:"
+    echo " . Increasing the amount of memory allocated to COMPUTE processes if there's spare"
+    echo " . Increasing the amount RAM installed, then doing the above"
+    echo " . Scaling out by adding more hosts"
+    echo " . Reducing the size of the NVME by removing drives or tiering to Object Store"
     RETURN_CODE=254
 else
     echo "RAM to SSD ratio is acceptable"

@@ -14,9 +14,13 @@ RETURN_CODE=0
 
 if systemctl status falcon-sensor &> /dev/null; then
     echo "Warning: CrowdStrike Falcon Sensor is running"
+    echo "Recommended Resolution: we do not recommend using this software in conjunction with WEKA as"
+    echo "it has been shown to cause problems unloading kernel modules"
     exit 254
 elif lsmod | grep -q -m 1 falcon_lsm; then
     echo "Warning: Crowdstrike Falcon kernel module loaded"
+    echo "Recommended Resolution: we do not recommend using this software in conjunction with WEKA as"
+    echo "it has been shown to cause problems unloading kernel modules"
     exit 254
 fi
 echo "CrowdStrike Falcon Sensor is not running"

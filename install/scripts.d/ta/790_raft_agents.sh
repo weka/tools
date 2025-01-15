@@ -30,6 +30,7 @@ WEKA_MAX_RAFT_AGENTS=$((${WEKA_COMPUTE_PROCESS_COUNT}*180))
 
 if [[ ${WEKA_RAFT_AGENTS} -gt ${WEKA_MAX_RAFT_AGENTS} ]] ; then 
     echo "The maximum number of raft agents recommended per compute node is 180. This cluster requires ${WEKA_RAFT_AGENTS} in total"
+    echo "Recommended resolution: scale out your cluster by adding more compute processes or perhaps backend WEKA servers"
     RETURN_CODE=254
 fi
 if [[ ${RETURN_CODE} -eq 0 ]]; then

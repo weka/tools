@@ -78,6 +78,9 @@ if [[ ${SOURCE_BASED_ROUTING_RECOMMENDED} -ge "1" ]] ; then
         echo "Warning: Not every interface appears to have arp_filter=1 set. This could lead to communication problems"
         RETURN_CODE="254"
     fi
+    echo "Recommended resolution: Although networking is typically site- and hardware-dependent,"
+    echo " some example configurations for the common dual NIC setup are noted on the WEKA"
+    echo " documentation site: https://docs.weka.io/planning-and-installation/bare-metal/setting-up-the-hosts#configure-the-ha-networking"
 fi
 
 if [[ ${RETURN_CODE} -eq 0 ]]; then

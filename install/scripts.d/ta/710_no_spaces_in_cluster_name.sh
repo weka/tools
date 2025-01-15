@@ -27,6 +27,9 @@ WEKA_CLUSTER_NAME=$(weka status | grep cluster: | sed -e 's/^ *cluster: *//' -e 
 if [[ ${WEKA_CLUSTER_NAME} = *" "* ]]; then
     echo "Weka cluster name contains spaces"
     echo "This will prevent an S3 cluster from starting - see KB ${KB_REFERENCE}"
+    NEW_RECOMMENDED_NAME=$(echo ${WEKA_CLUSTER_NAME} | sed 's/ /_/g')
+    echo "Recommended resolution: update the cluster name, e.g. using:"
+    echo " weka cluster update --cluster-name ${NEW_RECOMMENDED_NAME}"
     RETURN_CODE=254
 else
     echo "Weka cluster name does not contain spaces"

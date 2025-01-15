@@ -15,6 +15,8 @@ grep -q SSL_CERT_FILE /opt/weka/dist/release/${WEKA_VERSION}.spec 2>/dev/null
 
 if [[ $? -eq 0 ]] ; then 
         echo "This version of weka appears to use custom CA certificates. Care will be needed for upgrading"
+        echo "Recommended resolution: remove custom CA specification, and upgrade to a more recent"
+        echo "version that natively supports additional CA bundles"
         RETURN_CODE=254
 fi
 if [[ ${RETURN_CODE} -eq 0 ]]; then

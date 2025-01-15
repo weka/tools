@@ -39,6 +39,7 @@ if [[ $WEKA_VERSION = "4.2.7.64" || $WEKA_VERSION = "4.2.8.66" ]]; then
                 echo "SSD metadata exceeds more than half of available SSD space on one or more filesystems."
                 echo "Possibly vulnerable to WEKAPP-351707."
                 echo "Consider adding the fs_backpressure_skip_ssdwritecache_estimation_all override."
+                echo "Recommended resolution: upgrade to a version beyond 4.2.9.x"
             fi
         fi
     done < <(weka fs -R --no-header -o availableSSD,usedSSDM,stores | sed -e 's/B//g' | awk '{print $1, $2, $3}')

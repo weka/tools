@@ -14,6 +14,14 @@ for WEKA_CONTAINER in $(weka local ps --output name --no-header | grep -E '(driv
     MATCHES=$(weka local resources -C ${WEKA_CONTAINER} | grep -cE '^(DRIVES|COMPUTE|FRONTEND)  *[0-9].*auto')
     if [[ ${MATCHES} -ne 0 ]] ; then
         echo "Host ${HOSTNAME} has auto-core allocation in MCB container ${WEKA_CONTAINER}"
+        echo "Recommended Resolution: reconfigure the local resources to use a fixed CPU core, such as"
+        if [[ ${WEKA_CONTAINER} =~ "drive" ]] ; then 
+            echo "weka local resources cores --container ${WEKA_CONTAINER} <NUMBER-OF-CORES> --only-drives-cores --core-ids X,Y,Z"
+        elif [[ ${WEKA_CONTAINER} =~ "compute" ]] ; then 
+            echo "weka local resources cores --container ${WEKA_CONTAINER} <NUMBER-OF-CORES> --only-compute-cores --core-ids X,Y,Z"
+        elif [[ ${WEKA_CONTAINER} =~ "frontend" ]] ; then 
+            echo "weka local resources cores --container ${WEKA_CONTAINER} <NUMBER-OF-CORES> --only-frontend-cores --core-ids X,Y,Z"
+        fi
         exit 254
     fi
 done

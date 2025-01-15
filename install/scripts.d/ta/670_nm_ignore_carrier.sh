@@ -20,6 +20,9 @@ if nmcli -v &> /dev/null; then
         elif [[ "$IGNORE_CARRIER" != "*" ]]; then
             RETURN_CODE=254
             echo "NetworkManager ignore-carrier is set to ${IGNORE_CARRIER}, but recommended value is ignore-carrier=*"
+            echo "Recommended Resolution: set ignore-carrier=* in NetworkManager, perhaps with the following commands"
+            echo "  echo -e '[main]\\nignore-carrier=*' > /etc/NetworkManager/conf.d/99-carrier.conf "
+            echo "  systemctl restart NetworkManager "
         else
             echo "NetworkManager ignore-carrier=* exists."
         fi

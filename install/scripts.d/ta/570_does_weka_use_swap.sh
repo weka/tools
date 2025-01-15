@@ -17,6 +17,10 @@ for WEKAPID in $(ps -eo pid,comm | grep weka_init | awk '{print $1}') ; do
     if [[ ${NUM_PROCS_USING_SWAP} -gt "0" ]] ; then
         echo "There are Weka processes using swap - this is likely to be"
         echo "detrimental to performance"
+        echo "Recommended Resolutions:"
+        echo " . Add more RAM if the host is truly constrained"
+        echo " . Review if the host has not correctly released RAM"
+        echo " . Reduce the amount of RAM allocated to WEKA (a last resort)"
         RETURN_CODE="254"
     fi
 done
