@@ -71,6 +71,8 @@ main() {
         done < <(ip -4 rule | awk '{print $3}' | grep -v "all")
         if [[ $found_rule -eq 0 ]]; then
             echo "WARNING: No ip rule for address $NFS_IP! It is possible source-based routing should be configured."
+            echo "Recommended Resolution: configure source-based routing. Examples are mentioned in the WEKA docs:"
+            echo "https://docs.weka.io/planning-and-installation/bare-metal/setting-up-the-hosts#configure-the-ha-networking"
             RETURN_CODE=254
         fi
         done < <(weka nfs interface-group assignment --no-header | awk '$3 == '$weka_host_id'' | awk '{print $1}')

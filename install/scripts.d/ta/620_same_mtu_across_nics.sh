@@ -33,6 +33,10 @@ for CONTAINER in $(weka local ps --no-header | awk '{print $1}' | grep -vw -e en
             echo "has an MTU of ${MTU}, which is less than the MTU ${SMALLEST_MTU_REQUIRED} seen elsewhere in this host"
             echo "This can lead to cluster communication problems"
             echo "Please see ${JIRA_REFERENCE} for more information"
+            echo "Recommended Resolution: Increase the MTUs of all NICs in the cluster to at least ${SMALLEST_MTU_REQUIRED}"
+            echo "Review your OS documentation for how to set this permanently, but NetworkManager-based OSes will use"
+            echo "something like \"nmcli connection modify eno1 802-3-ethernet.mtu ${SMALLEST_MTU_REQUIRED}\" and then"
+            echo "\"nmcli connection apply eno1\", but connection names will vary"
             RETURN_CODE=254
         fi
     done

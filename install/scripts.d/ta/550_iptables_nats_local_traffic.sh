@@ -21,6 +21,7 @@ for IP_ADDRESS in $(hostname --all-ip-addresses) ; do
     if [[ $? -eq 0 ]] ; then
         echo "Warning: it is possible that traffic to or from local IP address ${IP_ADDRESS} will be subject to NAT"
         echo "This can cause intra-WEKA communication errors"
+        echo "Recommended Resolution: Do not NAT WEKA traffic"
         RETURN_CODE="254"
     fi
 done
@@ -29,6 +30,7 @@ for IP_ROUTE in $(ip -4 --json route list  | python3 -c 'import sys, json, colle
     if [[ $? -eq 0 ]] ; then
         echo "Warning: it is possible that traffic to or from subnet ${IP_ROUTE} will be subject to NAT"
         echo "This can cause intra-WEKA communication errors"
+        echo "Recommended Resolution: Do not NAT WEKA traffic"
         RETURN_CODE="254"
     fi
 done

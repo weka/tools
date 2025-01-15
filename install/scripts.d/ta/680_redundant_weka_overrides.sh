@@ -51,6 +51,8 @@ while read CURRENT_OVERRIDE; do
     REDUNDANT_FROM_VERSION=${REDUNDANT_OVERRIDE_LIST[${CURRENT_OVERRIDE}]}
     if verlte ${REDUNDANT_FROM_VERSION} ${CURRENT_WEKA_VERSION} ; then
         echo "Override ${CURRENT_OVERRIDE} is no longer necessary as of v${REDUNDANT_FROM_VERSION}"
+        echo "Recommended Resolution: Contact customer success and query if this override can"
+        echo "be disabled and subsequently removed"
         RETURN_CODE=254
     fi
 done < <(weka debug override list --output key --no-header)

@@ -29,6 +29,7 @@ if [ -d "/data" ] ; then
         else
             echo "to ${JIRA_REFERENCE}, SFDC ${KB_REFERENCE}"                                                                                                   
         fi
+        echo "The recommend fix is to upgrade your version of Weka"
         RETURN_CODE=1
     fi
 fi

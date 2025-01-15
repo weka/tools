@@ -23,6 +23,7 @@ GREP_RESULT=$(echo ${SHORT_HOSTNAME} | grep "[^-a-z0-9.]")
 if [[ $? -eq 0 ]]; then
     echo "The hostname ${SHORT_HOSTNAME} appears to contain a character other than [a-z], -, and [0-9]."
     echo "Refer to RFC 952 for more information"
+    echo "Recommended resolution: change the hostname to include only alphanumerics and underscores"
     RETURN_CODE=254
 fi
 

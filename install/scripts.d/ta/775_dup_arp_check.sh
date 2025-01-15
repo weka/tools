@@ -31,6 +31,7 @@ fi
 for MGMT_IP in $(weka cluster container net -o ips --no-header | tr ',' '\n' | tr -d " " | sort -u); do
     if [[ $(ip -br neigh | grep ${MGMT_IP} | awk '{print $3}' | sort -u | wc -l) -gt 1 ]]; then
         echo "WARN: Duplicate arp entry found for IP ${MGMT_IP}"
+        echo "Recommended Resolution: check for IP clashes, and that there is a 1:1 mapping for IP:MACs"
         RETURN_CODE=254
     fi
 done

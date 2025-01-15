@@ -52,7 +52,10 @@ if (( ${WEKA_ENSURE_FREE} > ${TRACES_FS_SIZE})) ; then
     echo "Weka is currently set to ensure that ${WEKA_ENSURE_FREE} bytes are free"
     echo "on ${WEKA_TRACES_DIR}, but this filesystem is only ${TRACES_FS_SIZE} bytes" 
     echo "in size. These conditions cannot co-exist, so the outcome is that no"
-    echo "traces will be stored"
+    echo "traces will be stored."
+    echo "Recommended options:"
+    echo "   . Increase the size of ${WEKA_TRACES_DIR}"
+    echo "   . Reduce the size of traces with \"weka debug traces retention set --server-ensure-free XXXX\""
     RETURN_CODE=1
 fi 
 if [[ ${RETURN_CODE} -eq 0 ]]; then

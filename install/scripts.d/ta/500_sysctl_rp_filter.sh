@@ -35,12 +35,14 @@ if [[ $RP_FILTER_VALUE_ALL != "2" ]]; then
       echo "The value for net.ipv4.conf.${INTERFACE}.rp_filter is set to ${RP_FILTER_VALUE}."
       echo "This can disrupt floating IP addresses for protocols."
       echo "It is recommended to set net.ipv4.conf.${INTERFACE}.rp_filter to 2."
+      echo "Recommended resolution: set this value in e.g. /etc/sysctl.d/99-weka-nics.conf"
     elif [[ $RP_FILTER_VALUE_ALL == "1" && $RP_FILTER_VALUE == "0" ]]; then
       RETURN_CODE="254"
       echo "The value for net.ipv4.conf.${INTERFACE}.rp_filter is set to ${RP_FILTER_VALUE}."
       echo "The value for net.ipv4.conf.all.rp_filter is set to ${RP_FILTER_VALUE_ALL} and takes precedence."
       echo "This can disrupt floating IP addresses for protocols."
       echo "It is recommended to set net.ipv4.conf.${INTERFACE}.rp_filter or net.ipv4.conf.all.rp_filter to 2."
+      echo "Recommended resolution: set this value in e.g. /etc/sysctl.d/99-weka-nics.conf"
     fi
   done
 else

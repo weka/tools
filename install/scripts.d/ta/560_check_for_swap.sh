@@ -14,6 +14,7 @@ SWAPTOTAL=$(grep SwapTotal /proc/meminfo  | awk '{print $2}')
 if [[ ${SWAPTOTAL} -ne "0" ]] ; then
     echo "This host has swap configured - this is unlikely to be"
     echo "helpful in a large memory system"
+    echo "Recommended Resolution: if the host has enough RAM, disable swap with swapoff then disable swap at boot time (likely in /etc/fstab)"
     RETURN_CODE="254"
 fi
 

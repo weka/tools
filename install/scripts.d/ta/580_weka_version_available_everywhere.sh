@@ -27,6 +27,8 @@ CURRENT_AGENT_VERSION=$(weka local status | awk 'NR==1{print $5}' | tr -d ')')
 if [[ ${WEKA_CLUSTER_VERSION} != ${CURRENT_AGENT_VERSION} ]] ; then
     echo "The currently running cluster version ${WEKA_CLUSTER_VERSION} does not match the"
     echo "default installed local agent version ${CURRENT_AGENT_VERSION}"
+    echo "Recommended Resolution: update this host to the cluster version, either by"
+    echo " unmounting and re-mounting filesystems or using the weka local upgrade utility"
     RETURN_CODE="254"
 fi
 

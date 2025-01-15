@@ -15,6 +15,10 @@ for INDIVIDUAL_DRIVE_PROCESS in $(weka cluster process --backends --filter role=
     if [[ $(weka debug net peers --no-header ${INDIVIDUAL_DRIVE_PROCESS} --output inMTU,outMTU  | awk '{if($1 != $2) {print "yes"}}') == "yes" ]]; then
         host=$(weka cluster process ${INDIVIDUAL_DRIVE_PROCESS} --no-header -o hostname)
         echo "WARN: Asymmetric MTU detected for at least one peer of ${host}, process id ${INDIVIDUAL_DRIVE_PROCESS}"
+        echo "Recommended Resolution: The usual cause for this is assymetric routing, with different MTUs configured"
+        echo "along the two different paths. Run a tracepath/traceroute from each end of the backend<->client"
+        echo "connection, and determine if routes take different paths. It's likely that different paths will have"
+        echo "different pMTUs, and every intervening link on the path with the smaller MTU should be checked"
         RETURN_CODE=254
     fi
 done

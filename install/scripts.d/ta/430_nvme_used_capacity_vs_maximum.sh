@@ -27,6 +27,13 @@ echo ${WEKA_SSD_USED_BYTES}
 
 # if we've allocated more than half the maximum theoretical SSD space, warn
 if [[ $((${WEKA_SSD_USED_BYTES}*2)) -gt ${WEKA_THEORETICAL_MAX_SSD_BYTES} ]] ; then 
+    echo "You have used a significant proportion of the theoretical maximum"
+    echo "NVME capacity of the cluster which is decided at first install time."
+    echo "Please contact customer success to discuss options. Possible actions include:"
+    echo " . Adding an Object Store to expand data storage while keeping NVME capacity down"
+    echo " . In-place cluster resizing and migration (perhaps via snap2obj for fast backup/restore)"
+    echo " . Migrating to a different, larger cluster"
+    echo " . Pruning unnecessary data"
     RETURN_CODE=254
 fi
 if [[ ${RETURN_CODE} -eq 0 ]]; then

@@ -40,12 +40,14 @@ if [ ${WEKA_S3_RUNNING} -ge 1 ] ; then
     if verlte ${MIN_VERSION} ${WEKA_VERSION} && verlte ${WEKA_VERSION} ${MAX_VERSION} ; then
         WEKA_ETCD_HOSTS=$(weka s3 cluster --json | python3 -c 'import sys, json; data = json.load(sys.stdin); print(len(data["etcd_cluster_hosts"]))')
         if [ ${WEKA_ETCD_HOSTS} -gt 0 ] ; then
-            echo "S3 cluster is running, and this version of Weka requires migration"
+            echo "S3 cluster is running, and this version of Weka requires a configuration change."
             if [[ ! -z "${WTA_REFERENCE}" ]]; then
-                echo "to ${JIRA_REFERENCE}, discussed in ${WTA_REFERENCE}, SFDC ${KB_REFERENCE}"
+                echo "Refer to ${JIRA_REFERENCE}, discussed in ${WTA_REFERENCE}, SFDC ${KB_REFERENCE}"
             else
-                echo "to ${JIRA_REFERENCE}, SFDC ${KB_REFERENCE}"                                                                                                   
+                echo "Refer to ${JIRA_REFERENCE}, SFDC ${KB_REFERENCE}"                                                                                                   
             fi
+            echo "If you require the S3 service, please contact Customer Success indicating"
+            echo " you need to move the S3 service from ETCD to KWAS, as indicated in KB 1181"
             RETURN_CODE=254
         fi
     fi

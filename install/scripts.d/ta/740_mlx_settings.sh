@@ -65,6 +65,10 @@ fi
 
 if [[ $RETURN_CODE -eq 0 ]]; then
     echo "Mellanox NIC settings correctly set."
+else
+    echo "Mellanox NIC settings are not as recommended. Recommended Resolution:"
+    echo 'for dev in $(ls /sys/class/infiniband/); do sudo mlxconfig -y -d ${dev} set ADVANCED_PCI_SETTINGS=1 PCI_WR_ORDERING=1 ; done'
+    echo "Followed by rebooting this host, one at a time"
 fi
 
 exit $RETURN_CODE

@@ -28,7 +28,10 @@ if [[ "${NOPREFIXROUTE_COUNT}" != "0" ]]; then
     echo "Certain IP addresses are configured with noprefixroute. This will inhibit the ability"
     echo "of certain cluster floating ips to accurately determine which link should be preferred"
     echo "The command \"ip -o -f inet route list match xxx.xxx.xxx.xxx/32 scope link\" needs to"
-    echo "Be able to return a device for each floating IP configured"
+    echo "be able to return a device for each floating IP configured"
+    echo "Recommended Resolution: remove the noprefixroute flag or otherwise ensure the"
+    echo " ip route list command given above can resolve the link on which you wish the"
+    echo " floating IP to be configured"
 fi
 
 if [[ ${RETURN_CODE} -eq 0 ]]; then

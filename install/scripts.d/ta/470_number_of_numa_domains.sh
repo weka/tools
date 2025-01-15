@@ -36,6 +36,8 @@ echo -n "Detected $NUMBER_OF_NUMA_DOMAINS NUMA domains - "
 if [[ $NUMBER_OF_NUMA_DOMAINS -gt $MAXIMUM_NUMA_DOMAINS ]]; then
     RETURN_CODE=254
     echo "Weka currenty only supports a maximum of 32 NUMA domains (4.2.11+)."
+    echo " Recommended resolution: reduce the number of NUMA domains, perhaps by reducing"
+    echo " the NUMAs per socket setting in the machine's firmware"
 
 # 8 or fewer NUMAs is always supported
 elif [[ $NUMBER_OF_NUMA_DOMAINS -le 8 ]]; then
@@ -45,16 +47,25 @@ elif [[ $NUMBER_OF_NUMA_DOMAINS -le 8 ]]; then
 elif vergte $WEKA_VERSION "4.3.0" && verlt $WEKA_VERSION "4.3.2" && [[ $NUMBER_OF_NUMA_DOMAINS -gt 16 ]]; then
     RETURN_CODE=254
     echo "Weka only supports more than 16 NUMA domains in 4.3.2 and higher."
+    echo " Recommended resolutions: either"
+    echo "  . Reduce the number of NUMA domains, perhaps by reducing the NUMAs per socket setting in the machine's firmware"
+    echo "  . Upgrade Weka to a more recent version"
 
 # More than 16 NUMAs only supported in 4.2.11+
 elif vergt $WEKA_VERSION "4.2.6" && verlt $WEKA_VERSION "4.2.11" && [[ $NUMBER_OF_NUMA_DOMAINS -gt 16 ]]; then
     RETURN_CODE=254
     echo "Weka only supports more than 16 NUMA domains in (4.2.11+, 4.3.2+)."
+    echo " Recommended resolutions: either"
+    echo "  . Reduce the number of NUMA domains, perhaps by reducing the NUMAs per socket setting in the machine's firmware"
+    echo "  . Upgrade Weka to a more recent version"
 
 # More than 8 NUMAs only supported in 4.2.7+
 elif verlt $WEKA_VERSION "4.2.7" && [[ $NUMBER_OF_NUMA_DOMAINS -gt 8 ]]; then
     RETURN_CODE=254
     echo "Weka only supports more than 8 NUMA domains in 4.2.7 and higher."
+    echo " Recommended resolutions: either"
+    echo "  . Reduce the number of NUMA domains, perhaps by reducing the NUMAs per socket setting in the machine's firmware"
+    echo "  . Upgrade Weka to a more recent version"
 else
     echo "Number of NUMA domains is within supported limits."
 fi

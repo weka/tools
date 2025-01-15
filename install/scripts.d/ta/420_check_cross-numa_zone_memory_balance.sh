@@ -37,6 +37,8 @@ if [[ ${RATIO_SEEN} -gt ${MAX_ALLOWED_RATIO} ]]; then
     echo "from starting due to lack of NUMA zone-local memory"
     echo "The ratio is ${RATIO_SEEN}% and the maximum allowed ratio is ${MAX_ALLOWED_RATIO}%"
     echo "The memory in the highest zone is ${MAX_MEMORY_SEEN_KB} and in the lowest zone is ${MIN_MEMORY_SEEN_KB}"
+    echo "One recommend resolution is to balance the memory between NUMA zones by physically"
+    echo "moving memory, or by adding more to the smaller NUMA zone"
 fi
 
 if [[ ${RETURN_CODE} -eq 0 ]]; then
