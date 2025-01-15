@@ -1,7 +1,7 @@
 {
     "4.4.1-2": [
         {
-            "description": "Will need to backup and remove WEKA SMB configuration prior upgrading to 4.4.1-2 or higher",
+            "description": "Will need to backup and remove WEKA SMB configuration prior to upgrading to 4.4.1-2 or higher",
             "related_protocols": ["smb"],
             "link_types": [],
             "version_from": ["4.4.1"],
@@ -10,7 +10,7 @@
     ],
     "4.2.18": [
         {
-            "description": "If the weka-agent init.d or systemd unit files have been modified, remove them up before upgrading.",
+            "description": "If the weka-agent init.d or systemd unit files have been modified, remove them before upgrading.",
             "related_protocols": [],
             "link_types": [],
             "version_from": [],
@@ -19,7 +19,7 @@
     ],
     "4.2.16": [
         {
-            "description": "If the weka-agent init.d or systemd unit files have been modified, remove them up before upgrading.",
+            "description": "If the weka-agent init.d or systemd unit files have been modified, remove them before upgrading.",
             "related_protocols": [],
             "link_types": [],
             "version_from": [],
@@ -28,7 +28,7 @@
     ],
     "4.2.15": [
         {
-            "description": "If the weka-agent init.d or systemd unit files have been modified, remove them up before upgrading.",
+            "description": "If the weka-agent init.d or systemd unit files have been modified, remove them before upgrading.",
             "related_protocols": [],
             "link_types": [],
             "version_from": [],
@@ -37,7 +37,7 @@
     ],
     "4.2.14": [
         {
-            "description": "If the weka-agent init.d or systemd unit files have been modified, remove them up before upgrading.",
+            "description": "If the weka-agent init.d or systemd unit files have been modified, remove them before upgrading.",
             "related_protocols": [],
             "link_types": [],
             "version_from": [],
