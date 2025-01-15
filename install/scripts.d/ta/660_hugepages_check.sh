@@ -28,6 +28,8 @@ if [[ -n $WEKA_HUGE_1G ]]; then
     if [[ $DIFF_1G != 0 ]]; then
       RETURN_CODE=254
       echo "Discrepancy of $DIFF_1G 1GiB hugepage(s) between Weka and OS."
+      echo "Recommended Resolution: Review if other applications (such as hypervisors) are"
+      echo "using hugepages. If they are, this may be expected."
     fi
 fi
 
@@ -37,6 +39,8 @@ if [[ -n $WEKA_HUGE_2M ]]; then
     if [[ $DIFF_2M != 0 ]]; then
         RETURN_CODE=254
         echo "Discrepancy of $DIFF_2M 2MiB hugepage(s) between Weka and OS."
+        echo "Recommended Resolution: Review if other applications (such as hypervisors) are"
+        echo "using hugepages. If they are, this may be expected."
     fi
 fi
 

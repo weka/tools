@@ -29,6 +29,11 @@ main() {
         echo
         echo "This means that changes made to the live system as it is now"
         echo "are unlikely to be present on the system post-reboot"
+        echo "Recommended Resolution:"
+        echo " . Do NOT reboot the host"
+        echo " . You need to verify that the on-boot configuration for /opt/weka"
+        echo "   matches and uses the currently used layout. This may involve"
+        echo "   editing filesystem layouts in /etc/fstab or systemd"
         RETURN_CODE=254
     else
         echo "No immediate directory/mount overlaps found"

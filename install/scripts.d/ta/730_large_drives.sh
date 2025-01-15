@@ -43,7 +43,7 @@ if verlt ${WEKA_VERSION} "4.1.2" && [[ ${LARGEST_SSD} -gt ${LARGEST_SUPPORTED_SS
     RETURN_CODE=254
     echo "Weka only supports SSDs larger than ${LARGEST_SUPPORTED_SSD} in versions after 4.1.2"
     echo "Refer to ${KB_REFERENCE} or ${JIRA_REFERENCE} for more information"
-
+    echo "Recommended Resolution: upgrade to our latest LTS release"
 else
     echo "No SSDs are beyond supported capacities"
 fi

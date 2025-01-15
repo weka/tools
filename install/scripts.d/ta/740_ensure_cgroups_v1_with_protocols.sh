@@ -31,6 +31,9 @@ else
     for CONTAINER in $(weka local ps --no-header | awk '{print $1}' | grep -w -e ganesha -e smbw -e s3) ; do
         RETURN_CODE=254
         echo "Protocol container ${CONTAINER} is not yet compatible with cgroup mode ${CURRENT_CGROUP_MODE}"
+        echo "Recommended Resolution: reboot the host with cgroup v1 enabled, likely by adding"
+        echo "\"systemd.unified_cgroup_hierarchy=false\" to e.g. /etc/default/grub's DEFAULT line and"
+        echo "running \"update-grub\" (OS-dependent)"
     done
 fi
     

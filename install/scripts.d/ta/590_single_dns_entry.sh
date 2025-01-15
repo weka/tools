@@ -43,6 +43,7 @@ fi
 if [[ ${NUMBER_OF_A_RECORDS} != "1" ]] ; then
     echo "There are ${NUMBER_OF_A_RECORDS} A records in DNS for ${HOSTNAME}"
     echo "This is very likely to cause problems with (at least) SMB-W clustering"
+    echo "Recommended Resolution: add a DNS record of type A for ${HOSTNAME} pointing to the IPv4 address"
     RETURN_CODE=254
 else
     echo "There is exactly one A record in DNS for ${HOSTNAME}"
