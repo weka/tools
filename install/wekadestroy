@@ -100,7 +100,7 @@ unmount_all_weka_fs_all_hosts() {
 }
 
 stop_weka() {
-	$ssh "$1" 'sudo weka local stop'
+	$ssh "$1" 'sudo weka local stop --force'
 }
 
 remove_weka_containers() {
