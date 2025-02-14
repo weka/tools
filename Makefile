@@ -13,6 +13,7 @@ ${TARG}: ${SOURCE} ${SPECS}
 	rpmbuild --define "_topdir ${CURDIR}" -ba ${SPECS}
 
 ${SOURCE}:
+	mkdir -p SOURCES
 	tar -czvf ${SOURCE} --exclude-from=tar_excludes.txt *
 
 clean:
