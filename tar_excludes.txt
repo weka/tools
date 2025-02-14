@@ -1,0 +1,9 @@
+tar_excludes.txt
+.git*
+BUILD*
+RPMS
+S*
+Makefile
+CNAME
+_config.yml
+.vscode
