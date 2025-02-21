@@ -46,7 +46,7 @@ else:
     InvalidVersion = ValueError  # Since distutils doesn't have InvalidVersion, we use a generic exception
 
 
-pg_version = "1.4.04"
+pg_version = "1.4.05"
 
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
@@ -4005,12 +4005,19 @@ def target_version_check(
 
     def parse_version(version):
         """Converts a version string into a Version object for comparison."""
+        if not version or not isinstance(version, str) or version.strip() == "":
+            return None  # Return None to indicate an invalid version
         return V(version)
+
 
     def find_upgrade_path(weka_version, target_version, upgrade_map):
         path = [weka_version]  # Start the path with the current version
         weka_version = parse_version(weka_version)
         target_version = parse_version(target_version)
+
+        if weka_version is None or target_version is None:
+            WARN("No valid upgrade path due to an invalid version in the upgrade map.")
+            return []
 
         while weka_version < target_version:
             next_versions = [
@@ -4018,6 +4025,8 @@ def target_version_check(
                 for ver, min_ver in upgrade_map.items()
                 if isinstance(min_ver, list)
                 and len(min_ver) > 0
+                and parse_version(min_ver[0]) is not None
+                and parse_version(ver) is not None
                 and parse_version(min_ver[0]) <= weka_version
                 and parse_version(ver) > weka_version
             ]
@@ -4038,29 +4047,17 @@ def target_version_check(
     try:
         upgrade_map = load_upgrade_map(upgrade_path)
         if not upgrade_map:
-            WARN(
-                "Invalid or empty upgrade map. Ensure upgrade_path.json exists and not empty."
-            )
+            WARN("Invalid or empty upgrade map. Ensure upgrade_path.json exists and is not empty.")
             return
 
         upgrade_hops = find_upgrade_path(weka_version, target_version, upgrade_map)
 
-        if isinstance(upgrade_hops, list):
-            if len(upgrade_hops) >= 1:
-                total_hops = len(upgrade_hops) - 1
-                if total_hops == 1:
-                    total_hops = "Direct path upgrade"
-                    print(
-                        f"{colors.OKCYAN}Total upgrade hops: {total_hops}.{colors.ENDC}"
-                    )
-                elif len(upgrade_hops) > 1:
-                    print(
-                        f"{colors.OKCYAN}Total upgrade hops: {total_hops}.{colors.ENDC}"
-                    )
-
-            print(
-                f"{colors.OKCYAN}Upgrade path: {' > '.join(upgrade_hops)}{colors.ENDC}"
-            )
+        if upgrade_hops:  # Only proceed if a valid path exists
+            total_hops = len(upgrade_hops) - 1
+            if total_hops == 1:
+                total_hops = "Direct path upgrade"
+            print(f"{colors.OKCYAN}Total upgrade hops: {total_hops}.{colors.ENDC}")
+            print(f"{colors.OKCYAN}Upgrade path: {' > '.join(upgrade_hops)}{colors.ENDC}")
 
             # Check for known issues with protocol filtering
             check_known_issues(
@@ -4072,10 +4069,9 @@ def target_version_check(
                 link_type,
                 obj_store_enabled,
             )
-        else:
-            WARN("Error: Upgrade path is not a valid list.")
+
     except (FileNotFoundError, ValueError) as e:
-        WARN("Error:", e)
+        WARN(f"Error: {e}")
 
 
 def main():
