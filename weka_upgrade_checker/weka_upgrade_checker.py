@@ -46,7 +46,7 @@ else:
     InvalidVersion = ValueError  # Since distutils doesn't have InvalidVersion, we use a generic exception
 
 
-pg_version = "1.4.03"
+pg_version = "1.4.04"
 
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
@@ -360,7 +360,7 @@ def check_version():
 check_version()
 
 
-def weka_cluster_checks(skip_mtu_check):
+def weka_cluster_checks(skip_mtu_check, target_version):
     INFO("VERIFYING WEKA AGENT STATUS")
     weka_agent_service = subprocess.call(
         ["sudo", "service", "weka-agent", "status"],
@@ -441,6 +441,12 @@ def weka_cluster_checks(skip_mtu_check):
         )
 
     weka_version = clean_version_string(weka_versions)
+
+    if V(target_version) <= V(weka_version):
+        BAD(
+            f"Target version {target_version} should be higher than cluster version {weka_version}, cannot continue"
+        )
+        sys.exit(1)
 
     class Machine:
         def __init__(self, machine_json):
@@ -990,7 +996,7 @@ def weka_cluster_checks(skip_mtu_check):
         ratio = usable_capacity / total_compute_memory
         if ratio > 2000:
             WARN(
-                f"The current ratio of {ratio} is below the recommended value, it is recommended to increase compute RAM"
+                f"The current ratio of {ratio} is below the recommended value and may cause performance issues during upgrade, it is recommended to increase compute RAM"
             )
         else:
             GOOD("Memory to SSD ratio validation ok")
@@ -4127,6 +4133,8 @@ def main():
     parser.add_argument(
         "-t",
         "--target-version",
+        type=str,
+        required=True,
         help="Specify the target version for upgrade path calculation.",
     )
     parser.add_argument(
@@ -4137,6 +4145,8 @@ def main():
     )
 
     args = parser.parse_args()
+    if not args.target_version:
+        parser.error("--target-version is required.")
 
     ssh_identity = args.ssh_identity or None
 
@@ -4145,7 +4155,7 @@ def main():
         sys.exit(0)
 
     if args.run_all_checks:
-        weka_cluster_results = weka_cluster_checks(skip_mtu_check=args.skip_mtu_check)
+        weka_cluster_results = weka_cluster_checks(skip_mtu_check=args.skip_mtu_check, target_version=args.target_version)
         backend_hosts = weka_cluster_results[0]
         ssh_bk_hosts = weka_cluster_results[1]
         client_hosts = weka_cluster_results[2]
@@ -4171,13 +4181,13 @@ def main():
         sys.exit(0)
 
     elif args.cluster_checks_only:
-        weka_cluster_checks(skip_mtu_check=args.skip_mtu_check)
+        weka_cluster_checks(skip_mtu_check=args.skip_mtu_check, target_version=args.target_version)
         cluster_summary()
         INFO(f"Cluster upgrade checks complete!")
         sys.exit(0)
 
     elif args.check_specific_backend_hosts:
-        weka_cluster_results = weka_cluster_checks(skip_mtu_check=args.skip_mtu_check)
+        weka_cluster_results = weka_cluster_checks(skip_mtu_check=args.skip_mtu_check, target_version=args.target_version)
         backend_hosts = weka_cluster_results[0]
         ssh_bk_hosts = weka_cluster_results[1]
         client_hosts = weka_cluster_results[2]
@@ -4202,7 +4212,7 @@ def main():
         sys.exit(0)
 
     elif args.skip_client_checks:
-        weka_cluster_results = weka_cluster_checks(skip_mtu_check=args.skip_mtu_check)
+        weka_cluster_results = weka_cluster_checks(skip_mtu_check=args.skip_mtu_check, target_version=args.target_version)
         backend_hosts = weka_cluster_results[0]
         ssh_bk_hosts = weka_cluster_results[1]
         client_hosts = weka_cluster_results[2]
