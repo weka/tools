@@ -1,5 +1,6 @@
+%include        %{_topdir}/SPECS/version.inc
 Name:		weka-tools
-Version:	1.0
+Version:	%{_tools_version}
 Release:	1%{?dist}
 Summary:	WEKA Tools Collection
 BuildArch:	x86_64
