@@ -46,7 +46,7 @@ else:
     InvalidVersion = ValueError  # Since distutils doesn't have InvalidVersion, we use a generic exception
 
 
-pg_version = "1.4.03"
+pg_version = "1.4.05"
 
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
@@ -360,7 +360,7 @@ def check_version():
 check_version()
 
 
-def weka_cluster_checks(skip_mtu_check):
+def weka_cluster_checks(skip_mtu_check, target_version):
     INFO("VERIFYING WEKA AGENT STATUS")
     weka_agent_service = subprocess.call(
         ["sudo", "service", "weka-agent", "status"],
@@ -441,6 +441,12 @@ def weka_cluster_checks(skip_mtu_check):
         )
 
     weka_version = clean_version_string(weka_versions)
+
+    if V(target_version) <= V(weka_version):
+        BAD(
+            f"Target version {target_version} should be higher than cluster version {weka_version}, cannot continue"
+        )
+        sys.exit(1)
 
     class Machine:
         def __init__(self, machine_json):
@@ -990,7 +996,7 @@ def weka_cluster_checks(skip_mtu_check):
         ratio = usable_capacity / total_compute_memory
         if ratio > 2000:
             WARN(
-                f"The current ratio of {ratio} is below the recommended value, it is recommended to increase compute RAM"
+                f"The current ratio of {ratio} is below the recommended value and may cause performance issues during upgrade, it is recommended to increase compute RAM"
             )
         else:
             GOOD("Memory to SSD ratio validation ok")
@@ -3999,12 +4005,19 @@ def target_version_check(
 
     def parse_version(version):
         """Converts a version string into a Version object for comparison."""
+        if not version or not isinstance(version, str) or version.strip() == "":
+            return None  # Return None to indicate an invalid version
         return V(version)
+
 
     def find_upgrade_path(weka_version, target_version, upgrade_map):
         path = [weka_version]  # Start the path with the current version
         weka_version = parse_version(weka_version)
         target_version = parse_version(target_version)
+
+        if weka_version is None or target_version is None:
+            WARN("No valid upgrade path due to an invalid version in the upgrade map.")
+            return []
 
         while weka_version < target_version:
             next_versions = [
@@ -4012,6 +4025,8 @@ def target_version_check(
                 for ver, min_ver in upgrade_map.items()
                 if isinstance(min_ver, list)
                 and len(min_ver) > 0
+                and parse_version(min_ver[0]) is not None
+                and parse_version(ver) is not None
                 and parse_version(min_ver[0]) <= weka_version
                 and parse_version(ver) > weka_version
             ]
@@ -4032,29 +4047,17 @@ def target_version_check(
     try:
         upgrade_map = load_upgrade_map(upgrade_path)
         if not upgrade_map:
-            WARN(
-                "Invalid or empty upgrade map. Ensure upgrade_path.json exists and not empty."
-            )
+            WARN("Invalid or empty upgrade map. Ensure upgrade_path.json exists and is not empty.")
             return
 
         upgrade_hops = find_upgrade_path(weka_version, target_version, upgrade_map)
 
-        if isinstance(upgrade_hops, list):
-            if len(upgrade_hops) >= 1:
-                total_hops = len(upgrade_hops) - 1
-                if total_hops == 1:
-                    total_hops = "Direct path upgrade"
-                    print(
-                        f"{colors.OKCYAN}Total upgrade hops: {total_hops}.{colors.ENDC}"
-                    )
-                elif len(upgrade_hops) > 1:
-                    print(
-                        f"{colors.OKCYAN}Total upgrade hops: {total_hops}.{colors.ENDC}"
-                    )
-
-            print(
-                f"{colors.OKCYAN}Upgrade path: {' > '.join(upgrade_hops)}{colors.ENDC}"
-            )
+        if upgrade_hops:  # Only proceed if a valid path exists
+            total_hops = len(upgrade_hops) - 1
+            if total_hops == 1:
+                total_hops = "Direct path upgrade"
+            print(f"{colors.OKCYAN}Total upgrade hops: {total_hops}.{colors.ENDC}")
+            print(f"{colors.OKCYAN}Upgrade path: {' > '.join(upgrade_hops)}{colors.ENDC}")
 
             # Check for known issues with protocol filtering
             check_known_issues(
@@ -4066,10 +4069,9 @@ def target_version_check(
                 link_type,
                 obj_store_enabled,
             )
-        else:
-            WARN("Error: Upgrade path is not a valid list.")
+
     except (FileNotFoundError, ValueError) as e:
-        WARN("Error:", e)
+        WARN(f"Error: {e}")
 
 
 def main():
@@ -4127,6 +4129,8 @@ def main():
     parser.add_argument(
         "-t",
         "--target-version",
+        type=str,
+        required=True,
         help="Specify the target version for upgrade path calculation.",
     )
     parser.add_argument(
@@ -4137,6 +4141,8 @@ def main():
     )
 
     args = parser.parse_args()
+    if not args.target_version:
+        parser.error("--target-version is required.")
 
     ssh_identity = args.ssh_identity or None
 
@@ -4145,7 +4151,7 @@ def main():
         sys.exit(0)
 
     if args.run_all_checks:
-        weka_cluster_results = weka_cluster_checks(skip_mtu_check=args.skip_mtu_check)
+        weka_cluster_results = weka_cluster_checks(skip_mtu_check=args.skip_mtu_check, target_version=args.target_version)
         backend_hosts = weka_cluster_results[0]
         ssh_bk_hosts = weka_cluster_results[1]
         client_hosts = weka_cluster_results[2]
@@ -4171,13 +4177,13 @@ def main():
         sys.exit(0)
 
     elif args.cluster_checks_only:
-        weka_cluster_checks(skip_mtu_check=args.skip_mtu_check)
+        weka_cluster_checks(skip_mtu_check=args.skip_mtu_check, target_version=args.target_version)
         cluster_summary()
         INFO(f"Cluster upgrade checks complete!")
         sys.exit(0)
 
     elif args.check_specific_backend_hosts:
-        weka_cluster_results = weka_cluster_checks(skip_mtu_check=args.skip_mtu_check)
+        weka_cluster_results = weka_cluster_checks(skip_mtu_check=args.skip_mtu_check, target_version=args.target_version)
         backend_hosts = weka_cluster_results[0]
         ssh_bk_hosts = weka_cluster_results[1]
         client_hosts = weka_cluster_results[2]
@@ -4202,7 +4208,7 @@ def main():
         sys.exit(0)
 
     elif args.skip_client_checks:
-        weka_cluster_results = weka_cluster_checks(skip_mtu_check=args.skip_mtu_check)
+        weka_cluster_results = weka_cluster_checks(skip_mtu_check=args.skip_mtu_check, target_version=args.target_version)
         backend_hosts = weka_cluster_results[0]
         ssh_bk_hosts = weka_cluster_results[1]
         client_hosts = weka_cluster_results[2]
