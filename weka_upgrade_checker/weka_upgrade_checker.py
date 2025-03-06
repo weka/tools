@@ -46,7 +46,7 @@ else:
     InvalidVersion = ValueError  # Since distutils doesn't have InvalidVersion, we use a generic exception
 
 
-pg_version = "1.4.05"
+pg_version = "1.4.06"
 
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
@@ -518,19 +518,26 @@ def weka_cluster_checks(skip_mtu_check, target_version):
                 text=True,
                 check=True,
             )
+            # We only care if rsaEncryption is in use
+            match_algorithm = re.search(r"Public Key Algorithm: rsaEncryption", result.stdout)
             match = re.search(r"Public-Key: \((\d+) bit\)", result.stdout)
-            if match:
-                key_size = int(match.group(1))
-                if key_size < 2048:
-                    BAD(
-                        f"SSL cert key size is smaller than 2048 bits: current size {key_size} bits"
-                    )
+            if match_algorithm:
+                if match:
+                    key_size = int(match.group(1))
+                    if key_size < 2048:
+                        BAD(
+                            f"TLS cert key size is smaller than 2048 bits: current size {key_size} bits"
+                        )
+                    else:
+                        GOOD(
+                            f"TLS cert key size is 2048 bits or larger: current size {key_size} bits"
+                        )
                 else:
-                    GOOD(
-                        f"SSL cert key size is 2048 bits or larger: current size {key_size} bits"
-                    )
+                    WARN("Could not find key size in the certificate.")
             else:
-                WARN("Could not find key size in the certificate.")
+                GOOD(
+                     f"TLS cert using non-rsa algorithm"
+                    )                                                                                                                                  
         except subprocess.CalledProcessError:
             WARN(
                 "Failed to read the certificate. Ensure the file path is correct and openssl is installed."
