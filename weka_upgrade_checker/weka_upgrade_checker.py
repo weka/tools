@@ -46,7 +46,7 @@ else:
     InvalidVersion = ValueError  # Since distutils doesn't have InvalidVersion, we use a generic exception
 
 
-pg_version = "1.4.06"
+pg_version = "1.4.07"
 
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
@@ -308,24 +308,27 @@ def create_tar_file(source_file, output_path):
 
 def get_online_version():
     git_file_url = "https://raw.githubusercontent.com/weka/tools/master/weka_upgrade_checker/weka_upgrade_checker.py"
-    curl_command = f"curl -s --connect-timeout 5 {git_file_url}"
 
     try:
         file_content = subprocess.check_output(
-            curl_command, shell=True, universal_newlines=True
+            ["curl", "-s", "--connect-timeout", "5", git_file_url],
+            encoding="utf-8",
+            universal_newlines=True
         )
+
+        if not file_content:
+            return None  # Handle case where the file is empty
+
         search_version = "pg_version ="
-        lines = file_content.splitlines()
         found_version = []
-        for line in lines:
-            if search_version in line and "=" in line:
-                online_version = line.split("=")[1].strip('" "')
+
+        for line in file_content.splitlines():
+            if line.strip().startswith(search_version):
+                online_version = line.split("=", 1)[1].strip().strip('"')
                 found_version.append(online_version)
 
-        if found_version:
-            return found_version[0]
-        else:
-            return None
+        return found_version[0] if found_version else None
+
     except subprocess.CalledProcessError:
         return None
 
@@ -462,20 +465,14 @@ def weka_cluster_checks(skip_mtu_check, target_version):
 
     INFO("CHECKING FOR WEKA ALERTS")
     try:
-        # Capture the output, handle potential non-UTF-8 characters
-        weka_alerts = (
-            subprocess.check_output(
-                ["weka", "alerts", "--no-header", "-J"], stderr=subprocess.STDOUT
-            )
-            .decode("utf-8", errors="replace")
-            .rstrip("\n")
-            .split("\n")
-        )
-        weka_alerts_json_string = "\n".join(weka_alerts)
+        # Capture output and decode safely
+        weka_alerts_json_string = subprocess.check_output(
+            ["weka", "alerts", "--no-header", "-J"], stderr=subprocess.STDOUT
+        ).decode("utf-8", errors="replace").strip()
 
         weka_alerts_data = json.loads(weka_alerts_json_string)
 
-        if len(weka_alerts_data) == 0:
+        if not weka_alerts_data:
             GOOD("No Weka alerts present")
         else:
             WARN(f"{len(weka_alerts_data)} Weka alerts present")
@@ -489,6 +486,7 @@ def weka_cluster_checks(skip_mtu_check, target_version):
 
     except json.JSONDecodeError as e:
         logging.error(f"Failed to parse JSON: {e}")
+        logging.debug(f"Raw output: {weka_alerts_json_string[:500]}")  # Show first 500 chars
         WARN("Failed to decode Weka alerts JSON")
 
     INFO("VERIFYING CUSTOM TLS CERT")
@@ -537,7 +535,7 @@ def weka_cluster_checks(skip_mtu_check, target_version):
             else:
                 GOOD(
                      f"TLS cert using non-rsa algorithm"
-                    )                                                                                                                                  
+                    )
         except subprocess.CalledProcessError:
             WARN(
                 "Failed to read the certificate. Ensure the file path is correct and openssl is installed."
