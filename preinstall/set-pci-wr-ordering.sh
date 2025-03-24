@@ -14,7 +14,7 @@ script_name=$(basename "$0")
 
 usage() {
 	cat <<- EOF
-	Usage: $script_name [ -e | -i ] PORT [ PORT ... ]
+	Usage: $script_name PORT [ PORT ... ]
 
 	Sets PCI_WR_ORDERING (and ADVANCED_PCI_SETTINGS) for Mellanox cards. Multiple
 	ports can be specified.
