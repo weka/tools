@@ -1,12 +1,13 @@
 #!/bin/bash
 
-DESCRIPTION="Check for NTP..."
+DESCRIPTION="Check for NTP/Chrony/timesyncd..."
 SCRIPT_TYPE="parallel"
 
 # General requirement is to have time synced for all Weka.IO cluster nodes, since this script is running as standalone on per node basis, it would check if there is NTP running and if time is synced properly
 
 CHRONY=0
 NTP=0
+TIMESYNCD=0
 
 which chronyc &> /dev/null
 if [ $? -eq 0 ]; then
@@ -18,14 +19,21 @@ if [ $? -eq 0 ]; then
 	NTP=1
 fi
 
+systemctl status systemd-timesyncd &> /dev/null
+if [ $? -eq 0 ]; then
+	TIMESYNCD=1
+fi
+
 if [ $CHRONY -eq 1 ] && [ $NTP -eq 1 ]; then
 	echo "Both Chrony and NTP are installed"
 elif [ $CHRONY -eq 1 ]; then
 	echo "Chrony is installed"
 elif [ $NTP -eq 1 ]; then
 	echo "NTP is installed"
+elif [ $TIMESYNCD -eq 1 ]; then
+	echo "Timesyncd is installed"
 else
-	echo "Neither Chrony nor NTP are installed"
+	echo "Neither Chrony, timesyncd nor NTP are installed"
 	echo "    PATH: $PATH"
 fi
 
@@ -58,7 +66,19 @@ if [ $NTP -eq 1 ]; then
 	fi
 fi
 
-if [ $CHRONY -eq 0 ] && [ $NTP -eq 0 ]; then
+TIMESYNCDGOOD=0
+if [ $TIMESYNCD -eq 1 ]; then
+	status=$(timedatectl timesync-status 2>/dev/null | grep 'Leap' | awk '{print $2}')
+	if [ "$status" = "normal" ]; then
+		echo "Timesync shows time is properly synced"
+		TIMESYNCDGOOD=1
+	else
+		echo "Timesyncd installed but not working?"
+	fi
+fi
+
+
+if [ $CHRONY -eq 0 ] && [ $NTP -eq 0 ] && [ $TIMESYNCD -eq 0 ] ; then
 	ret=1
 fi
 
