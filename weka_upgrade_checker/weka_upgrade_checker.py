@@ -46,7 +46,7 @@ else:
     InvalidVersion = ValueError  # Since distutils doesn't have InvalidVersion, we use a generic exception
 
 
-pg_version = "1.4.07"
+pg_version = "1.4.09"
 
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
@@ -504,42 +504,43 @@ def weka_cluster_checks(skip_mtu_check, target_version):
         BAD("Unable to determine if custom tls certificate is installed.")
 
     INFO("VALIDATING SSL CERT KEY SIZE")
-    cert = os.path.abspath("/opt/weka/data/drives0/tls/certificate.pem")
-    if not os.path.exists(cert):
-        WARN(f"Certificate file does not exist: {cert}")
-    else:
-        try:
-            # Run openssl command to get certificate details
-            result = subprocess.run(
-                ["openssl", "x509", "-in", cert, "-noout", "-text"],
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-            # We only care if rsaEncryption is in use
-            match_algorithm = re.search(r"Public Key Algorithm: rsaEncryption", result.stdout)
-            match = re.search(r"Public-Key: \((\d+) bit\)", result.stdout)
-            if match_algorithm:
-                if match:
-                    key_size = int(match.group(1))
-                    if key_size < 2048:
-                        BAD(
-                            f"TLS cert key size is smaller than 2048 bits: current size {key_size} bits"
-                        )
+    if V(weka_version) >= V("4.2.7"):
+        cert = os.path.abspath("/opt/weka/data/drives0/tls/certificate.pem")
+        if not os.path.exists(cert):
+            WARN(f"Certificate file does not exist: {cert}")
+        else:
+            try:
+                # Run openssl command to get certificate details
+                result = subprocess.run(
+                    ["openssl", "x509", "-in", cert, "-noout", "-text"],
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                )
+                # We only care if rsaEncryption is in use
+                match_algorithm = re.search(r"Public Key Algorithm: rsaEncryption", result.stdout)
+                match = re.search(r"Public-Key: \((\d+) bit\)", result.stdout)
+                if match_algorithm:
+                    if match:
+                        key_size = int(match.group(1))
+                        if key_size < 2048:
+                            BAD(
+                                f"TLS cert key size is smaller than 2048 bits: current size {key_size} bits"
+                            )
+                        else:
+                            GOOD(
+                                f"TLS cert key size is 2048 bits or larger: current size {key_size} bits"
+                            )
                     else:
-                        GOOD(
-                            f"TLS cert key size is 2048 bits or larger: current size {key_size} bits"
-                        )
+                        WARN("Could not find key size in the certificate.")
                 else:
-                    WARN("Could not find key size in the certificate.")
-            else:
-                GOOD(
-                     f"TLS cert using non-rsa algorithm"
-                    )
-        except subprocess.CalledProcessError:
-            WARN(
-                "Failed to read the certificate. Ensure the file path is correct and openssl is installed."
-            )
+                    GOOD(
+                        f"TLS cert using non-rsa algorithm"
+                        )
+            except subprocess.CalledProcessError:
+                WARN(
+                    "Failed to read the certificate. Ensure the file path is correct and openssl is installed."
+                )
 
     INFO("CHECKING REBUILD STATUS")
     rebuild_status = json.loads(
@@ -3594,7 +3595,7 @@ def backend_host_checks(
             else:
                 cpu_instruction_set(host_name, result)
 
-    if V(weka_version) >= V("4.2.1"):
+    if V(target_version) >= V("4.3"):
         INFO("VALIDATING IPV6")
         results = parallel_execution(
             ssh_bk_hosts,
