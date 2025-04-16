@@ -46,7 +46,7 @@ else:
     InvalidVersion = ValueError  # Since distutils doesn't have InvalidVersion, we use a generic exception
 
 
-pg_version = "1.4.09"
+pg_version = "1.4.10"
 
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
@@ -460,7 +460,7 @@ def weka_cluster_checks(skip_mtu_check, target_version):
             self.is_up = machine_json["status"]
             self.uid = str(machine_json["uid"])
             self.versions = machine_json["versions"][0]
-            if V(weka_version) > V("4.1"):
+            if V("4.1") <= V(weka_version) < V("4.4.6"):
                 self.containers = machine_json["hosts"]["map"]
 
     INFO("CHECKING FOR WEKA ALERTS")
@@ -3228,6 +3228,7 @@ def backend_host_checks(
     backend_ips,
     ssh_identity,
     s3_enabled,
+    target_version,
     check_rhel_systemd_hosts,
 ):
     INFO("CHECKING PASSWORDLESS SSH CONNECTIVITY")
@@ -4175,6 +4176,7 @@ def main():
             backend_ips,
             ssh_identity,
             s3_enabled,
+            args.target_version,
             check_rhel_systemd_hosts,
         )
         client_hosts_checks(weka_version, ssh_cl_hosts, check_version, ssh_identity)
@@ -4207,6 +4209,7 @@ def main():
             backend_ips,
             ssh_identity,
             s3_enabled,
+            args.target_version,
             check_rhel_systemd_hosts,
         )
         cluster_summary()
@@ -4234,6 +4237,7 @@ def main():
             backend_ips,
             ssh_identity,
             s3_enabled,
+            args.target_version,
             check_rhel_systemd_hosts,
         )
         cluster_summary()
@@ -4254,3 +4258,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
