@@ -3229,6 +3229,7 @@ def backend_host_checks(
     ssh_identity,
     s3_enabled,
     check_rhel_systemd_hosts,
+    target_version
 ):
     INFO("CHECKING PASSWORDLESS SSH CONNECTIVITY")
     results = parallel_execution(
@@ -4176,6 +4177,7 @@ def main():
             ssh_identity,
             s3_enabled,
             check_rhel_systemd_hosts,
+            target_version=args.target_version
         )
         client_hosts_checks(weka_version, ssh_cl_hosts, check_version, ssh_identity)
         cluster_summary()
@@ -4208,6 +4210,7 @@ def main():
             ssh_identity,
             s3_enabled,
             check_rhel_systemd_hosts,
+            target_version=args.target_version
         )
         cluster_summary()
         INFO(f"Cluster upgrade checks complete!")
@@ -4235,6 +4238,7 @@ def main():
             ssh_identity,
             s3_enabled,
             check_rhel_systemd_hosts,
+            target_version=args.target_version
         )
         cluster_summary()
         INFO(f"Cluster upgrade checks complete!")
