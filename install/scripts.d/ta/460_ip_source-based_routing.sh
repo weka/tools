@@ -1,4 +1,4 @@
-#!/bin/bash                                                                                                                                                                                                                         
+#!/bin/bash 
 
 #set -ue # Fail with an error code if there's any sub-command/variable error
 
@@ -9,81 +9,175 @@ WTA_REFERENCE=""
 KB_REFERENCE=""
 RETURN_CODE=0
 
-SOURCE_BASED_ROUTING_RECOMMENDED="0"
-NUMBER_OF_ROUTING_TABLES_SEEN="0"
-NUMBER_OF_ROUTING_TABLES_VERIFIED="0"
-NUMBER_OF_ARP_ANNOUNCE_VERIFIED="0"
-NUMBER_OF_ARP_FILTER_VERIFIED="0"
+declare -A WEKA_INTERFACES
+declare -A WEKA_INTERFACES_OVERLAP
 
-# Look for multiple routes to the same destination via more than one device - this indicates that source-based routing might *possibly* be required because two devices could be on the same subnet
-while read -r ROUTING_COUNT ROUTING_DESTINATION ; do
-    # If we have more than one route somewhere
-    if [[ ${ROUTING_COUNT} -gt "1" ]]; then
-        SOURCE_BASED_ROUTING_RECOMMENDED="1"
+# Last modified: 2025-03-25
 
-        # For each preferred source (i.e. source IP), check that an IP routing rule (directing us to a routing table) exists
-        while read -r MAIN_TABLE_ROUTING_DESTINATION MAIN_TABLE_ROUTING_DEVICE MAIN_TABLE_ROUTING_PROTOCOL MAIN_TABLE_ROUTING_SCOPE MAIN_TABLE_ROUTING_SOURCE ; do
+# arp_announce -- Weka recommends a value of 2
+#  Ref: https://sysctl-explorer.net/net/ipv4/arp_announce/
+#   Define different restriction levels for announcing the local source IP address from IP packets in ARP requests sent on interface: 
+#   0 - (default) Use any local address, configured on any interface 
+#   1 - Try to avoid local addresses that are not in the target’s subnet for this interface. 
+#       This mode is useful when target hosts reachable via this interface require the source IP address in ARP requests to be part of their logical network configured on the receiving interface. 
+#       When we generate the request we will check all our subnets that include the target IP and will preserve the source address if it is from such subnet. 
+#       If there is no such subnet we select source address according to the rules for level 2. 
+#   2 - Always use the best local address for this target. In this mode we ignore the source address in the IP packet and try to select local address that we prefer for talks with the target host. 
+#       Such local address is selected by looking for primary IP addresses on all our subnets on the outgoing interface that include the target IP address. 
+#       If no suitable local address is found we select the first local address we have on the outgoing interface or on all other interfaces, with the hope we will receive reply for our request and even sometimes no matter the source IPaddress we announce.
+#
+#       The max value from conf/{all,interface}/arp_announce is used.
 
-            VALID_MATCHING_ROUTE_DESTINATION_IN_TABLE=0
-            VALID_MATCHING_ROUTE_DEVICE_IN_TABLE=0
+# arp_filter -- Weka recommends a value of 1
+#  Ref: https://sysctl-explorer.net/net/ipv4/arp_filter/
+#   1 - Allows you to have multiple network interfaces on the same subnet, and have the ARPs for each interface be answered based on whether or not the kernel would route a packet from the ARP’d IP out that interface (therefore you must use source based routing for this to work). 
+#       In other words it allows control of which cards (usually 1) will respond to an arp request.
+#   0 - (default) The kernel can respond to arp requests with addresses from other interfaces. 
+#       This may seem wrong but it usually makes sense, because it increases the chance of successful communication. 
+#       IP addresses are owned by the complete host on Linux, not by particular interfaces. 
+#       Only for more complex setups like load- balancing, does this behaviour cause problems.
+#
+#       arp_filter for the interface will be enabled if at least one of conf/{all,interface}/arp_filter is set to TRUE, it will be disabled otherwise
 
-            # For each (hopefully) device-specific routing table, check that they contain routes to the original destination with the correct device, otherwise they won't get used.
-            for ROUTING_TABLE in $(ip -4 --json rule | python3 -c 'import sys, json, collections; data = json.load(sys.stdin) ; print(" ".join([r["table"] for r in data if "'${MAIN_TABLE_ROUTING_SOURCE}'" in r.get("src")]))') ; do
-                let NUMBER_OF_ROUTING_TABLES_SEEN="${NUMBER_OF_ROUTING_TABLES_SEEN}+1"
-
-                while read -r INDIVIDUAL_ROUTE_DESTINATION INDIVIDUAL_ROUTE_DEVICE ; do
-                    if [ "${INDIVIDUAL_ROUTE_DESTINATION}" = "${MAIN_TABLE_ROUTING_DESTINATION}" ]  && [ "${INDIVIDUAL_ROUTE_DEVICE}" = "${MAIN_TABLE_ROUTING_DEVICE}" ] ; then
-                        let NUMBER_OF_ROUTING_TABLES_VERIFIED="${NUMBER_OF_ROUTING_TABLES_VERIFIED}+1"
-
-                        #Check that arp_announce=2 and arp_filter=1 for this interface, as per docs
-                        ARP_ANNOUNCE=$(sysctl -n net.ipv4.conf.${INDIVIDUAL_ROUTE_DEVICE}.arp_announce)
-                        ARP_FILTER=$(  sysctl -n net.ipv4.conf.${INDIVIDUAL_ROUTE_DEVICE}.arp_filter)
-                        if [[ ${ARP_ANNOUNCE} -eq "2" ]] ; then
-                            let NUMBER_OF_ARP_ANNOUNCE_VERIFIED="${NUMBER_OF_ARP_ANNOUNCE_VERIFIED}+1"
-                        fi
-                        if [[ ${ARP_FILTER} -eq "1" ]] ; then
-                            let NUMBER_OF_ARP_FILTER_VERIFIED="${NUMBER_OF_ARP_FILTER_VERIFIED}+1"
-                        fi
-                    fi
-                done < <(ip -4 --json route list table ${ROUTING_TABLE} | python3 -c 'import sys, json, collections; data = json.load(sys.stdin) ; print("\n".join([(r["dst"] + " " + r["dev"]) for r in data]))')
-            done
-        done < <(ip -4 --json route  | python3 -c 'import sys, json; data = json.load(sys.stdin)
-for r in data:
-    if "'${ROUTING_DESTINATION}'" != r["dst"]:
-        continue                                                                                                        
-    print(r["dst"], r["dev"], r["protocol"], r["scope"], r["prefsrc"])
-')
-    fi
-done < <(ip -4 --json route | python3 -c 'import sys, json, collections; data = json.load(sys.stdin) ; from collections import Counter ; unique_routes=Counter([route["dst"] for route in data if "default" not in route.get("dst")]) ; print("\n".join([(str(unique_routes['route']) + " " + route) for route in unique_routes.keys()]))') # get (and count) all the unique non-default destinations out of the routing table
+# arp_ignore -- Weka recommends a value of 0
+#  Ref: https://sysctl-explorer.net/net/ipv4/arp_ignore/
+#   Define different modes for sending replies in response to received ARP requests that resolve local target IP addresses: 
+#   0 - (default): reply for any local target IP address, configured on any interface 
+#   1 - reply only if the target IP address is local address configured on the incoming interface 
+#   2 - reply only if the target IP address is local address configured on the incoming interface and both with the sender’s IP address are part from same subnet on this interface 
+#   3 - do not reply for local addresses configured with scope host, only resolutions for global and link addresses are replied 
+#   4-7 - reserved 
+#   8 - do not reply for all local addresses
+#
+#   The max value from conf/{all,interface}/arp_ignore is used when ARP request is received on the {interface
 
 
-if [[ ${SOURCE_BASED_ROUTING_RECOMMENDED} -ge "1" ]] ; then
-    echo "Multiple routes to a single destination exist - it is possible source-based routing should be configured"
+get_network_prefix() {
+    local cidr="$1"
+    local ip subnet mask i IFS=.
 
-    # Now check we actually do some SBR
-    if [[ ${NUMBER_OF_ROUTING_TABLES_SEEN} -eq "0" ]] ; then
-        echo "Warning: Although source-based routing is expected, there are no device-specific routing tables configured"
-        RETURN_CODE="254"
-    fi
-    # and for each table...
-    if [[ ${NUMBER_OF_ROUTING_TABLES_VERIFIED} -ne ${NUMBER_OF_ROUTING_TABLES_SEEN} ]] ; then
-        echo "Warning: Not every device-specific routing table has a route to the relevant destination via the specific interface. The output of \$(ip rule) and \$(ip route) should be reviewed"
-        RETURN_CODE="254"
-    fi
-    if [[ ${NUMBER_OF_ROUTING_TABLES_SEEN} -ne ${NUMBER_OF_ARP_ANNOUNCE_VERIFIED} ]] ; then
-        echo "Warning: Not every interface appears to have arp_announce=2 set. This could lead to communication problems"
-        RETURN_CODE="254"
-    fi
-    if [[ ${NUMBER_OF_ROUTING_TABLES_SEEN} -ne ${NUMBER_OF_ARP_FILTER_VERIFIED} ]] ; then
-        echo "Warning: Not every interface appears to have arp_filter=1 set. This could lead to communication problems"
-        RETURN_CODE="254"
-    fi
-    echo "Recommended resolution: Although networking is typically site- and hardware-dependent,"
-    echo " some example configurations for the common dual NIC setup are noted on the WEKA"
-    echo " documentation site: https://docs.weka.io/planning-and-installation/bare-metal/setting-up-the-hosts#configure-the-ha-networking"
+    # Extract IP and subnet mask length
+    ip="${cidr%/*}"      # Get the IP portion before '/'
+    subnet="${cidr#*/}"  # Get the number after '/'
+
+    # Convert subnet length to a bitmask
+    mask=$(( (1 << subnet) - 1 << (32 - subnet) ))
+
+    # Split IP into octets
+    set -- $ip
+    local -a octets=($1 $2 $3 $4)
+
+    # Convert IP octets to a 32-bit integer
+    local ip_int=$(( (${octets[0]} << 24) | (${octets[1]} << 16) | (${octets[2]} << 8) | ${octets[3]} ))
+
+    # Apply subnet mask
+    local net_int=$(( ip_int & mask ))
+
+    # Convert back to dotted decimal format
+    local net_addr=$(( (net_int >> 24) & 255 )).$(( (net_int >> 16) & 255 )).$(( (net_int >> 8) & 255 )).$(( net_int & 255 ))
+
+    echo "$net_addr"
+}
+
+
+# Checks: 
+#  IP rule exists for each mgmt ip
+#  IP route table exists for each IP rule above
+
+#  Verify arp_announce
+#  Verify arp_filter
+#  Verify arp_ignore
+
+	
+# Determine what NICs are being used as dataplane NICs
+for WEKA_CONTAINER in $(weka local ps --output name --no-header | grep -e compute -e drive -e frontend); do
+    while read NET_ENTRY; do
+        if [[ ${NET_ENTRY} =~ "name:"(.*) ]]; then
+            NET_NAME=${BASH_REMATCH[1]}
+            # Example output:
+            #  [{addr_info:[{index:8,dev:ens1f1np1,family:inet,local:10.0.94.110,prefixlen:16,broadcast:10.0.255.255,scope:global,noprefixroute:true,label:ens1f1np1,valid_life_time:4294967295,preferred_life_time:4294967295}]}]
+            if [[ $(ip -4 -j -o addr show dev ${NET_NAME} 2>/dev/null | tr -d \"\[:blank:]) =~ "local:"([0-9\.]+)",prefixlen:"([0-9]+) ]]; then
+                NET_IP=${BASH_REMATCH[1]}
+                NETMASK=${BASH_REMATCH[2]}
+                WEKA_INTERFACES[${NET_NAME}]="${NET_IP}/${NETMASK}"
+            fi
+        fi
+    done < <(weka local resources -C ${WEKA_CONTAINER} net --stable -J | grep -w -e name | tr -d \"\,[:blank:])
+done
+
+
+# Determine the network prefix associated with each dataplane NIC
+if [[ ${#WEKA_INTERFACES[@]} -gt 1 ]]; then
+    declare -A network_prefixes
+    
+    # Do the dataplane NICs have addresses in overlapping networks?
+    for NET in "${!WEKA_INTERFACES[@]}"; do
+        network_prefix=$(get_network_prefix "${WEKA_INTERFACES[$NET]}")
+        WEKA_INTERFACES_OVERLAP[${network_prefix}]+="${NET} "
+    done
 fi
 
+
+# If we have multiple, overlapping, dataplane NICs, perform validation
+for PREFIX in ${!WEKA_INTERFACES_OVERLAP[@]}; do
+    readarray -d ' ' overlapping_nics  <<< "${WEKA_INTERFACES_OVERLAP[${PREFIX}]}"
+    if [[ ${#overlapping_nics[@]} -gt 1 ]]; then
+        for NIC in ${overlapping_nics[@]}; do
+        
+            # Validate arp_announce (should be equal to 2)
+            ARP_ANNOUNCE_ALL=$(sysctl -n net.ipv4.conf.all.arp_announce)
+            if [[ ${ARP_ANNOUNCE_ALL} != "2" ]]; then
+                if [[ $(sysctl -n net.ipv4.conf.${NIC}.arp_announce) != "2" ]]; then
+                    RETURN_CODE=254
+                    echo "WARNING: arp_announce is not set to 2 on interface ${NIC}".
+                fi
+            fi
+    
+            # Validate arp_filter (should be equal to 1)
+            ARP_FILTER_ALL=$(sysctl -n net.ipv4.conf.all.arp_filter)
+            if [[ ${ARP_FILTER_ALL} != "1" ]]; then
+                if [[ $(sysctl -n net.ipv4.conf.${NIC}.arp_filter) != "1" ]]; then
+                    RETURN_CODE=254
+                    echo "WARNING: arp_filter is not set to 1 on interface ${NIC}".
+               fi
+            fi
+    
+            # Validate arp_ignore (should be 0)
+            if [[ $(sysctl -n net.ipv4.conf.${NIC}.arp_ignore) != "0" ]]; then
+                RETURN_CODE=254
+                echo "WARNING: arp_ignore is not set to 0 on interface ${NIC}".
+            fi
+        
+            if [[ $(sysctl -n net.ipv4.conf.all.arp_ignore) != "0" ]]; then
+                RETURN_CODE=254
+                echo "WARNING: arp_ignore is not set to 0 on net.ipv4.conf.all.arp_ignore."
+                echo "This value may override the arp_ignore value on specific network interfaces."
+            fi
+        
+            ###################################
+            # Check ip rules / routing tables #
+            ###################################
+            readarray -d "/" -t netinfo  <<< "${WEKA_INTERFACES[${NIC}]}"
+        
+            # Does this interface's IP appear in the rule table?
+            if ! ip rule | grep -q -m 1 -F "${netinfo[0]}"; then
+                RETURN_CODE=254
+                echo "WARNING: No ip rule found for IP ${netinfo[0]}".
+            else
+                ROUTE_TABLE=$(ip rule | grep -m 1 -F "${netinfo[0]}" | awk '{print $NF}')
+                if ! ip route show table ${ROUTE_TABLE} &> /dev/null; then
+                    RETURN_CODE=254
+                    echo "WARNING: route table ${ROUTE_TABLE} not found."
+               fi
+            fi
+        done 
+    fi
+done
+
 if [[ ${RETURN_CODE} -eq 0 ]]; then
-    echo "Source-based routing is not required or correct"
+    echo "Source-based routing is not required or is correct."
+else
+    echo "Recommended Resolution: review the required network settings from the WEKA docs:"
+    echo "https://docs.weka.io/planning-and-installation/bare-metal/setting-up-the-hosts#general-settings-in-etc-sysctl.conf"
 fi
 exit ${RETURN_CODE}
