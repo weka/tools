@@ -46,7 +46,7 @@ else:
     InvalidVersion = ValueError  # Since distutils doesn't have InvalidVersion, we use a generic exception
 
 
-pg_version = "1.4.10"
+pg_version = "1.4.12"
 
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
@@ -999,13 +999,16 @@ def weka_cluster_checks(skip_mtu_check, target_version):
             for host in backend_hosts
             if "compute" in host.container and host.is_up
         )
-        ratio = usable_capacity / total_compute_memory
-        if ratio > 2000:
-            WARN(
-                f"The current ratio of {ratio} is below the recommended value and may cause performance issues during upgrade, it is recommended to increase compute RAM"
-            )
+        if total_compute_memory == 0:
+            WARN("No compute containers found or all are down — skipping memory to SSD ratio validation")
         else:
-            GOOD("Memory to SSD ratio validation ok")
+            ratio = usable_capacity / total_compute_memory
+            if ratio > 2000:
+                WARN(
+                    f"The current ratio of {ratio} is below the recommended value and may cause performance issues during upgrade. It is recommended to increase compute RAM."
+                )
+            else:
+                GOOD("Memory to SSD ratio validation ok")
 
     INFO("CHECKING CLIENT COMPATIBLE VERSIONS")
     try:
@@ -1262,6 +1265,7 @@ def weka_cluster_checks(skip_mtu_check, target_version):
             "23.10-0.5.5",
             "23.04-1.1.3.0",
             "23.10-0.5.5.0",
+            "24.04-0.7.0.0",
         ],
     }
 
@@ -1723,6 +1727,22 @@ def weka_cluster_checks(skip_mtu_check, target_version):
             GOOD("No manual Weka overrides found")
     if override_list:
         printlist(override_list, 5)
+
+    if V(weka_version) >= V("4.0"):
+    INFO("CHECKING FOR WEKA CLUSTER TASKS")
+    bg_task = []
+    cluster_tasks = json.loads(
+        subprocess.check_output(["weka", "cluster", "tasks", "-J"])
+    )
+
+    for task in cluster_tasks:
+        if task["type"] != "FSCK":
+            WARN("There are active cluster tasks that should be considered before running the upgrade.")
+            bg_task += [task["type"], task["description"]]
+            printlist(bg_task, 2)
+            break
+    else:
+        GOOD("No unexpected Weka cluster tasks running")
 
     INFO("CHECKING FOR WEKA BLACKLISTED NODES")
     blacklist = []
@@ -2528,8 +2548,8 @@ supported_os = {
             "amzn": ["17.09", "17.12", "18.03", "2"],
         },
         "clients_only": {
-            "sles": ["12.5", "15.2", "15.4", "15.5"],
-            "ol": ["9"],
+            "sles": ["12.5", "15.2", "15.4", "15.5", "15.6"],
+            "ol": ["8.9", "9"],
             "debian": ["10", "12"],
             "almalinux": ["8.10", "9.4"],
         },
