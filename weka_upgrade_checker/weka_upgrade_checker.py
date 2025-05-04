@@ -3607,7 +3607,7 @@ def backend_host_checks(
         INFO("VALIDATING CPU INSTRUCTION SET")
         results = parallel_execution(
             ssh_bk_hosts,
-            ['grep "\<avx2\>" /proc/cpuinfo'],
+            r['grep "\<avx2\>" /proc/cpuinfo'],
             use_check_output=True,
             ssh_identity=ssh_identity,
         )
