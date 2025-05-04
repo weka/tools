@@ -1729,20 +1729,21 @@ def weka_cluster_checks(skip_mtu_check, target_version):
         printlist(override_list, 5)
 
     if V(weka_version) >= V("4.0"):
-    INFO("CHECKING FOR WEKA CLUSTER TASKS")
-    bg_task = []
-    cluster_tasks = json.loads(
-        subprocess.check_output(["weka", "cluster", "tasks", "-J"])
-    )
+        INFO("CHECKING FOR WEKA CLUSTER TASKS")
+        bg_task = []
+        cluster_tasks = json.loads(
+            subprocess.check_output(["weka", "cluster", "tasks", "-J"])
+        )
 
-    for task in cluster_tasks:
-        if task["type"] != "FSCK":
-            WARN("There are active cluster tasks that should be considered before running the upgrade.")
-            bg_task += [task["type"], task["description"]]
-            printlist(bg_task, 2)
-            break
-    else:
-        GOOD("No unexpected Weka cluster tasks running")
+        for task in cluster_tasks:
+            if task["type"] != "FSCK":
+                WARN("There are active cluster tasks that should be considered before running the upgrade.")
+                bg_task += [task["type"], task["description"]]
+                printlist(bg_task, 2)
+                break
+
+        if len(bg_task) == 0:
+            GOOD("No unexpected Weka cluster tasks running")
 
     INFO("CHECKING FOR WEKA BLACKLISTED NODES")
     blacklist = []
