@@ -46,7 +46,7 @@ else:
     InvalidVersion = ValueError  # Since distutils doesn't have InvalidVersion, we use a generic exception
 
 
-pg_version = "1.4.12"
+pg_version = "1.4.13"
 
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
@@ -1121,7 +1121,7 @@ def weka_cluster_checks(skip_mtu_check, target_version):
         WARN(f"Following snapshots are uploading\n")
         printlist(snap_upload, 5)
 
-    if V("4.2.12") <= V(weka_version) <= V("4.3.5"):
+    if V("4.2.12") <= V(target_version) <= V("4.4"):
         INFO("VERIFYING SNAPSHOT BUCKET COUNT")
         snap_layers = json.loads(
             subprocess.check_output(
@@ -1729,20 +1729,20 @@ def weka_cluster_checks(skip_mtu_check, target_version):
         printlist(override_list, 5)
 
     if V(weka_version) >= V("4.0"):
-    INFO("CHECKING FOR WEKA CLUSTER TASKS")
-    bg_task = []
-    cluster_tasks = json.loads(
-        subprocess.check_output(["weka", "cluster", "tasks", "-J"])
-    )
+        INFO("CHECKING FOR WEKA CLUSTER TASKS")
+        bg_task = []
+        cluster_tasks = json.loads(
+            subprocess.check_output(["weka", "cluster", "tasks", "-J"])
+        )
 
-    for task in cluster_tasks:
-        if task["type"] != "FSCK":
-            WARN("There are active cluster tasks that should be considered before running the upgrade.")
-            bg_task += [task["type"], task["description"]]
-            printlist(bg_task, 2)
-            break
-    else:
-        GOOD("No unexpected Weka cluster tasks running")
+        for task in cluster_tasks:
+            if task["type"] != "FSCK":
+                WARN("There are active cluster tasks that should be considered before running the upgrade.")
+                bg_task += [task["type"], task["description"]]
+                printlist(bg_task, 2)
+                break
+        else:
+            GOOD("No unexpected Weka cluster tasks running")
 
     INFO("CHECKING FOR WEKA BLACKLISTED NODES")
     blacklist = []
