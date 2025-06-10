@@ -46,7 +46,7 @@ else:
     InvalidVersion = ValueError  # Since distutils doesn't have InvalidVersion, we use a generic exception
 
 
-pg_version = "1.5.1"
+pg_version = "1.5.2"
 
 
 known_issues_file = "known_issues.json"
@@ -1964,61 +1964,46 @@ def weka_cluster_checks(skip_mtu_check, target_version):
             else:
                 GOOD(f"No custom NFS options specified")
 
-    INFO("CHECKING WEKA NFS CONFIG FS")
-    output = subprocess.check_output(
-        ["weka", "nfs", "global-config", "show", "-J"], text=True
-    )
-    config = json.loads(output)
-
-    if "config_fs" not in config:
-        WARN("NFS global-config missing 'config_fs' entry")
-    else:
-        GOOD(f"NFS config_fs defined: {config['config_fs']}")
-
-    INFO("CHECKING WEKA NFS SERVER HEALTH")
     if len(nfs_server_hosts) != 0:
-        if nfs_server_hosts[0]["status"] == "OK":
-            GOOD(f"NFS Server status OK")
-        elif nfs_server_hosts[0]["status"] == "Inactive":
-            WARN(
-                f'NFS Server {nfs_server_hosts[0]["name"]} is {nfs_server_hosts[0]["status"]}'
-            )
+        INFO("CHECKING WEKA NFS CONFIG FS")
+        output = subprocess.check_output(
+            ["weka", "nfs", "global-config", "show", "-J"], text=True
+        )
+        config = json.loads(output)
+
+        if "config_fs" not in config:
+            WARN("NFS global-config missing 'config_fs' entry")
         else:
-            WARN(f'NFS Server {nfs_server_hosts[0]["name"]} Not OK')
+            GOOD(f"NFS config_fs defined: {config['config_fs']}")
 
-    if nfs_server_hosts[0]["status"] != "Inactive":
-        INFO("CHECKING WEKA NFS SERVER HOST HEALTH")
-        all_nfs_hosts = []
-        bad_nfs_hosts = []
-        good_nfs_hosts = []
-        failed_nfshosts = []
+    good_nfs_hosts = []
+    bad_nfs_hosts = []
+    failed_nfshosts = []
 
-        for host in nfs_server_hosts[0]["ports"]:
-            if host["status"] == "OK":
-                all_nfs_hosts.append(host["host_id"])
+    if len(nfs_server_hosts) != 0:
+        INFO("CHECKING WEKA NFS SERVER HEALTH")
+
+        if len(nfs_server_hosts) != 0:
+            if nfs_server_hosts[0]["status"] == "OK":
+                GOOD(f"NFS Server status OK")
+            elif nfs_server_hosts[0]["status"] == "Inactive":
+                WARN(f'NFS Server {nfs_server_hosts[0]["name"]} is {nfs_server_hosts[0]["status"]}')
             else:
-                bad_nfs_hosts.append(host["host_id"])
+                WARN(f'NFS Server {nfs_server_hosts[0]["name"]} Not OK')
 
-        for bkhost in backend_hosts:
-            if bkhost.typed_id in all_nfs_hosts:
-                good_nfs_hosts.append(
-                    dict(
-                        id=bkhost.typed_id,
-                        hostname=bkhost.hostname,
-                        ip=bkhost.ip,
-                        version=bkhost.sw_version,
-                        mode=bkhost.mode,
-                    )
-                )
+            if nfs_server_hosts[0]["status"] != "Inactive":
+                INFO("CHECKING WEKA NFS SERVER HOST HEALTH")
+                all_nfs_hosts = []
 
-        if not bad_nfs_hosts:
-            GOOD("No failed NFS hosts found")
-        else:
-            WARN2("Found NFS cluster hosts in bad status:\n")
-            for nfshost in bad_nfs_hosts:
+                for host in nfs_server_hosts[0]["ports"]:
+                    if host["status"] == "OK":
+                        all_nfs_hosts.append(host["host_id"])
+                    else:
+                        bad_nfs_hosts.append(host["host_id"])
+
                 for bkhost in backend_hosts:
-                    if nfshost == bkhost.typed_id:
-                        failed_nfshosts.append(
+                    if bkhost.typed_id in all_nfs_hosts:
+                        good_nfs_hosts.append(
                             dict(
                                 id=bkhost.typed_id,
                                 hostname=bkhost.hostname,
@@ -2028,10 +2013,28 @@ def weka_cluster_checks(skip_mtu_check, target_version):
                             )
                         )
 
-            for host_info in failed_nfshosts:
-                WARN(
-                    f'Host: {host_info["id"]} {host_info["hostname"]} {host_info["ip"]} {host_info["version"]} {host_info["mode"]}'
-                )
+                if not bad_nfs_hosts:
+                    GOOD("No failed NFS hosts found")
+                else:
+                    WARN2("Found NFS cluster hosts in bad status:\n")
+                    for nfshost in bad_nfs_hosts:
+                        for bkhost in backend_hosts:
+                            if nfshost == bkhost.typed_id:
+                                failed_nfshosts.append(
+                                    dict(
+                                        id=bkhost.typed_id,
+                                        hostname=bkhost.hostname,
+                                        ip=bkhost.ip,
+                                        version=bkhost.sw_version,
+                                        mode=bkhost.mode,
+                                    )
+                                )
+
+                    for host_info in failed_nfshosts:
+                        WARN(
+                            f'Host: {host_info["id"]} {host_info["hostname"]} {host_info["ip"]} {host_info["version"]} {host_info["mode"]}'
+                        )
+
 
     # need to understand how to handle exception.
     if s3_status:
@@ -2744,7 +2747,6 @@ def get_rpc_max_connections():
         WARN(f"Error getting RPC_Max_Connections: {e}")
         return 1024
 
-
 def evaluate_nfs_failover_risk(connection_counts, rpc_max_connections, good_nfs_hosts):
     if len(good_nfs_hosts) == 1:
         host = good_nfs_hosts[0]
@@ -3440,6 +3442,8 @@ def backend_host_checks(
                     f"Unable to determine Host: {host_name} weka agent service unit type"
                 )
 
+    connection_counts = {}
+
     if good_nfs_hosts:
         INFO("CHECKING NUMBER OF NFS CONNECTIONS ON BACKENDS")
         command = r"ss --no-header -t sport = :2049 | wc -l"
@@ -3449,7 +3453,7 @@ def backend_host_checks(
             use_check_output=True,
             ssh_identity=ssh_identity,
         )
-        connection_counts = {}
+
         for host_name, result in results:
             if result is not None:
                 try:
@@ -3459,12 +3463,10 @@ def backend_host_checks(
                     WARN(f"Invalid connection count from {host_name}: {result}")
             else:
                 WARN(f"Unable to determine NFS connection count on host: {host_name}")
-        if not connection_counts:
-            WARN("No valid connection data available.")
-            return
 
-    max_per_host = get_rpc_max_connections()
-    evaluate_nfs_failover_risk(connection_counts, max_per_host, good_nfs_hosts)
+    if connection_counts:
+        max_per_host = get_rpc_max_connections()
+        evaluate_nfs_failover_risk(connection_counts, max_per_host, good_nfs_hosts)
 
     INFO("CHECKING WEKA AGENT STATUS ON BACKENDS")
     command = r"""
