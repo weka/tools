@@ -49,6 +49,8 @@ else:
 pg_version = "1.4.13"
 
 
+known_issues_file = "known_issues.json"
+
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
 
 logging.basicConfig(
@@ -3901,7 +3903,6 @@ def cluster_summary():
 
 def check_known_issues(
     upgrade_hops,
-    known_issues_file,
     s3_enabled,
     weka_nfs,
     weka_smb,
@@ -4089,7 +4090,6 @@ def target_version_check(
             # Check for known issues with protocol filtering
             check_known_issues(
                 upgrade_hops,
-                "known_issues.json",
                 s3_enabled,
                 weka_nfs,
                 weka_smb,

@@ -4,6 +4,8 @@
             "description": "Will need to backup and remove WEKA SMB configuration before upgrading to 4.4.1-2 or higher",
             "related_protocols": ["smb"],
             "link_types": [],
+            "problematic_kernel_arguments": [],
+            "internal_reference": "",
             "version_from": ["4.4.1"],
             "obj_store": false
         }
@@ -13,6 +15,8 @@
             "description": "If the weka-agent init.d or systemd unit files have been modified, revert all changes and restore them to their original state.",
             "related_protocols": [],
             "link_types": [],
+            "problematic_kernel_arguments": [],
+            "internal_reference": "",
             "version_from": [],
             "obj_store": false
         }
@@ -22,6 +26,8 @@
             "description": "If the weka-agent init.d or systemd unit files have been modified, revert all changes and restore them to their original state.",
             "related_protocols": [],
             "link_types": [],
+            "problematic_kernel_arguments": [],
+            "internal_reference": "",
             "version_from": [],
             "obj_store": false
         }
@@ -31,6 +37,8 @@
             "description": "If the weka-agent init.d or systemd unit files have been modified, revert all changes and restore them to their original state.",
             "related_protocols": [],
             "link_types": [],
+            "problematic_kernel_arguments": [],
+            "internal_reference": "",
             "version_from": [],
             "obj_store": false
         }
@@ -40,6 +48,8 @@
             "description": "If the weka-agent init.d or systemd unit files have been modified, revert all changes and restore them to their original state.",
             "related_protocols": [],
             "link_types": [],
+            "problematic_kernel_arguments": [],
+            "internal_reference": "",
             "version_from": [],
             "obj_store": false
         }
@@ -49,6 +59,8 @@
             "description": "If the weka-agent init.d or systemd unit files have been modified, revert all changes and restore them to their original state.",
             "related_protocols": [],
             "link_types": [],
+            "problematic_kernel_arguments": [],
+            "internal_reference": "",
             "version_from": [],
             "obj_store": false
         }
@@ -58,6 +70,8 @@
             "description": "",
             "related_protocols": [],
             "link_types": [],
+            "problematic_kernel_arguments": [],
+            "internal_reference": "",
             "version_from": [],
             "obj_store": false
         }
