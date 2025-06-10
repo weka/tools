@@ -1,4 +1,15 @@
 {
+    "4.4.7.89": [
+        {
+            "description": "IOMMU enabled in passthrough mode",
+            "related_protocols": [],
+            "link_types": [],
+            "problematic_kernel_arguments": [ "iommu=pt" ],
+            "internal_reference": "WEKAPP-513581",
+            "version_from": [],
+            "obj_store": false
+        }
+    ],
     "4.4.1-2": [
         {
             "description": "Will need to backup and remove WEKA SMB configuration before upgrading to 4.4.1-2 or higher",
