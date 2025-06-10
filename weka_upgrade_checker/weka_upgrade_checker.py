@@ -49,6 +49,8 @@ else:
 pg_version = "1.4.13"
 
 
+known_issues_file = "known_issues.json"
+
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
 
 logging.basicConfig(
@@ -2561,11 +2563,11 @@ def ssh_check(host_name, result, ssh_bk_hosts):
     passwordless_ssh = result
     if passwordless_ssh != 0:
         BAD(
-            f'Password SSH not configured on host: {host_name}, will exclude from checks'
+            f'Passwordless SSH not configured on host: {host_name}, will exclude from checks'
         )
         ssh_bk_hosts = [x for x in ssh_bk_hosts if x["name"] != host_name]
     else:
-        GOOD(f'Password SSH configured on host: {host_name}')
+        GOOD(f'Passwordless SSH configured on host: {host_name}')
 
     return ssh_bk_hosts
 
@@ -3110,6 +3112,31 @@ def check_os_kernel(host_name, result):
         GOOD(f'Host {host_name}: kernel level supports upgrade')
 
 
+def check_kernel_arguments(host_name, result, target_weka_version):
+
+    try:
+        with open(known_issues_file, "r") as file:
+            known_issues = json.load(file)
+    except FileNotFoundError:
+        WARN(f"Error: {known_issues_file} not found.")
+    except json.JSONDecodeError:
+        WARN(f"Error: {known_issues_file} contains invalid JSON.")
+
+
+    current_kernel_arguments = result.split()
+    issues = known_issues.get(target_weka_version, [])
+    for issue in issues:
+        description                  = issue.get("description", "No description available.")
+        internal_reference           = issue.get("internal_reference", "No internal reference available.")
+        problematic_kernel_arguments = set(issue.get("problematic_kernel_arguments", []))
+        for problematic_kernel_argument in problematic_kernel_arguments:
+            if problematic_kernel_argument in current_kernel_arguments:
+                BAD(
+                    f'Host {host_name} kernel has been booted with {problematic_kernel_argument}, which is affected by {description}; please contact Customer Success and discuss {internal_reference}' 
+                )
+            else:
+                GOOD(f'Host {host_name} kernel does not feature {problematic_kernel_argument}')
+
 def endpoint_status(host_name, result):
     result_lines = result.splitlines()
     P = None
@@ -3266,7 +3293,7 @@ def backend_host_checks(
             WARN(f"Unable to determine weka mounts on Host: {host_name}")
 
     if len(ssh_bk_hosts) == 0:
-        BAD(f'Unable to proceed, Password SSH not configured on any host')
+        BAD(f'Unable to proceed, passwordless SSH not configured on any host')
         sys.exit(1)
 
     if V(weka_version) >= V("3.12"):
@@ -3718,6 +3745,21 @@ def backend_host_checks(
 
         host_port_connectivity(results)
 
+    INFO("CHECKING FOR KNOWN PROBLEMATIC KERNEL ARGUMENTS")
+    command = r"""
+        cat /proc/cmdline
+    """
+    results = parallel_execution(
+        ssh_bk_hosts,
+        [command],
+        use_check_output=True,
+        ssh_identity=ssh_identity,
+    )
+    for host_name, result in results:
+        if result is None:
+            WARN(f"Unable to extract kernel arguments from host {host_name}")
+        else:
+            check_kernel_arguments(host_name, result, target_version)
 
 def client_hosts_checks(weka_version, ssh_cl_hosts, check_version, ssh_identity):
     INFO("CHECKING PASSWORDLESS SSH CONNECTIVITY ON CLIENTS")
@@ -3737,7 +3779,7 @@ def client_hosts_checks(weka_version, ssh_cl_hosts, check_version, ssh_identity)
 
     ssh_cl_hosts = [host_dict["name"] for host_dict in ssh_cl_hosts_dict]
     if len(ssh_cl_hosts) == 0:
-        BAD(f'Unable to proceed, Password SSH not configured on any host')
+        BAD(f'Unable to proceed, passwordless SSH not configured on any host')
         sys.exit(1)
 
     if V(weka_version) >= V("3.12"):
@@ -3901,7 +3943,6 @@ def cluster_summary():
 
 def check_known_issues(
     upgrade_hops,
-    known_issues_file,
     s3_enabled,
     weka_nfs,
     weka_smb,
@@ -3949,6 +3990,7 @@ def check_known_issues(
                 description = issue.get("description", "No description available.")
                 related_protocols = set(issue.get("related_protocols", []))
                 related_link_types = set(issue.get("link_types", []))
+                problematic_kernel_arguments = set(issue.get("problematic_kernel_arguments", []))
                 version_from = issue.get("version_from", [])
                 requires_obj_store = issue.get("obj_store", False)
 
@@ -4089,7 +4131,6 @@ def target_version_check(
             # Check for known issues with protocol filtering
             check_known_issues(
                 upgrade_hops,
-                "known_issues.json",
                 s3_enabled,
                 weka_nfs,
                 weka_smb,
