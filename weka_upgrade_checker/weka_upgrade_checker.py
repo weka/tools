@@ -3112,6 +3112,31 @@ def check_os_kernel(host_name, result):
         GOOD(f'Host {host_name}: kernel level supports upgrade')
 
 
+def check_kernel_arguments(host_name, result, target_weka_version):
+
+    try:
+        with open(known_issues_file, "r") as file:
+            known_issues = json.load(file)
+    except FileNotFoundError:
+        WARN(f"Error: {known_issues_file} not found.")
+    except json.JSONDecodeError:
+        WARN(f"Error: {known_issues_file} contains invalid JSON.")
+
+
+    current_kernel_arguments = result.split()
+    issues = known_issues.get(target_weka_version, [])
+    for issue in issues:
+        description                  = issue.get("description", "No description available.")
+        internal_reference           = issue.get("internal_reference", "No internal reference available.")
+        problematic_kernel_arguments = set(issue.get("problematic_kernel_arguments", []))
+        for problematic_kernel_argument in problematic_kernel_arguments:
+            if problematic_kernel_argument in current_kernel_arguments:
+                BAD(
+                    f'Host {host_name} kernel has been booted with {problematic_kernel_argument}, which is affected by {description}; please contact Customer Success and discuss {internal_reference}' 
+                )
+            else:
+                GOOD(f'Host {host_name} kernel does not feature {problematic_kernel_argument}')
+
 def endpoint_status(host_name, result):
     result_lines = result.splitlines()
     P = None
@@ -3720,6 +3745,21 @@ def backend_host_checks(
 
         host_port_connectivity(results)
 
+    INFO("CHECKING FOR KNOWN PROBLEMATIC KERNEL ARGUMENTS")
+    command = r"""
+        cat /proc/cmdline
+    """
+    results = parallel_execution(
+        ssh_bk_hosts,
+        [command],
+        use_check_output=True,
+        ssh_identity=ssh_identity,
+    )
+    for host_name, result in results:
+        if result is None:
+            WARN(f"Unable to extract kernel arguments from host {host_name}")
+        else:
+            check_kernel_arguments(host_name, result, target_version)
 
 def client_hosts_checks(weka_version, ssh_cl_hosts, check_version, ssh_identity):
     INFO("CHECKING PASSWORDLESS SSH CONNECTIVITY ON CLIENTS")
@@ -3950,6 +3990,7 @@ def check_known_issues(
                 description = issue.get("description", "No description available.")
                 related_protocols = set(issue.get("related_protocols", []))
                 related_link_types = set(issue.get("link_types", []))
+                problematic_kernel_arguments = set(issue.get("problematic_kernel_arguments", []))
                 version_from = issue.get("version_from", [])
                 requires_obj_store = issue.get("obj_store", False)
 
