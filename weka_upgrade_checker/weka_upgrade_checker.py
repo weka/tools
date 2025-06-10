@@ -2561,11 +2561,11 @@ def ssh_check(host_name, result, ssh_bk_hosts):
     passwordless_ssh = result
     if passwordless_ssh != 0:
         BAD(
-            f'Password SSH not configured on host: {host_name}, will exclude from checks'
+            f'Passwordless SSH not configured on host: {host_name}, will exclude from checks'
         )
         ssh_bk_hosts = [x for x in ssh_bk_hosts if x["name"] != host_name]
     else:
-        GOOD(f'Password SSH configured on host: {host_name}')
+        GOOD(f'Passwordless SSH configured on host: {host_name}')
 
     return ssh_bk_hosts
 
@@ -3266,7 +3266,7 @@ def backend_host_checks(
             WARN(f"Unable to determine weka mounts on Host: {host_name}")
 
     if len(ssh_bk_hosts) == 0:
-        BAD(f'Unable to proceed, Password SSH not configured on any host')
+        BAD(f'Unable to proceed, passwordless SSH not configured on any host')
         sys.exit(1)
 
     if V(weka_version) >= V("3.12"):
@@ -3737,7 +3737,7 @@ def client_hosts_checks(weka_version, ssh_cl_hosts, check_version, ssh_identity)
 
     ssh_cl_hosts = [host_dict["name"] for host_dict in ssh_cl_hosts_dict]
     if len(ssh_cl_hosts) == 0:
-        BAD(f'Unable to proceed, Password SSH not configured on any host')
+        BAD(f'Unable to proceed, passwordless SSH not configured on any host')
         sys.exit(1)
 
     if V(weka_version) >= V("3.12"):
