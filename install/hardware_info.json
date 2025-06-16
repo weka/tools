@@ -1,0 +1,489 @@
+{
+  "Nitro": {
+    "systemInfo": {
+      "manufacturer": "WEKA",
+      "model": "WEKApod - R6615",
+      "biosVersion": "1.8.3"
+    },
+    "processors": {
+      "count": 1,
+      "model": "AMD EPYC 9534 64-Core Processor",
+      "logicalCores": 64
+    },
+    "memory": {
+      "totalSizeGB": 768,
+      "memoryDevices": 0
+    },
+    "networkInterfaces": [
+      {
+        "id": "OSLogicalNetwork.4",
+        "name": "ens2np0",
+        "speedMbps": 0,
+        "status": "",
+        "mtuSize": 9000
+      },
+      {
+        "id": "OSLogicalNetwork.2",
+        "name": "eno8303",
+        "speedMbps": 1000,
+        "status": "Enabled",
+        "mtuSize": 1500
+      },
+      {
+        "id": "OSLogicalNetwork.3",
+        "name": "eno8403",
+        "speedMbps": 0,
+        "status": "Enabled",
+        "mtuSize": 1500
+      },
+      {
+        "id": "OSLogicalNetwork.5",
+        "name": "ens1np0",
+        "speedMbps": 0,
+        "status": "",
+        "mtuSize": 9000
+      }
+    ],
+    "storage": {
+      "RAID": {
+        "manufacturer": "SK hynix",
+        "model": "DELL NVME ISE PE8010 RI M.2 960GB",
+        "driveType": "RAID",
+        "capacityGB": 960,
+        "mediaType": "SSD",
+        "drivesCount": 2
+      },
+      "SSD": {
+        "manufacturer": "Micron Technology Inc",
+        "model": "MTFDLBQ7T6THA-1BK1JABDA",
+        "driveType": "SSD",
+        "capacityGB": 7681,
+        "mediaType": "SSD",
+        "drivesCount": 14
+      }
+    },
+    "pcieDevices": [
+      {
+        "name": "Advanced Micro Devices, Inc. [AMD]",
+        "manufacturer": "Advanced Micro Devices, Inc. [AMD]",
+        "model": ""
+      },
+      {
+        "name": "Advanced Micro Devices, Inc. [AMD]",
+        "manufacturer": "Advanced Micro Devices, Inc. [AMD]",
+        "model": ""
+      },
+      {
+        "name": "Advanced Micro Devices, Inc. [AMD]",
+        "manufacturer": "Advanced Micro Devices, Inc. [AMD]",
+        "model": ""
+      },
+      {
+        "name": "Integrated Matrox G200eW3 Graphics Controller",
+        "manufacturer": "Matrox Electronics Systems Ltd.",
+        "model": ""
+      },
+      {
+        "name": "NetXtreme BCM5720 Gigabit Ethernet PCIe",
+        "manufacturer": "Broadcom Inc. and subsidiaries",
+        "model": ""
+      },
+      {
+        "name": "Advanced Micro Devices, Inc. [AMD]",
+        "manufacturer": "Advanced Micro Devices, Inc. [AMD]",
+        "model": ""
+      },
+      {
+        "name": "Advanced Micro Devices, Inc. [AMD]",
+        "manufacturer": "Advanced Micro Devices, Inc. [AMD]",
+        "model": ""
+      },
+      {
+        "name": "Advanced Micro Devices, Inc. [AMD]",
+        "manufacturer": "Advanced Micro Devices, Inc. [AMD]",
+        "model": ""
+      },
+      {
+        "name": "FCH SATA Controller [AHCI mode]",
+        "manufacturer": "Advanced Micro Devices, Inc. [AMD]",
+        "model": ""
+      },
+      {
+        "name": "BOSS-N1 Monolithic",
+        "manufacturer": "Marvell Technology Group Ltd.",
+        "model": "BOSS-N1 Monolithic"
+      },
+      {
+        "name": "Micron Technology Inc",
+        "manufacturer": "Micron Technology Inc",
+        "model": "MTFDLBQ7T6THA-1BK1JABDA"
+      },
+      {
+        "name": "Advanced Micro Devices, Inc. [AMD]",
+        "manufacturer": "Advanced Micro Devices, Inc. [AMD]",
+        "model": ""
+      },
+      {
+        "name": "Advanced Micro Devices, Inc. [AMD]",
+        "manufacturer": "Advanced Micro Devices, Inc. [AMD]",
+        "model": ""
+      },
+      {
+        "name": "Advanced Micro Devices, Inc. [AMD]",
+        "manufacturer": "Advanced Micro Devices, Inc. [AMD]",
+        "model": ""
+      },
+      {
+        "name": "Advanced Micro Devices, Inc. [AMD]",
+        "manufacturer": "Advanced Micro Devices, Inc. [AMD]",
+        "model": ""
+      },
+      {
+        "name": "Advanced Micro Devices, Inc. [AMD]",
+        "manufacturer": "Advanced Micro Devices, Inc. [AMD]",
+        "model": ""
+      },
+      {
+        "name": "Micron Technology Inc",
+        "manufacturer": "Micron Technology Inc",
+        "model": "MTFDLBQ7T6THA-1BK1JABDA"
+      },
+      {
+        "name": "Micron Technology Inc",
+        "manufacturer": "Micron Technology Inc",
+        "model": "MTFDLBQ7T6THA-1BK1JABDA"
+      },
+      {
+        "name": "Micron Technology Inc",
+        "manufacturer": "Micron Technology Inc",
+        "model": "MTFDLBQ7T6THA-1BK1JABDA"
+      },
+      {
+        "name": "Advanced Micro Devices, Inc. [AMD]",
+        "manufacturer": "Advanced Micro Devices, Inc. [AMD]",
+        "model": ""
+      },
+      {
+        "name": "Advanced Micro Devices, Inc. [AMD]",
+        "manufacturer": "Advanced Micro Devices, Inc. [AMD]",
+        "model": ""
+      },
+      {
+        "name": "Advanced Micro Devices, Inc. [AMD]",
+        "manufacturer": "Advanced Micro Devices, Inc. [AMD]",
+        "model": ""
+      },
+      {
+        "name": "Advanced Micro Devices, Inc. [AMD]",
+        "manufacturer": "Advanced Micro Devices, Inc. [AMD]",
+        "model": ""
+      },
+      {
+        "name": "Advanced Micro Devices, Inc. [AMD]",
+        "manufacturer": "Advanced Micro Devices, Inc. [AMD]",
+        "model": ""
+      },
+      {
+        "name": "Micron Technology Inc",
+        "manufacturer": "Micron Technology Inc",
+        "model": "MTFDLBQ7T6THA-1BK1JABDA"
+      },
+      {
+        "name": "Micron Technology Inc",
+        "manufacturer": "Micron Technology Inc",
+        "model": "MTFDLBQ7T6THA-1BK1JABDA"
+      },
+      {
+        "name": "Micron Technology Inc",
+        "manufacturer": "Micron Technology Inc",
+        "model": "MTFDLBQ7T6THA-1BK1JABDA"
+      },
+      {
+        "name": "Micron Technology Inc",
+        "manufacturer": "Micron Technology Inc",
+        "model": "MTFDLBQ7T6THA-1BK1JABDA"
+      },
+      {
+        "name": "Micron Technology Inc",
+        "manufacturer": "Micron Technology Inc",
+        "model": "MTFDLBQ7T6THA-1BK1JABDA"
+      },
+      {
+        "name": "Micron Technology Inc",
+        "manufacturer": "Micron Technology Inc",
+        "model": "MTFDLBQ7T6THA-1BK1JABDA"
+      },
+      {
+        "name": "MT2910 Family [ConnectX-7]",
+        "manufacturer": "Mellanox Technologies",
+        "model": "ConnectX-7 400GE 1P NIC"
+      },
+      {
+        "name": "Micron Technology Inc",
+        "manufacturer": "Micron Technology Inc",
+        "model": "MTFDLBQ7T6THA-1BK1JABDA"
+      },
+      {
+        "name": "Micron Technology Inc",
+        "manufacturer": "Micron Technology Inc",
+        "model": "MTFDLBQ7T6THA-1BK1JABDA"
+      },
+      {
+        "name": "Advanced Micro Devices, Inc. [AMD]",
+        "manufacturer": "Advanced Micro Devices, Inc. [AMD]",
+        "model": ""
+      },
+      {
+        "name": "Advanced Micro Devices, Inc. [AMD]",
+        "manufacturer": "Advanced Micro Devices, Inc. [AMD]",
+        "model": ""
+      },
+      {
+        "name": "FCH SMBus Controller",
+        "manufacturer": "Advanced Micro Devices, Inc. [AMD]",
+        "model": ""
+      },
+      {
+        "name": "Advanced Micro Devices, Inc. [AMD]",
+        "manufacturer": "Advanced Micro Devices, Inc. [AMD]",
+        "model": ""
+      },
+      {
+        "name": "Advanced Micro Devices, Inc. [AMD]",
+        "manufacturer": "Advanced Micro Devices, Inc. [AMD]",
+        "model": ""
+      },
+      {
+        "name": "Advanced Micro Devices, Inc. [AMD]",
+        "manufacturer": "Advanced Micro Devices, Inc. [AMD]",
+        "model": ""
+      },
+      {
+        "name": "MT2910 Family [ConnectX-7]",
+        "manufacturer": "Mellanox Technologies",
+        "model": "ConnectX-7 400GE 1P NIC"
+      },
+      {
+        "name": "Micron Technology Inc",
+        "manufacturer": "Micron Technology Inc",
+        "model": "MTFDLBQ7T6THA-1BK1JABDA"
+      },
+      {
+        "name": "Micron Technology Inc",
+        "manufacturer": "Micron Technology Inc",
+        "model": "MTFDLBQ7T6THA-1BK1JABDA"
+      }
+    ]
+  },
+  "Prime": {
+    "systemInfo": {
+      "manufacturer": "WEKA",
+      "model": "WEKApod - R6615",
+      "biosVersion": "1.9.5"
+    },
+    "processors": {
+      "count": 1,
+      "model": "AMD EPYC 9454P 48-Core Processor",
+      "logicalCores": 48
+    },
+    "memory": {
+      "totalSizeGB": 384,
+      "memoryDevices": 0
+    },
+    "networkInterfaces": [
+      {
+        "id": "NIC.Integrated.1-1-1",
+        "name": "System Ethernet Interface",
+        "speedMbps": 0,
+        "status": "Enabled",
+        "mtuSize": 0
+      },
+      {
+        "id": "NIC.Embedded.1-1-1",
+        "name": "System Ethernet Interface",
+        "speedMbps": 1000,
+        "status": "Enabled",
+        "mtuSize": 0
+      },
+      {
+        "id": "NIC.Embedded.2-1-1",
+        "name": "System Ethernet Interface",
+        "speedMbps": 0,
+        "status": "Enabled",
+        "mtuSize": 0
+      },
+      {
+        "id": "NIC.Integrated.1-2-1",
+        "name": "System Ethernet Interface",
+        "speedMbps": 0,
+        "status": "Enabled",
+        "mtuSize": 0
+      }
+    ],
+    "storage": {
+      "RAID": {
+        "manufacturer": "Micron Technology Inc",
+        "model": "Dell EC NVMe ISE 7450 RI M.2 80 960GB",
+        "driveType": "RAID",
+        "capacityGB": 960,
+        "mediaType": "SSD",
+        "drivesCount": 2
+      },
+      "SSD": {
+        "manufacturer": "Micron Technology Inc",
+        "model": "MTFDKCC30T7TGR-1BK1JABDB",
+        "driveType": "SSD",
+        "capacityGB": 30725,
+        "mediaType": "SSD",
+        "drivesCount": 10
+      }
+    },
+    "pcieDevices": [
+      {
+        "name": "Advanced Micro Devices, Inc. [AMD]",
+        "manufacturer": "Advanced Micro Devices, Inc. [AMD]",
+        "model": ""
+      },
+      {
+        "name": "MT28908 Family [ConnectX-6]",
+        "manufacturer": "Mellanox Technologies",
+        "model": ""
+      },
+      {
+        "name": "Advanced Micro Devices, Inc. [AMD]",
+        "manufacturer": "Advanced Micro Devices, Inc. [AMD]",
+        "model": ""
+      },
+      {
+        "name": "NetXtreme BCM5720 Gigabit Ethernet PCIe",
+        "manufacturer": "Broadcom Inc. and subsidiaries",
+        "model": ""
+      },
+      {
+        "name": "Advanced Micro Devices, Inc. [AMD]",
+        "manufacturer": "Advanced Micro Devices, Inc. [AMD]",
+        "model": ""
+      },
+      {
+        "name": "Advanced Micro Devices, Inc. [AMD]",
+        "manufacturer": "Advanced Micro Devices, Inc. [AMD]",
+        "model": ""
+      },
+      {
+        "name": "Advanced Micro Devices, Inc. [AMD]",
+        "manufacturer": "Advanced Micro Devices, Inc. [AMD]",
+        "model": ""
+      },
+      {
+        "name": "Advanced Micro Devices, Inc. [AMD]",
+        "manufacturer": "Advanced Micro Devices, Inc. [AMD]",
+        "model": ""
+      },
+      {
+        "name": "FCH SATA Controller [AHCI mode]",
+        "manufacturer": "Advanced Micro Devices, Inc. [AMD]",
+        "model": ""
+      },
+      {
+        "name": "Advanced Micro Devices, Inc. [AMD]",
+        "manufacturer": "Advanced Micro Devices, Inc. [AMD]",
+        "model": ""
+      },
+      {
+        "name": "Advanced Micro Devices, Inc. [AMD]",
+        "manufacturer": "Advanced Micro Devices, Inc. [AMD]",
+        "model": ""
+      },
+      {
+        "name": "Integrated Matrox G200eW3 Graphics Controller",
+        "manufacturer": "Matrox Electronics Systems Ltd.",
+        "model": ""
+      },
+      {
+        "name": "Advanced Micro Devices, Inc. [AMD]",
+        "manufacturer": "Advanced Micro Devices, Inc. [AMD]",
+        "model": ""
+      },
+      {
+        "name": "Advanced Micro Devices, Inc. [AMD]",
+        "manufacturer": "Advanced Micro Devices, Inc. [AMD]",
+        "model": ""
+      },
+      {
+        "name": "Advanced Micro Devices, Inc. [AMD]",
+        "manufacturer": "Advanced Micro Devices, Inc. [AMD]",
+        "model": ""
+      },
+      {
+        "name": "Advanced Micro Devices, Inc. [AMD]",
+        "manufacturer": "Advanced Micro Devices, Inc. [AMD]",
+        "model": ""
+      },
+      {
+        "name": "Advanced Micro Devices, Inc. [AMD]",
+        "manufacturer": "Advanced Micro Devices, Inc. [AMD]",
+        "model": ""
+      },
+      {
+        "name": "BOSS-N1 Monolithic",
+        "manufacturer": "Marvell Technology Group Ltd.",
+        "model": "BOSS-N1 Monolithic"
+      },
+      {
+        "name": "Advanced Micro Devices, Inc. [AMD]",
+        "manufacturer": "Advanced Micro Devices, Inc. [AMD]",
+        "model": ""
+      },
+      {
+        "name": "Advanced Micro Devices, Inc. [AMD]",
+        "manufacturer": "Advanced Micro Devices, Inc. [AMD]",
+        "model": ""
+      },
+      {
+        "name": "FCH LPC Bridge",
+        "manufacturer": "Advanced Micro Devices, Inc. [AMD]",
+        "model": ""
+      },
+      {
+        "name": "Advanced Micro Devices, Inc. [AMD]",
+        "manufacturer": "Advanced Micro Devices, Inc. [AMD]",
+        "model": ""
+      },
+      {
+        "name": "Advanced Micro Devices, Inc. [AMD]",
+        "manufacturer": "Advanced Micro Devices, Inc. [AMD]",
+        "model": ""
+      },
+      {
+        "name": "MT28908 Family [ConnectX-6]",
+        "manufacturer": "Mellanox Technologies",
+        "model": ""
+      },
+      {
+        "name": "Advanced Micro Devices, Inc. [AMD]",
+        "manufacturer": "Advanced Micro Devices, Inc. [AMD]",
+        "model": ""
+      },
+      {
+        "name": "Advanced Micro Devices, Inc. [AMD]",
+        "manufacturer": "Advanced Micro Devices, Inc. [AMD]",
+        "model": ""
+      },
+      {
+        "name": "Advanced Micro Devices, Inc. [AMD]",
+        "manufacturer": "Advanced Micro Devices, Inc. [AMD]",
+        "model": ""
+      },
+      {
+        "name": "Advanced Micro Devices, Inc. [AMD]",
+        "manufacturer": "Advanced Micro Devices, Inc. [AMD]",
+        "model": ""
+      },
+      {
+        "name": "MT2894 Family [ConnectX-6 Lx]",
+        "manufacturer": "Mellanox Technologies",
+        "model": "NVIDIA ConnectX6 LX 2P OCP3 NIC"
+      }
+    ]
+  }
+}
