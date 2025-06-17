@@ -46,7 +46,7 @@ else:
     InvalidVersion = ValueError  # Since distutils doesn't have InvalidVersion, we use a generic exception
 
 
-pg_version = "1.5.2"
+pg_version = "1.5.3"
 
 
 known_issues_file = "known_issues.json"
@@ -1918,6 +1918,59 @@ def weka_cluster_checks(skip_mtu_check, target_version):
         subprocess.check_output(["weka", "smb", "cluster", "status", "-J"])
     )
 
+    if s3_status:
+        INFO("CHECKING WEKA S3 BUCKET LIFECYCLE RULES COMPLIANCE")
+        try:
+            bucket_list_output = subprocess.check_output(
+                ["weka", "s3", "bucket", "list", "-J"], text=True
+            )
+            buckets = json.loads(bucket_list_output)
+        except subprocess.CalledProcessError as e:
+            print(f"[ERROR] Failed to list buckets: {e}")
+            return
+
+        global_rule_count = 0
+        global_limit_exceeded = False
+
+        for bucket in buckets:
+            bucket_name = bucket.get("name")
+            try:
+                lifecycle_output = subprocess.check_output(
+                    ["weka", "s3", "bucket", "lifecycle-rule", "list", bucket_name, "-J"],
+                    text=True,
+                    stderr=subprocess.STDOUT
+                )
+                rules = json.loads(lifecycle_output)
+                rule_count = len(rules)
+                global_rule_count += rule_count
+
+                if rule_count > 10:
+                    BAD(f"Bucket '{bucket_name}' exceeds max life-cycle rules has {rule_count}, max is 10.")
+                    continue
+
+                rule_issue_found = False
+                tag_total = 0
+                for rule in rules:
+                    tag_string = rule.get("tags", "")
+                    valid_tags = [t for t in tag_string.split(",") if "=" in t and t.strip()]
+                    tag_total += len(valid_tags)
+
+                if tag_total > 6:
+                    BAD(f"Bucket '{bucket_name}' has too many total tags: {tag_total} max is 6.")
+                    continue
+
+                if not rule_issue_found:
+                    GOOD(f"Bucket '{bucket_name}' is OK {rule_count} rule(s) defined.")
+
+            except subprocess.CalledProcessError as e:
+                output = e.output.strip()
+                if "The lifecycle configuration does not exist" not in output:
+                    WARN(f"Error checking bucket '{bucket_name}': {output}")
+
+        if global_rule_count > 5000:
+            BAD("Global ILM rules count exceeds 5000! You must reduce ILM rules.")
+
+
     if V(weka_version) > V("3.10"):
         if len(smb_cluster_hosts) != 0:
             INFO("CHECKING WEKA SMB CLUSTER HOST HEALTH")
@@ -2631,88 +2684,93 @@ def check_os_release(
     host_name, result, weka_version, check_version, backend=True, client=False
 ):
     global check_rhel_systemd_hosts
-    if "CentOS" in result:
-        result = result.split()
-        version = result[3].split(".")
-        version = ".".join(version[:2])
+    try:
+        if "CentOS" in result:
+            result = result.split()
+            version = result[3].split(".")
+            version = ".".join(version[:2])
 
-        if backend:
-            if version not in supported_os[check_version]["backends_clients"]["centos"]:
-                BAD(
-                    f"Host {host_name} OS CentOS {version} is not supported with "
-                    f"weka version {weka_version}"
-                )
-            else:
-                GOOD(
-                    f"Host {host_name} OS CentOS {version} is supported with "
-                    f"weka version {weka_version}"
-                )
-        elif client:
-            if (
-                version not in supported_os[check_version]["backends_clients"]["centos"]
-                and supported_os[check_version]["clients_only"]["centos"]
-            ):
-                BAD(
-                    f"Host {host_name} OS CentOS {version} is not supported with "
-                    f"weka version {weka_version}"
-                )
-            else:
-                GOOD(
-                    f"Host {host_name} OS CentOS {version} is supported with "
-                    f"weka version {weka_version}"
-                )
+            try:
+                supported_versions = supported_os[check_version]["backends_clients"]["centos"]
+            except KeyError as e:
+                BAD(f"Host {host_name} - unsupported check_version or missing centos entry: {e}")
+                return
 
-    else:
-        info_str = result.replace("=", ":")
-        info_list = [item for item in info_str.split("\n") if item]
+            if backend:
+                if version not in supported_versions:
+                    BAD(
+                        f"Host {host_name} OS CentOS {version} is not supported with "
+                        f"weka version {weka_version}"
+                    )
+                else:
+                    GOOD(
+                        f"Host {host_name} OS CentOS {version} is supported with "
+                        f"weka version {weka_version}"
+                    )
+            elif client:
+                try:
+                    client_only_versions = supported_os[check_version]["clients_only"]["centos"]
+                except KeyError as e:
+                    BAD(f"Host {host_name} - missing clients_only entry for centos: {e}")
+                    return
 
-        dict_info = {}
-        for item in info_list:
-            key, value = item.split(":", 1)
-            dict_info[key] = value.strip('"')
+                if version not in supported_versions and version not in client_only_versions:
+                    BAD(
+                        f"Host {host_name} OS CentOS {version} is not supported with "
+                        f"weka version {weka_version}"
+                    )
+                else:
+                    GOOD(
+                        f"Host {host_name} OS CentOS {version} is supported with "
+                        f"weka version {weka_version}"
+                    )
 
-        os_id = dict_info["ID"]
-        version = dict_info.get("VERSION_ID", "Unknown")
+        else:
+            info_str = result.replace("=", ":")
+            info_list = [item for item in info_str.split("\n") if item]
 
-        # Match version for Ubuntu
-        if os_id == "ubuntu":
-            version_match = re.search(r"\b\d+(\.\d+){0,2}\b", dict_info["VERSION"])
-            version = version_match.group() if version_match else "Unknown"
+            dict_info = {}
+            for item in info_list:
+                key, value = item.split(":", 1)
+                dict_info[key] = value.strip('"')
 
-        # Handling Rocky or RHEL
-        elif os_id in ["rocky", "rhel"] and float(version) >= 9.0:
-            check_rhel_systemd_hosts.append(host_name)
+            os_id = dict_info["ID"]
+            version = dict_info.get("VERSION_ID", "Unknown")
 
-        # OS validation for backends
-        if backend:
-            if os_id not in supported_os[check_version]["backends_clients"]:
-                BAD(f"Host {host_name} OS {os_id} is not recognized")
-            elif version not in supported_os[check_version]["backends_clients"][os_id]:
-                BAD(
-                    f"Host {host_name} OS {os_id} {version} is not supported with "
-                    f"weka version {weka_version}"
-                )
-            else:
-                GOOD(
-                    f"Host {host_name} OS {os_id} {version} is supported with "
-                    f"weka version {weka_version}"
-                )
+            if os_id == "ubuntu":
+                version_match = re.search(r"\b\d+(\.\d+){0,2}\b", dict_info.get("VERSION", ""))
+                version = version_match.group() if version_match else "Unknown"
 
-        # OS validation for clients
-        elif client:
-            if (
-                version not in supported_os[check_version]["backends_clients"][os_id]
-                and supported_os[check_version]["clients_only"][os_id]
-            ):
-                BAD(
-                    f"Host {host_name} OS {os_id} {version} is not supported with "
-                    f"weka version {weka_version}"
-                )
-            else:
-                GOOD(
-                    f"Host {host_name} OS {os_id} {version} is supported with "
-                    f"weka version {weka_version}"
-                )
+            elif os_id in ["rocky", "rhel"]:
+                try:
+                    if float(version) >= 9.0:
+                        check_rhel_systemd_hosts.append(host_name)
+                except ValueError:
+                    BAD(f"Host {host_name} - could not parse version for RHEL/Rocky: {version}")
+                    return
+
+            try:
+                supported_os_ids = supported_os[check_version]["backends_clients"]
+            except KeyError as e:
+                BAD(f"Host {host_name} - unsupported check_version or malformed supported_os structure: {e}")
+                return
+
+            if backend:
+                if os_id not in supported_os_ids:
+                    BAD(f"Host {host_name} OS {os_id} is not recognized in supported_os")
+                elif version not in supported_os_ids[os_id]:
+                    BAD(
+                        f"Host {host_name} OS {os_id} {version} is not supported with "
+                        f"weka version {weka_version}"
+                    )
+                else:
+                    GOOD(
+                        f"Host {host_name} OS {os_id} {version} is supported with "
+                        f"weka version {weka_version}"
+                    )
+
+    except Exception as e:
+        BAD(f"Host {host_name} - Unexpected error during OS check: {str(e)}")
 
 
 def weka_agent_unit_type(host_name, result):
@@ -2777,7 +2835,7 @@ def evaluate_nfs_failover_risk(connection_counts, rpc_max_connections, good_nfs_
                 f"({load_per_surviving_host:.2f} > {rpc_max_connections})"
             )
         else:
-            INFO(
+            WARN(
                 f"If {host_to_fail} goes down, surviving hosts can handle the load. "
                 f"({load_per_surviving_host:.2f} <= {rpc_max_connections})"
             )
@@ -3259,11 +3317,43 @@ def host_port_connectivity(results):
         for port_info in port_list:
             status, port = port_info.split()
             if status == "0":
-                GOOD(f"Connectivity to port {port} ok")
+                GOOD(f"Connectivity to port {port} OK")
             else:
                 BAD(
                     f"Host Connectivity to port {port} not ok, error {status} need to restart protocol container on Host: {host}"
                 )
+
+def parse_available_memory(mem_output):
+    for line in mem_output.splitlines():
+        if line.startswith("Mem:"):
+            parts = line.split()
+            available = parts[-1]
+            # Convert to GiB float
+            if available.endswith('Gi'):
+                return float(available[:-2])
+            elif available.endswith('Mi'):
+                return float(available[:-2]) / 1024
+            elif available.endswith('Ti'):
+                return float(available[:-2]) * 1024
+    return 0.0
+
+def available_memory_check(host_name, result):
+    try:
+        lines = result.strip().splitlines()
+        num_containers = int(lines[0].strip())
+        mem_output = "\n".join(lines[1:])
+        available_gib = parse_available_memory(mem_output)
+
+        min_required = max(5, num_containers * 1)
+
+        if available_gib < 5:
+            WARN(f"{host_name} has only {available_gib:.2f}GiB available — below 5GiB minimum")
+        elif available_gib < num_containers:
+            WARN(f"{host_name} has only {available_gib:.2f}GiB available for {num_containers} containers")
+        else:
+            GOOD(f"{host_name} has {available_gib:.2f}GiB available for {num_containers} containers — OK")
+    except Exception as e:
+        WARN(f"Failed to parse memory info on {host_name}: {e}")
 
 
 def parallel_execution(
@@ -3882,6 +3972,21 @@ def backend_host_checks(
         else:
             check_kernel_arguments(host_name, result, target_version)
 
+    INFO("CHECKING ENOUGH AVAILABLE MEMORY ON BACKENDS")
+    results = parallel_execution(
+        ssh_bk_hosts,
+        ['weka local ps --no-header | wc -l; free -h'],
+        use_check_output=True,
+        ssh_identity=ssh_identity,
+    )
+    for host_name, result in results:
+        if result is not None:
+            available_memory_check(host_name, result)
+        else:
+            WARN(f"Unable to determine available memory on Host: {host_name}")
+
+
+# client checks
 
 def client_hosts_checks(weka_version, ssh_cl_hosts, check_version, ssh_identity):
     INFO("CHECKING PASSWORDLESS SSH CONNECTIVITY ON CLIENTS")
@@ -4209,7 +4314,7 @@ def target_version_check(
         target_version = parse_version(target_version)
 
         if weka_version is None or target_version is None:
-            WARN("No valid upgrade path due to an invalid version in the upgrade map.")
+            WARN("No upgrade path information available due to an invalid version in the upgrade map.")
             return []
 
         while weka_version < target_version:
@@ -4225,7 +4330,7 @@ def target_version_check(
             ]
 
             if not next_versions:
-                WARN(f"No valid upgrade path from {weka_version} to {target_version}")
+                WARN(f"No upgrade path information available from {weka_version} to {target_version}")
                 return []
 
             next_version = max(next_versions, key=lambda v: v[1])[0]
