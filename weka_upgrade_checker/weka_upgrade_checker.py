@@ -46,7 +46,7 @@ else:
     InvalidVersion = ValueError  # Since distutils doesn't have InvalidVersion, we use a generic exception
 
 
-pg_version = "1.5.3"
+pg_version = "1.5.4"
 
 
 known_issues_file = "known_issues.json"
@@ -2813,7 +2813,6 @@ def evaluate_nfs_failover_risk(connection_counts, rpc_max_connections, good_nfs_
         )
         return
 
-    INFO("NFS Connection Counts Per Host:")
     for host, count in connection_counts.items():
         GOOD(f"  {host}: {count} NFS connections")
 
@@ -2834,12 +2833,6 @@ def evaluate_nfs_failover_risk(connection_counts, rpc_max_connections, good_nfs_
                 f"If {host_to_fail} goes down, surviving hosts will exceed RPC_Max_Connections! "
                 f"({load_per_surviving_host:.2f} > {rpc_max_connections})"
             )
-        else:
-            WARN(
-                f"If {host_to_fail} goes down, surviving hosts can handle the load. "
-                f"({load_per_surviving_host:.2f} <= {rpc_max_connections})"
-            )
-
 
 def weka_agent_check(host_name, result):
     weka_agent_status = result
@@ -3261,28 +3254,39 @@ def check_kernel_arguments(host_name, result, target_weka_version):
             known_issues = json.load(file)
     except FileNotFoundError:
         WARN(f"Error: {known_issues_file} not found.")
+        return
     except json.JSONDecodeError:
         WARN(f"Error: {known_issues_file} contains invalid JSON.")
+        return
 
     current_kernel_arguments = result.split()
     issues = known_issues.get(target_weka_version, [])
+
+    if not issues:
+        GOOD(f"Host {host_name} has no known problematic kernel arguments for WEKA version {target_weka_version}.")
+        return
+
+    found_any_problem = False
+
     for issue in issues:
         description = issue.get("description", "No description available.")
-        internal_reference = issue.get(
-            "internal_reference", "No internal reference available."
-        )
-        problematic_kernel_arguments = set(
-            issue.get("problematic_kernel_arguments", [])
-        )
+        internal_reference = issue.get("internal_reference", "No internal reference available.")
+        problematic_kernel_arguments = set(issue.get("problematic_kernel_arguments", []))
+
+        if not problematic_kernel_arguments:
+            continue
+
         for problematic_kernel_argument in problematic_kernel_arguments:
             if problematic_kernel_argument in current_kernel_arguments:
                 BAD(
-                    f"Host {host_name} kernel has been booted with {problematic_kernel_argument}, which is affected by {description}; please contact Customer Success and discuss {internal_reference}"
+                    f"Host {host_name} kernel has been booted with '{problematic_kernel_argument}', which is affected by: {description}. Contact Customer Success and refer to {internal_reference}."
                 )
+                found_any_problem = True
             else:
-                GOOD(
-                    f"Host {host_name} kernel does not feature {problematic_kernel_argument}"
-                )
+                GOOD(f"Host {host_name} kernel does not feature '{problematic_kernel_argument}'.")
+
+    if not found_any_problem:
+        GOOD(f"Host {host_name} kernel arguments do not contain any known problematic values for WEKA version {target_weka_version}.")
 
 
 def endpoint_status(host_name, result):
