@@ -26,8 +26,10 @@ class SpecFile:
     Timestamp = c.Struct("secs" / Seconds, "nanosecs" / NanoSecs)
     FQSnapLayerId = c.Struct("guid" / XUUID, "snapLayerId" / SnapLayerId)
     FixedString8 = c.PascalString(c.Int8ul, "utf8")
+    FixedString16 = c.PascalString(c.Int16ul, "utf8")
     FixedString64 = c.PascalString(c.Int64ul, "utf8")
     FQFSId = c.Struct("guid" / XUUID, "fsId" / FSId)
+    KmsType = c.Bytes(1)
 
     def __init__(self, spec_file_path: str):
         self.path = spec_file_path
@@ -69,6 +71,9 @@ class SpecFile:
             "fsTotalBudget" / _versioned_con(9, self.BlocksCount),
             "fsMaxFiles" / _versioned_con(9, c.Int64ul),
             "origFqFSId" / _versioned_con(9, self.FQFSId),
+            "customizationKmsType" / _versioned_con(11, self.KmsType),
+            "kmsKeyName" / _versioned_con(11, self.FixedString8),
+            "kmsNamespace" / _versioned_con(11, self.FixedString16),
             "snapLayersNum" / c.Int64ul,
             "snapLayers" / c.Array(c.this.snapLayersNum, self.StowedSnapLayer),
             "excessiveBytesIndication" / c.GreedyBytes,

@@ -58,7 +58,7 @@ class Data:
     capacity: Capacity
     num_layers: int
     weka_download_compatability: str
-    snap_layers: List[SnapLayer]
+    snap_layers: list[SnapLayer]
 
 
 def construct_data_from_raw(raw_data: RawDataContainerType) -> Data:
