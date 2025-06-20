@@ -60,7 +60,7 @@ But in its simpler form, all options can be passed explicitly. The S3 parameters
 
 ## Installation
 
-The script requires python >=3.7. \
+The script requires python >=3.11. \
 It also relies on external dependencies, to easily install them run `python3 -m pip install -r requirements.txt` \
 NOTE: If `boto3` fails to download, you can still run the script but have to provide a path to a locally stored spec file and not an S3 URL.
 

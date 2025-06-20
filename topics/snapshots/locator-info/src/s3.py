@@ -12,10 +12,10 @@ def download_spec_file(
     locator: str,
     download_path: str,
     verify_ssl: bool,
-    access_key: Optional[str] = None,
-    secret_key: Optional[str] = None,
-    endpoint_url: Optional[str] = None,
-    ca_bundle: Optional[str] = None,
+    access_key: str | None = None,
+    secret_key: str | None = None,
+    endpoint_url: str | None = None,
+    ca_bundle: str | None = None,
 ) -> None:
     import boto3
     from botocore.exceptions import ClientError
@@ -43,7 +43,7 @@ def download_spec_file(
         ) from ex
 
 
-def _infer_verify_val(verify_ssl: bool, ca_bundle: Optional[str]) -> Union[str, bool]:
+def _infer_verify_val(verify_ssl: bool, ca_bundle: str | None) -> str | bool:
     """boto3 client's `verify` param is of a bool/str type, expecting False if shouldn't verify SSL and a string if a CA bundle is provided"""
     if ca_bundle is not None:
         return ca_bundle

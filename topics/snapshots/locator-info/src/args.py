@@ -72,11 +72,11 @@ def parse_args():
 def parse_path_arg(
     path_arg: str,
     verify_ssl: bool,
-    spec_file_download_path: Optional[str] = None,
-    access_key: Optional[str] = None,
-    secret_key: Optional[str] = None,
-    endpoint_url: Optional[str] = None,
-    ca_bundle: Optional[str] = None,
+    spec_file_download_path: str | None = None,
+    access_key: str | None = None,
+    secret_key: str | None = None,
+    endpoint_url: str | None = None,
+    ca_bundle: str | None = None,
 ) -> str:
     """Infer if path arg represents a file path or an S3 URL. If URL, download the spec file to the given download path. Regardless, return the spec file path"""
     url_indicator = "s3://"

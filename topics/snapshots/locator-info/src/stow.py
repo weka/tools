@@ -11,21 +11,24 @@ INVALID_COMPATABILITY = "N/A (the script does not support this object's versioni
 @dataclass
 class _WekaCompatabilityRange:
     introduction_ver: str
-    deprecation_ver: Optional[str] = field(default=None)
+    deprecation_ver: str | None = field(default=None)
 
 
 # needs to be kept up to date with weka/config/stow/defs.d
 STOW_WEKA_COMP = {
-    0: _WekaCompatabilityRange("v3.1.7.1", deprecation_ver="v3.11.0"),
-    1: _WekaCompatabilityRange("v3.4.2", deprecation_ver="v3.11.0"),
-    2: _WekaCompatabilityRange("v3.5.2"),
-    3: _WekaCompatabilityRange("v3.10.0"),
-    4: _WekaCompatabilityRange("v3.10.1"),
-    5: _WekaCompatabilityRange("v3.11.0"),
-    6: _WekaCompatabilityRange("v3.12.0"),
-    7: _WekaCompatabilityRange("v3.13.0"),
-    8: _WekaCompatabilityRange("v3.14.0"),
-    9: _WekaCompatabilityRange("v4.0.0"),
+    0:  _WekaCompatabilityRange("v3.1.7.1", deprecation_ver="v3.11.0"),
+    1:  _WekaCompatabilityRange("v3.4.2", deprecation_ver="v3.11.0"),
+    2:  _WekaCompatabilityRange("v3.5.2"),
+    3:  _WekaCompatabilityRange("v3.10.0"),
+    4:  _WekaCompatabilityRange("v3.10.1"),
+    5:  _WekaCompatabilityRange("v3.11.0"),
+    6:  _WekaCompatabilityRange("v3.12.0"),
+    7:  _WekaCompatabilityRange("v3.13.0"),
+    8:  _WekaCompatabilityRange("v3.14.0"),
+    9:  _WekaCompatabilityRange("v4.0.0"),
+    10: _WekaCompatabilityRange("v4.3.0"),
+    11: _WekaCompatabilityRange("v4.4.0"),
+    12: _WekaCompatabilityRange("v4.4.3"),
 }
 
 

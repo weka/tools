@@ -48,7 +48,7 @@ def _print_data_nicely(data: Data, verbose: bool) -> None:
     print(f"Capacity: {data.capacity.pretty_str()}")
 
 
-def _snaplayers_table(snap_layers: List[SnapLayer]) -> str:
+def _snaplayers_table(snap_layers: list[SnapLayer]) -> str:
     headers = [
         "ID",
         "GUID",
