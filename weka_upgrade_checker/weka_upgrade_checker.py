@@ -46,7 +46,7 @@ else:
     InvalidVersion = ValueError  # Since distutils doesn't have InvalidVersion, we use a generic exception
 
 
-pg_version = "1.5.4"
+pg_version = "1.5.5"
 
 
 known_issues_file = "known_issues.json"
@@ -1919,56 +1919,63 @@ def weka_cluster_checks(skip_mtu_check, target_version):
     )
 
     if s3_status:
-        INFO("CHECKING WEKA S3 BUCKET LIFECYCLE RULES COMPLIANCE")
-        try:
-            bucket_list_output = subprocess.check_output(
-                ["weka", "s3", "bucket", "list", "-J"], text=True
-            )
-            buckets = json.loads(bucket_list_output)
-        except subprocess.CalledProcessError as e:
-            print(f"[ERROR] Failed to list buckets: {e}")
-            return
-
-        global_rule_count = 0
-        global_limit_exceeded = False
-
-        for bucket in buckets:
-            bucket_name = bucket.get("name")
+        if V(target_version) >= V("4.4.9"):
+            INFO("CHECKING WEKA S3 BUCKET LIFECYCLE RULES COMPLIANCE")
             try:
-                lifecycle_output = subprocess.check_output(
-                    ["weka", "s3", "bucket", "lifecycle-rule", "list", bucket_name, "-J"],
-                    text=True,
-                    stderr=subprocess.STDOUT
+                bucket_list_output = subprocess.check_output(
+                    ["weka", "s3", "bucket", "list", "-J"], text=True
                 )
-                rules = json.loads(lifecycle_output)
-                rule_count = len(rules)
-                global_rule_count += rule_count
-
-                if rule_count > 10:
-                    BAD(f"Bucket '{bucket_name}' exceeds max life-cycle rules has {rule_count}, max is 10.")
-                    continue
-
-                rule_issue_found = False
-                tag_total = 0
-                for rule in rules:
-                    tag_string = rule.get("tags", "")
-                    valid_tags = [t for t in tag_string.split(",") if "=" in t and t.strip()]
-                    tag_total += len(valid_tags)
-
-                if tag_total > 6:
-                    BAD(f"Bucket '{bucket_name}' has too many total tags: {tag_total} max is 6.")
-                    continue
-
-                if not rule_issue_found:
-                    GOOD(f"Bucket '{bucket_name}' is OK {rule_count} rule(s) defined.")
-
+                buckets = json.loads(bucket_list_output)
             except subprocess.CalledProcessError as e:
-                output = e.output.strip()
-                if "The lifecycle configuration does not exist" not in output:
-                    WARN(f"Error checking bucket '{bucket_name}': {output}")
+                print(f"[ERROR] Failed to list buckets: {e}")
+                return
 
-        if global_rule_count > 5000:
-            BAD("Global ILM rules count exceeds 5000! You must reduce ILM rules.")
+            global_rule_count = 0
+            global_limit_exceeded = False
+
+            for bucket in buckets:
+                bucket_name = bucket.get("name")
+                try:
+                    lifecycle_output = subprocess.check_output(
+                        ["weka", "s3", "bucket", "lifecycle-rule", "list", bucket_name, "-J"],
+                        text=True,
+                        stderr=subprocess.STDOUT
+                    )
+                    rules = json.loads(lifecycle_output)
+                    rule_count = len(rules)
+                    global_rule_count += rule_count
+
+                    if rule_count > 10:
+                        BAD(f"Bucket '{bucket_name}' exceeds max life-cycle rules: has {rule_count}, max is 10.")
+                        continue
+
+                    rule_issue_found = False
+                    tag_total = 0
+                    for rule in rules:
+                        # Check prefix length
+                        prefix = rule.get("prefix", "")
+                        if len(prefix) > 256:
+                            BAD(f"Bucket '{bucket_name}' has a rule with prefix exceeding 256 characters (length: {len(prefix)}).")
+                            rule_issue_found = True
+                            continue
+
+                        # Validate tags
+                        tag_string = rule.get("tags", "")
+                        valid_tags = [t for t in tag_string.split(",") if "=" in t and t.strip()]
+                        tag_total += len(valid_tags)
+
+                    if tag_total > 6:
+                        BAD(f"Bucket '{bucket_name}' has too many total tags: {tag_total}, max is 6.")
+                        continue
+
+                    if not rule_issue_found and tag_total <= 6:
+                        GOOD(f"Bucket '{bucket_name}' is OK: {rule_count} rule(s), {tag_total} tag(s), all prefixes valid.")
+
+                except subprocess.CalledProcessError as e:
+                    output = e.output.strip()
+                    if "The lifecycle configuration does not exist" not in output:
+                        WARN(f"Error checking bucket '{bucket_name}': {output}")
+
 
 
     if V(weka_version) > V("3.10"):
