@@ -1,7 +1,7 @@
 # the next line tells to report only iops, bandwidth or latency.
 # report iops
 [global]
-filesize=2G
+filesize=10G
 time_based=1
 startdelay=5
 exitall_on_error=1
