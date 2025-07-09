@@ -3357,8 +3357,8 @@ def available_memory_check(host_name, result):
 
         min_required = max(5, num_containers * 1)
 
-        if available_gib < 5:
-            WARN(f"{host_name} has only {available_gib:.2f}GiB available — below 5GiB minimum")
+        if available_gib < min_required:
+            WARN(f"{host_name} has only {available_gib:.2f}GiB available — below {min_required}GiB minimum")
         elif available_gib < num_containers:
             WARN(f"{host_name} has only {available_gib:.2f}GiB available for {num_containers} containers")
         else:
