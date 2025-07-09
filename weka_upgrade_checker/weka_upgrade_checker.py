@@ -46,7 +46,7 @@ else:
     InvalidVersion = ValueError  # Since distutils doesn't have InvalidVersion, we use a generic exception
 
 
-pg_version = "1.5.5"
+pg_version = "1.5.6"
 
 
 known_issues_file = "known_issues.json"
@@ -1003,6 +1003,22 @@ def weka_cluster_checks(skip_mtu_check, target_version):
             )
         else:
             GOOD("Client target version is empty")
+
+    pre_1eib = (
+        (weka_version < V("4.2.16")) or
+        (V("4.3.0") <= weka_version < V("4.4.6"))
+    )
+
+    post_1eib = (
+        target_version >= V("4.2.16") or
+        target_version >= V("4.4.6")
+    )
+
+    if pre_1eib and post_1eib:
+        INFO("Validating if overrides needed for upgrade")
+        WARN("Before upgrading drives and compute containers, run:\n"
+             "'weka debug override add --key rpc.exception.version --value 1 --force'\n"
+             "Remove the override before upgrading frontend containers.")
 
     if V(weka_version) >= V("4.1"):
         INFO("Validating memory to SSD capacity ratio for upgrade")
