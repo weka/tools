@@ -14,7 +14,7 @@ DRY_RUN=false #If true: don't actually drain S3 and reboot.
 SKIP_IF_OFFLINE=true #Allow skipping hosts that are offline before we have interacted with them
 LOG_DRIVE_IDS=true #Log Failed drive IDs
 TRY_PCIE_RESCAN=true #Try rescanning PCIe bus before restarting on failed drives. Use only on actual NVMe drives
-FAIL_ON_S3_DRAIN_FAIL=false #If S3 fails to drain for any reason (including host is not running S3) then fail out
+SKIP_ON_S3_DRAIN_FAIL=false #If S3 fails to drain then skip host instead of rebooting
 
 LOG_FILE="$(basename "$0" | sed 's/\.[^.]*$//')_$(date '+%Y%m%d_%H%M%S').log"
 
@@ -72,7 +72,6 @@ wait_for_weka_ok() {
 }
 
 pcie_rescan() {
-	#set -x
 	local host=$1
 	local drive_info=$2
 	local new_info=$3
@@ -101,7 +100,7 @@ pcie_rescan() {
 
 				if [ "$ssh_output" == "present" ]; then
 					log "DRIVE:      $uid is present in the PCIe bus. Removing it now."
-					ssh -n "$host" "echo '1' > /sys/bus/pci/devices/$pci_id/remove"
+					ssh -n "$host" "echo '1' | sudo tee /sys/bus/pci/devices/$pci_id/remove"
 				else
 					log "DRIVE:      $uid is not present in the PCIe bus, a reboot may be required."
 				fi
@@ -116,8 +115,33 @@ pcie_rescan() {
 		fi
 	done
 	log "DRIVE:      Rescanning PCI bus"
-	ssh "$host" "echo '1' > /sys/bus/pci/rescan"
-	set +x
+	ssh "$host" "echo '1' | sudo tee /sys/bus/pci/rescan"
+}
+
+wait_for_drain() {
+	local host=$1
+	local start_time
+	local end_time
+	start_time=$(date +%s)
+	end_time=$((start_time + S3_DRAIN_TIME))
+	local connections
+	while [ "$(date +%s)" -lt $end_time ];do
+		sleep $CHECK_INTERVAL
+		connections=$(ssh "$host" "weka s3 cluster status -o requests -F hostname=$(hostname) --no-header")
+		if [ "$connections" = 0 ]; then
+			log "INFO:      S3 finished draining on $host"
+			return 0
+		fi
+	done
+	log "ERROR:     S3 Failed to drain in time on $host"
+	return 1
+}
+
+reboot_host() {
+	local host=$1
+	ssh -o ServerAliveInterval=1 -o ServerAliveCountMax=5 "$host" "
+	(sleep 1 && sudo shutdown -r now &>/dev/null &) &
+	exit 0" || true
 }
 
 #Main Script
@@ -160,21 +184,31 @@ for host in "${HOSTS[@]}"; do
 		drive_info=$(ssh "$host" "weka cluster drive -v -o id,uid,path,hostname,status,serial| grep \"${hostname}\" || true")
 		#Drain S3 & reboot - Needs checking
 		if [ "$DRY_RUN" = false ];then
-			log "---LIVE---: Draining and rebooting $host"
-			if [ "$FAIL_ON_S3_DRAIN_FAIL" = true ]; then
-				ssh -o ServerAliveInterval=1 -o ServerAliveCountMax=5 "$host" "
-				weka s3 cluster drain \$(weka cluster container | awk '/frontend/ && /${hostname}/ {print \$1}') && \
-				sleep ${S3_DRAIN_TIME} && \
-				(sleep 1 && sudo shutdown -r now &>/dev/null &) &
-				exit 0" || true
+			s3_running=$(ssh "$host" "if weka local ps | grep '^s3' &>/dev/null;then echo true;else echo false;fi")
+			if [ "$s3_running" = true ];then
+				log "---LIVE---: Draining S3 of $host"
+				ssh -o ServerAliveInterval=1 -o ServerAliveCountMax=5 "$host" "weka s3 cluster drain \$(weka cluster container | awk '/frontend/ && /${hostname}/ {print \$1}')"
+				if wait_for_drain "$host";then
+					log "---LIVE---: Host $host drained; rebooting"
+					reboot_host "$host"
+					rebooted=$((rebooted + 1))
+				else
+					if [ "$SKIP_ON_S3_DRAIN_FAIL" = false ];then
+						log "ERROR:      Host $host failed to drain; rebooting anyway"
+						reboot_host "$host"
+						rebooted=$((rebooted + 1))
+					else
+					log "ERROR:      Failed to drain S3 on $host, SKIPPING."
+					skipped=$((skipped + 1))
+					fi
+				fi
 			else
+				log "---LIVE---: No S3 running; rebooting $host"
 				ssh -o ServerAliveInterval=1 -o ServerAliveCountMax=5 "$host" "
-				weka s3 cluster drain \$(weka cluster container | awk '/frontend/ && /${hostname}/ {print \$1}') && \
-				sleep ${S3_DRAIN_TIME}; \
-				(sleep 1 && sudo shutdown -r now &>/dev/null &) &
-				exit 0" || true
+(sleep 1 && sudo shutdown -r now &>/dev/null &) &
+exit 0" || true
+					rebooted=$((rebooted + 1))
 			fi
-			rebooted=$((rebooted + 1))
 		else
 			log "DRY RUN:    Drain and reboot $host here"
 			ssh "$host" "echo $host Frontend ID: \$(weka cluster container | awk '/frontend/ && /${hostname}/ {print \$1}')"
