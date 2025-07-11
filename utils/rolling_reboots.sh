@@ -76,7 +76,7 @@ pcie_rescan() {
 	local drive_info=$2
 	local new_info=$3
 	local failed
-	failed=$(echo "$new_info" | grep -vw ACTIVE || true)
+	failed=$(echo "$new_info" | grep -vwe ACTIVE -e PHASING_IN -e HOSTNAME || true)
 	echo "$failed" | while IFS= read -r drive; do
 		local uid
 		uid=$(echo "$drive" | awk '{print $2}')
@@ -100,7 +100,7 @@ pcie_rescan() {
 
 				if [ "$ssh_output" == "present" ]; then
 					log "DRIVE:      $uid is present in the PCIe bus. Removing it now."
-					ssh -n "$host" "echo '1' | sudo tee /sys/bus/pci/devices/$pci_id/remove"
+					ssh -n "$host" "echo '1' | sudo tee /sys/bus/pci/devices/$pci_id/remove > /dev/null"
 				else
 					log "DRIVE:      $uid is not present in the PCIe bus, a reboot may be required."
 				fi
@@ -115,11 +115,12 @@ pcie_rescan() {
 		fi
 	done
 	log "DRIVE:      Rescanning PCI bus"
-	ssh "$host" "echo '1' | sudo tee /sys/bus/pci/rescan"
+	ssh "$host" "echo '1' | sudo tee /sys/bus/pci/rescan > /dev/null"
 }
 
 wait_for_drain() {
 	local host=$1
+	local version=$2
 	local start_time
 	local end_time
 	start_time=$(date +%s)
@@ -127,9 +128,13 @@ wait_for_drain() {
 	local connections
 	while [ "$(date +%s)" -lt $end_time ];do
 		sleep $CHECK_INTERVAL
-		connections=$(ssh "$host" "weka s3 cluster status -o requests -F hostname=$(hostname) --no-header")
+		if echo "$version" | grep "4\.[0-3]\." > /dev/null;then
+			connections=$(ssh "$host" "curl -s http://localhost:9001/minio/reqswatermark/currentreqs | grep -o '[0-9]*'") #Pre-4.4
+			else
+			connections=$(ssh "$host" 'weka s3 cluster status -o requests -F hostname=$(hostname) --no-header') #4.4+
+		fi
 		if [ "$connections" = 0 ]; then
-			log "INFO:      S3 finished draining on $host"
+			log "INFO:       S3 finished draining on $host"
 			return 0
 		fi
 	done
@@ -141,7 +146,7 @@ reboot_host() {
 	local host=$1
 	ssh -o ServerAliveInterval=1 -o ServerAliveCountMax=5 "$host" "
 	(sleep 1 && sudo shutdown -r now &>/dev/null &) &
-	exit 0" || true
+	exit 0" &>/dev/null || true
 }
 
 #Main Script
@@ -163,6 +168,8 @@ for host in "${HOSTS[@]}"; do
 			log "FATAL:      Host is offline, set SKIP_IF_OFFLINE in the configuration section to allow continuing in this case"
 			echo -e "\a" #Ring the bell
 			exit 1;
+		else
+			continue
 		fi
 	fi
 	#Check uptime
@@ -173,22 +180,26 @@ for host in "${HOSTS[@]}"; do
 		continue
 	fi
 	#Get current drive count
-	hostname=$(ssh "$host" "hostname")
-	drive_count=$(ssh "$host" "weka cluster drive | grep -c \"${hostname}.* ACTIVE\" ||true" 2>/dev/null)
+	version=$(ssh "$host" "weka version current")
+	drive_count=$(ssh "$host" 'weka cluster drive -F hostname=$(hostname),status=ACTIVE --no-header | wc -l' 2>/dev/null)
 	status=wait_for_ok
 	#Start loop
 	#Check WEKA Status
 	wait_for_weka_ok "$host"
 	while [ "$status" != "good" ]; do
 		#Save drive locations
-		drive_info=$(ssh "$host" "weka cluster drive -v -o id,uid,path,hostname,status,serial| grep \"${hostname}\" || true")
-		#Drain S3 & reboot - Needs checking
+		drive_info=$(ssh "$host" 'weka cluster drive -F hostname=$(hostname) -o id,uid,path,hostname,status,serial')
+		#Drain S3 & reboot
 		if [ "$DRY_RUN" = false ];then
-			s3_running=$(ssh "$host" "if weka local ps | grep '^s3' &>/dev/null;then echo true;else echo false;fi")
+			s3_running=$(ssh "$host" 'if weka local status s3 &>/dev/null;then echo true;else echo false;fi')
 			if [ "$s3_running" = true ];then
 				log "---LIVE---: Draining S3 of $host"
-				ssh -o ServerAliveInterval=1 -o ServerAliveCountMax=5 "$host" "weka s3 cluster drain \$(weka cluster container | awk '/frontend/ && /${hostname}/ {print \$1}')"
-				if wait_for_drain "$host";then
+				if echo "$version" | grep "4\.[0-3]\." > /dev/null;then #Pre-4.4
+					ssh -o ServerAliveInterval=1 -o ServerAliveCountMax=5 "$host" 'weka s3 cluster drain $(weka cluster container -F hostname=$(hostname) -o id,container --no-header | awk "/frontend/ {print \$1}")'
+				else #4.4+
+					ssh -o ServerAliveInterval=1 -o ServerAliveCountMax=5 "$host" 'weka s3 cluster drain $(weka s3 cluster status -F hostname=$(hostname) -o id --no-header)'
+				fi
+				if wait_for_drain "$host" "$version";then
 					log "---LIVE---: Host $host drained; rebooting"
 					reboot_host "$host"
 					rebooted=$((rebooted + 1))
@@ -211,7 +222,7 @@ exit 0" || true
 			fi
 		else
 			log "DRY RUN:    Drain and reboot $host here"
-			ssh "$host" "echo $host Frontend ID: \$(weka cluster container | awk '/frontend/ && /${hostname}/ {print \$1}')"
+			ssh "$host" "echo \$(hostname) Frontend ID: \$(weka cluster container -F hostname=\$(hostname) -o id,container --no-header | awk '/frontend/ {print \$1}')"
 		fi
 		#Wait for reboot
 		sleep "$CHECK_INTERVAL"
@@ -221,24 +232,28 @@ exit 0" || true
 		sleep 3
 		for ((j = 0; j < CHECK_COUNT_LIMIT; j++)); do
 			for ((i = 0; i < CHECK_COUNT_LIMIT; i++)); do
-				new_drive_info=$(ssh "$host" "weka cluster drive -v -o id,uid,path,hostname,status,serial| grep \"${hostname}\" || true")
-				new_drives_count=$(echo "$new_drive_info" | grep -cw "ACTIVE" || true 2>/dev/null)
+				new_drive_info=$(ssh "$host" 'weka cluster drive -F hostname=$(hostname) -o id,uid,path,hostname,status,serial')
+				new_drives_count=$(echo "$new_drive_info" | grep -cwe "ACTIVE" -e "PHASING_IN" || true 2>/dev/null)
 				drive_failures=$((drive_count - new_drives_count))
-				if [ "$LOG_DRIVE_IDS" = true ] && [ "$drive_failures" -gt 0 ] && [ "$i" -gt 0 ];then
-					log "INFO:       Failed Drive IDs:
-$(echo "$new_drive_info" | grep -vw ACTIVE)"
-				fi
 				if [ "$drive_failures" -gt "$DRIVE_FAILURE_MAX" ]; then
 					log "DRIVE:      $host has exceeded drive failure limit: $drive_failures failures"
 					status=failed_drive_limit_exceeded
 					sleep $CHECK_INTERVAL
-				else
-					log "CONTINUING: $host is within drive failure limit: $drive_failures failures"
+				elif [ "$drive_failures" = 0 ]; then
+					log "CONTINUING: $host has no drive failures"
 					failed_drives=$((failed_drives + drive_failures))
 					status=good
 					break 2
+				else
+					log "WAITING:    $host has $drive_failures failures; Within acceptable range (no further reboots)"
+					failed_drives=$((failed_drives + drive_failures))
+					status=good
 				fi
 			done
+			if [ "$LOG_DRIVE_IDS" = true ] && [ "$drive_failures" -gt 0 ];then
+				log "INFO:       Failed Drive IDs (Pre-rescan):
+$(echo "$new_drive_info" | grep -vwe ACTIVE -e PHASING_IN)"
+			fi
 			#Do PCIe Rescan
 			if [ "$TRY_PCIE_RESCAN" = true ];then
 				pcie_rescan "$host" "$drive_info" "$new_drive_info"
@@ -247,6 +262,10 @@ $(echo "$new_drive_info" | grep -vw ACTIVE)"
 			fi
 		done
 	done
+	if [ "$LOG_DRIVE_IDS" = true ] && [ "$drive_failures" -gt 0 ];then
+		log "INFO:       Failed Drive IDs (Post-rescan):
+$(echo "$new_drive_info" | grep -vwe ACTIVE -e PHASING_IN)"
+	fi
 	#Comment out host in file
 	if [ "$COMMENT_COMPLETED" = true ]; then
 		log "INFO:       Commenting out completed host"
