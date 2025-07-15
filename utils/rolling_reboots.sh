@@ -167,7 +167,7 @@ for host in "${HOSTS[@]}"; do
 	if [[ "${host%%.*}" == "${local_hostname%%.*}" ]]; then log "SKIPPING:   $host due to it being localhost"; skipped=$((skipped + 1)); continue; fi
 	#Skip if commented out
 	if [[ $host == \#* ]]; then log "SKIPPING:   $host due to leading #"; skipped=$((skipped + 1)); continue; fi
-	if ! ssh -l "$SSH_USER" -o ConnectTimeout=5 -o BatchMode=yes "$host" "exit" 2>/dev/null;then
+	if ! ssh -l "$SSH_USER" -o ConnectTimeout=5 -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$host" "exit" 2>/dev/null;then
 		log "ERROR:      $host is offline"
 		if [ "$SKIP_IF_OFFLINE" != true ];then
 			log "FATAL:      Host is offline, set SKIP_IF_OFFLINE in the configuration section to allow continuing in this case"
