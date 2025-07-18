@@ -1016,7 +1016,7 @@ def weka_cluster_checks(skip_mtu_check, target_version):
 
     if pre_1eib and post_1eib:
         INFO("Validating if overrides needed for upgrade")
-        WARN("Before upgrading drives and compute containers, run: weka debug override add --key rpc.exception.version --value 1 --force. Remove the override before upgrading frontend containers.")
+        WARN("Before upgrading add the following override run: weka debug override add --key rpc.exception.version --value 1 --force. Remove the override after upgrade completes.")
 
     if V(weka_version) >= V("4.1"):
         INFO("Validating memory to SSD capacity ratio for upgrade")
