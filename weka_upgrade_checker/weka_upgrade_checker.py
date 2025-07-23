@@ -18,6 +18,7 @@ from subprocess import run
 import warnings
 from collections import Counter, defaultdict
 import textwrap
+from collections import deque
 
 warnings.filterwarnings("ignore", category=DeprecationWarning, module="distutils")
 
@@ -46,7 +47,7 @@ else:
     InvalidVersion = ValueError  # Since distutils doesn't have InvalidVersion, we use a generic exception
 
 
-pg_version = "1.5.7"
+pg_version = "1.5.8"
 
 
 known_issues_file = "known_issues.json"
@@ -1016,7 +1017,7 @@ def weka_cluster_checks(skip_mtu_check, target_version):
 
     if pre_1eib and post_1eib:
         INFO("Validating if overrides needed for upgrade")
-        WARN("Before upgrading add the following override run: weka debug override add --key rpc.exception.version --value 1 --force. Remove the override after upgrade completes.")
+        WARN("Before upgrading drives and compute containers, run: weka debug override add --key rpc.exception.version --value 1 --force. Remove the override before upgrading frontend containers.")
 
     if V(weka_version) >= V("4.1"):
         INFO("Validating memory to SSD capacity ratio for upgrade")
@@ -4327,45 +4328,52 @@ def target_version_check(
             return {}
 
     def parse_version(version):
-        """Converts a version string into a Version object for comparison."""
         if not version or not isinstance(version, str) or version.strip() == "":
-            return None  # Return None to indicate an invalid version
-        return V(version)
+            return None
+        try:
+            return V(version.strip())
+        except Exception:
+            return None
 
 
     def find_upgrade_path(weka_version, target_version, upgrade_map):
-        path = [weka_version]  # Start the path with the current version
-        weka_version = parse_version(weka_version)
-        target_version = parse_version(target_version)
+        weka_version = weka_version.strip()
+        target_version = target_version.strip()
 
-        if weka_version is None or target_version is None:
-            WARN("No upgrade path information available due to an invalid version in the upgrade map.")
-            return []
+        visited = set()
+        queue = deque([[weka_version]])
 
-        while weka_version < target_version:
-            next_versions = [
-                (ver, parse_version(ver))
-                for ver, min_ver in upgrade_map.items()
-                if isinstance(min_ver, list)
-                and len(min_ver) > 0
-                and parse_version(min_ver[0]) is not None
-                and parse_version(ver) is not None
-                and parse_version(min_ver[0]) <= weka_version
-                and parse_version(ver) > weka_version
-            ]
+        while queue:
+            path = queue.popleft()
+            current = path[-1]
 
-            if not next_versions:
-                WARN(f"No upgrade path information available from {weka_version} to {target_version}")
-                return []
+            if current == target_version:
+                return path
 
-            next_version = max(next_versions, key=lambda v: v[1])[0]
-            path.append(next_version)
-            weka_version = parse_version(next_version)
+            if current in visited:
+                continue
 
-        if weka_version != target_version:
-            WARN(f"Could not reach target version {target_version} from {weka_version}")
+            visited.add(current)
+            current_v = parse_version(current)
 
-        return path
+            next_versions = []
+            for ver, min_vers in upgrade_map.items():
+                if not isinstance(min_vers, list) or not min_vers:
+                    continue
+
+                min_v = parse_version(min_vers[0])
+                target_v = parse_version(ver)
+                if min_v and target_v and min_v <= current_v and target_v > current_v:
+                    next_versions.append(ver)
+
+            next_versions.sort(key=parse_version, reverse=True)
+
+            for nv in next_versions:
+                if nv not in visited:
+                    queue.append(path + [nv])
+
+        WARN(f"Could not reach target version {target_version} from {weka_version}")
+        return []
 
     try:
         upgrade_map = load_upgrade_map(upgrade_path)
