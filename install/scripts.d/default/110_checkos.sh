@@ -13,11 +13,13 @@ unsupported_version=0
 warning=0
 client_only=0
 
+echo Version_Id $VERSION_ID
+echo ID $ID
+
 case $ID in
 	'centos')
 		case $VERSION_ID in
-			'7.'[2-9]) ;;
-			'8.'[0-7]) ;;
+			'8.'[0-5]) ;;
 			'') version_not_found=1 ;;
 			*) unsupported_version=1 ;;
 		esac
@@ -25,18 +27,41 @@ case $ID in
 
 	'rhel')
 		case $VERSION_ID in 
-			'7.'[2-9]) ;;
-			'8.'[0-6]) ;;
-			'9.'[0-2]) ;; # change to warning=1 when RHEL 9 is supported
+			'8.'[0-9]) ;;
+			'8.10') ;;
+			'9.'[0-4]) ;; # change to warning=1 when RHEL 9 is supported
 			'') version_not_found=1 ;;
 			*) unsupported_version=1 ;;
 		esac
 		;;
 
 	'rocky')
+		case $VERSION_ID in
+			'8.'[0-9]) ;;
+	    '8.10') ;;
+			'9.'[0-4]) ;; # change to warning=1 when RHEL 9 is supported
+			'') version_not_found=1 ;;
+			*) unsupported_version=1 ;;
+		esac
+		;;
+
+	'oracle')
+		case $VERSION_ID in
+	    '8.5') ;;
+	    '8.7') ;;
+	    '8.9') ;;
+			'9.0') ;; # change to warning=1 when RHEL 9 is supported
+			'') version_not_found=1 ;;
+			*) unsupported_version=1 ;;
+		esac
+		;;
+
+	'alma')
 		case $VERSION_ID in 
-			'8.'[0-7]) ;;
-			'9.'[0-2]) ;; # change to warning=1 when RHEL 9 is supported
+
+			'8.'[0-9]) client_only=1 ;;
+			'8.10') client_only=1 ;;
+			'9.'[0-4]) client_only=1 ;; # change to warning=1 when RHEL 9 is supported
 			'') version_not_found=1 ;;
 			*) unsupported_version=1 ;;
 		esac
@@ -46,7 +71,8 @@ case $ID in
 	'sles')
 		case $VERSION_ID in
 			'12.5') client_only=1 ;;
-			'15.2') client_only=1 ;;
+			'15.1') client_only=1 ;;
+			'15.'[3-6]) client_only=1 ;;
 			'') version_not_found=1 ;;
 			*) unsupported_version=1 ;;
 		esac
@@ -56,7 +82,10 @@ case $ID in
 		case $VERSION_ID in
 			'18.04.'[0-6]) ;;
 			'20.04.'[0-3]) ;;
-			'22.04.'[0-3]) client_only=1 ;;
+			'22.04']) ;;
+			'22.04.5') ;;
+			'24.04']) ;;
+			'24.04.1') client_only=1 ;;
 			'') version_not_found=1 ;;
 			*) unsupported_version=1 ;;
 		esac

@@ -9,7 +9,7 @@ JIRA_REFERENCE="WEKAPP-444847"
 
 RETURN_CODE=0
 
-for WEKA_CONTAINER in $(sudo weka local ps --output name --no-header | grep -w -e ganesha -e samba -e smbw -e s3); do
+for WEKA_CONTAINER in $(sudo weka local ps --output name --no-header | grep -w -e ganesha -e samba -e smbw -e s3 -e dataserv); do
     MOUNTS_USING_WRITECACHE=$(sudo weka local exec --container ${WEKA_CONTAINER} mount -t wekafs | grep -c writecache)
     if [[ ${MOUNTS_USING_WRITECACHE} != "0" ]]; then
         echo "WARN: container ${WEKA_CONTAINER} - used for protocols - is using writecache on host ${HOSTNAME}"

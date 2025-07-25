@@ -14,7 +14,7 @@ RETURN_CODE=0
 # We send packets of either 1480 or 4056 bytes including UDP header, so including the IP header
 # header that is either 1500 or 4076 bytes.
 SMALLEST_MTU_REQUIRED=1500
-for CONTAINER in $(weka local ps --no-header | awk '{print $1}' | grep -vw -e envoy -e ganesha -e samba -e smbw -e s3) ; do
+for CONTAINER in $(weka local ps --no-header | awk '{print $1}' | grep -vw -e envoy -e ganesha -e samba -e smbw -e s3 -e dataserv) ; do
     for PCI_ID in $(weka local resources net --container ${CONTAINER} --stable | grep -v ^NET | awk '{print $2}') ; do
         MTU=$(cat /sys/bus/pci/devices/${PCI_ID}/net/*/mtu 2>/dev/null)
         # If one MTU is large... They all should be
@@ -25,7 +25,7 @@ for CONTAINER in $(weka local ps --no-header | awk '{print $1}' | grep -vw -e en
 done
 
 
-for CONTAINER in $(weka local ps --no-header | awk '{print $1}' | grep -vw -e envoy -e ganesha -e samba -e smbw -e s3) ; do
+for CONTAINER in $(weka local ps --no-header | awk '{print $1}' | grep -vw -e envoy -e ganesha -e samba -e smbw -e s3 -e dataserv) ; do
     for PCI_ID in $(weka local resources net --container ${CONTAINER} --stable | grep -v ^NET | awk '{print $2}') ; do
         MTU=$(cat /sys/bus/pci/devices/${PCI_ID}/net/*/mtu 2>/dev/null)
         if [[ -n ${MTU} && ${MTU} -lt ${SMALLEST_MTU_REQUIRED} ]] ; then

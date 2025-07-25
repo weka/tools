@@ -2,13 +2,14 @@
 
 import hashlib
 import logging
+import math
 import os
 import re
 import sys
 from argparse import ArgumentParser, HelpFormatter
 from concurrent.futures import ThreadPoolExecutor
 from json import dumps
-from ipaddress import ip_address, IPv4Address
+from ipaddress import ip_address
 from math import ceil
 from urllib import request, error
 from socket import timeout
@@ -42,15 +43,16 @@ OVERHEAD_PER_HUGEPAGE = OVERHEAD_PER_MBUF * MBUFS_IN_HUGEPAGE
 PAGE_2M_SIZE = 2 * MiB
 HUGEPAGE_SIZE_BYTES = PAGE_2M_SIZE
 DPDK_MEM_PER_NODE = 2 * MiB
-DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES = 1.4 * GiB
+DEFAULT_DRIVE_NODE_HUGEPAGES_MEMORY_BYTES = 1.4 * GiB
+DEFAULT_FE_NODE_HUGEPAGES_MEMORY_BYTES = 1.4 * GiB
+DEFAULT_COMPUTE_NODE_HUGEPAGES_MEMORY_BYTES = 1.4 * GiB
+MIN_COMPUTE_NODE_HUGEPAGES_MEMORY_BYTES = 0.8 * GiB
 MIN_OS_RESERVED_MEMORY = 8 * GiB
 FRONTEND_ROLE = "FRONTEND"
 DRIVE_ROLE = "DRIVES"
 COMPUTE_ROLE = "COMPUTE"
 MANAGEMENT_ROLE = "MANAGEMENT"
 DEFAULT_DRIVES_BASE_PORT = 14000
-DEFAULT_AGENT_BASE_PORT = 14100
-INITIAL_BASE_PORT = DEFAULT_AGENT_BASE_PORT + 100
 TALKER_PORT = 15000
 CONST_RESOURCES = dict(
     allow_unsupported_nics=False,
@@ -76,6 +78,7 @@ CONST_RESOURCES = dict(
     net_devices=[],
     ena_llq=True,
 )
+MAX_DRIVE_NODES_PERCPU = 4
 
 def is_cloud_env(check_aws=True, check_oci=True):
     req_list = []
@@ -183,6 +186,12 @@ class Node:
     def is_compute(self):
         return COMPUTE_ROLE in self.roles
 
+    def is_frontend(self):
+        return FRONTEND_ROLE in self.roles
+
+    def is_drive(self):
+        return DRIVE_ROLE in self.roles
+
     def as_dict(self):
         return self.__dict__
 
@@ -256,7 +265,6 @@ class ResourcesGenerator:
         self.cores = []
         self.numa_to_ionodes = dict()
         self.numa_nodes_info = []
-        self.next_base_port = INITIAL_BASE_PORT
         self.exclusive_nics_policy = None
         self.is_DEFAULT_DRIVES_BASE_PORT_used = False
 
@@ -418,7 +426,7 @@ class ResourcesGenerator:
                             help="Force continue in cases of prompts")
         parser.add_argument("--minimal-memory", action="count", default=0,
                             help="Set each container hugepages memory to %s GiB * number of io nodes on the container" %
-                                 (DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES / GiB))
+                                 (MIN_COMPUTE_NODE_HUGEPAGES_MEMORY_BYTES / GiB))
         parser.add_argument("--spare-cores", default=1, type=_validate_non_negative,
                             help="Specify how many cores to leave for OS and non weka processes")
         parser.add_argument("--drive-dedicated-cores", default=None, type=_validate_non_negative,
@@ -464,8 +472,7 @@ class ResourcesGenerator:
                             help="Specify the directory path to which the resources files will be written, default is '.'")
         parser.add_argument("--use-only-nic-identifier", action='store_true', dest='use_only_nic_identifier',
                             help="use only the nic identifier when allocating the nics")
-        parser.add_argument("--ucx", action='store_true',
-                            help="Create UCX endpoints for use with Infiniband")
+        parser.add_argument("--base-port", default=DEFAULT_DRIVES_BASE_PORT, type=int, help="Specify the base port")
 
         # Create a mutually exclusive group
         group = parser.add_mutually_exclusive_group()
@@ -486,6 +493,8 @@ class ResourcesGenerator:
         else:
             self.exclusive_nics_policy = is_cloud_env() or self.args.allocate_nics_exclusively
 
+        self.next_base_port = self.args.base_port + 200
+
         _validate_net_dev()
         _verify_core_ids(self.args.drive_core_ids + self.args.compute_core_ids + self.args.frontend_core_ids)
         _verify_core_ids(self.args.core_ids)
@@ -505,7 +514,7 @@ class ResourcesGenerator:
     def _get_next_base_port(self, role):
         if role == DRIVE_ROLE and not self.is_DEFAULT_DRIVES_BASE_PORT_used:
             self.is_DEFAULT_DRIVES_BASE_PORT_used = True
-            return DEFAULT_DRIVES_BASE_PORT
+            return self.args.base_port
         else:
             current_port = self.next_base_port
             self.next_base_port += 100
@@ -529,8 +538,6 @@ class ResourcesGenerator:
             mgmt_node = Node(dedicate_core=False, http_port=base_port, rpc_port=base_port)
             mgmt_node.roles.append(MANAGEMENT_ROLE)
             container.nodes[str(slot_id)] = mgmt_node
-            if self.args.ucx:
-                container.ucx = self.args.ucx
             while nodes and slot_id < self.args.max_cores_per_container:
                 slot_id += 1
                 node = nodes.pop()
@@ -575,12 +582,12 @@ class ResourcesGenerator:
                 if not keep_iterating:
                     break
 
-    def _ensure_port_14000_is_used(self):
+    def _ensure_base_port_is_used(self):
         if not self.containers[DRIVE_ROLE] and self.containers[COMPUTE_ROLE]:
-            self.containers[COMPUTE_ROLE][0].base_port = DEFAULT_DRIVES_BASE_PORT
+            self.containers[COMPUTE_ROLE][0].base_port = self.args.base_port
             for slot_id in range(len(self.containers[COMPUTE_ROLE][0].nodes)):
-                self.containers[COMPUTE_ROLE][0].nodes[str(slot_id)].http_port = DEFAULT_DRIVES_BASE_PORT
-                self.containers[COMPUTE_ROLE][0].nodes[str(slot_id)].rpc_port = DEFAULT_DRIVES_BASE_PORT + slot_id
+                self.containers[COMPUTE_ROLE][0].nodes[str(slot_id)].http_port = self.args.base_port
+                self.containers[COMPUTE_ROLE][0].nodes[str(slot_id)].rpc_port = self.args.base_port + slot_id
 
     def set_containers(self):
         """Conclude how many containers needed of each type
@@ -594,10 +601,9 @@ class ResourcesGenerator:
             self._set_containers(role)
             if role == DRIVE_ROLE:
                 self._add_drives()
-        self._ensure_port_14000_is_used()
+        self._ensure_base_port_is_used()
 
     def set_net_devices(self):
-        # format of this parameter is: iface_name/ip_addr+ipaddr/netmask_bits/gateway_ip/network_label
         def _validate_ips(ip):
             try:
                 ip_address(ip)
@@ -606,18 +612,8 @@ class ResourcesGenerator:
                 logger.error(err)
                 quit(1)
 
-        def _is_ipv4(ip):
-            return type(ip_address(ip)) == IPv4Address
-
-        def _validate_netmask(ip, netmask):
-            if _is_ipv4(ip):
-                min_bits = 8
-                max_bits = 32
-            else:
-                min_bits = 8
-                max_bits = 128
-
-            if not netmask.isdecimal() or int(netmask) not in range(min_bits, max_bits+1):
+        def _validate_netmask(netmask):
+            if not netmask.isdecimal() or int(netmask) not in range(0, 129):
                 logger.error("Invalid value for netmask: %s", netmask)
                 quit(1)
             return netmask
@@ -653,7 +649,7 @@ class ResourcesGenerator:
                 kwargs['ips'] = [ip.strip() for ip in ips]
             if arg_parts:
                 net_mask_arg = arg_parts.pop(0)
-                _validate_netmask(ips[0], net_mask_arg)
+                _validate_netmask(net_mask_arg)
                 kwargs['netmask'] = int(net_mask_arg)
             if arg_parts:
                 gateway = arg_parts.pop(0)
@@ -798,9 +794,17 @@ class ResourcesGenerator:
         available_cores_counter = self.num_available_cores if not self.exclusive_nics_policy else min(self.num_available_cores, len(self.net_devices))
         available_cores_counter = user_specified_num_cores if user_specified_num_cores else available_cores_counter
         default_num_compute_nodes = available_cores_counter - (num_drive_nodes + num_frontend_nodes)  # TODO: WEKAPP-247201
+        drive_nodes_per_core = 1
+        grouped_drive_nodes = num_drive_nodes
+        while default_num_compute_nodes < 1:
+             grouped_drive_nodes = math.floor(num_drive_nodes / (drive_nodes_per_core + 1)) + 1
+             default_num_compute_nodes = available_cores_counter - (grouped_drive_nodes + num_frontend_nodes)
+             drive_nodes_per_core = drive_nodes_per_core + 1
+             if drive_nodes_per_core > MAX_DRIVE_NODES_PERCPU:
+                  break
         default_num_compute_nodes = max(0, default_num_compute_nodes)
         num_compute_nodes = self.args.compute_dedicated_cores if self.args.compute_dedicated_cores is not None else default_num_compute_nodes
-        weka_required_cores = num_drive_nodes + num_frontend_nodes + num_compute_nodes
+        weka_required_cores = grouped_drive_nodes + num_frontend_nodes + num_compute_nodes
         msg = f"\n{num_compute_nodes} {COMPUTE_ROLE},\n" \
               f"{num_frontend_nodes} {FRONTEND_ROLE},\n{num_drive_nodes} {DRIVE_ROLE}.\n" \
               f"Available net devices: {len(self.net_devices)}\nAvailable cores: {self.num_available_cores}"
@@ -827,12 +831,25 @@ class ResourcesGenerator:
             self.numa_to_ionodes[next_core.numa].append(node)
             return node
 
+        def _get_next_drive_node(index):
+            if drive_nodes_per_core == 1:
+                next_core = cores_to_allocate.pop(0)
+            else:
+                if (index+1) % drive_nodes_per_core == 0:
+                    next_core = cores_to_allocate.pop(0)
+                else:
+                    next_core = cores_to_allocate[0]
+            node = Node(core_id = next_core.cpu_id)
+            node.roles.append(DRIVE_ROLE)
+            self.numa_to_ionodes[next_core.numa].append(node)
+            return node
+
         for i in range(num_frontend_nodes):
             self.frontend_nodes.append(_get_next_node(role=FRONTEND_ROLE))
-        for i in range(num_drive_nodes):
-            self.drive_nodes.append(_get_next_node(role=DRIVE_ROLE))
         for i in range(num_compute_nodes):
             self.compute_nodes.append(_get_next_node(role=COMPUTE_ROLE))
+        for i in range(num_drive_nodes):
+            self.drive_nodes.append(_get_next_drive_node(i))
 
     def _get_total_memory_bytes(self):
         return int(extract_digits(os.popen("cat /proc/meminfo | grep MemTotal").read().strip())) * KiB
@@ -891,6 +908,8 @@ class ResourcesGenerator:
     def _get_hugepages_memory_per_compute_node(self, numa_total_memory, io_nodes):
         wekanodes_memory_factor = 1.05
         num_compute_nodes = len([n for n in io_nodes if n.is_compute()])
+        num_drive_nodes = len([n for n in io_nodes if n.is_drive()])
+        num_fe_nodes = len([n for n in io_nodes if n.is_frontend()])
         logger.debug("_get_hugepages_memory_per_compute_node: num_compute_nodes: %s", num_compute_nodes)
         if num_compute_nodes == 0:
             logger.debug("_get_hugepages_memory_per_compute_node no compute nodes, will return 0")
@@ -900,11 +919,11 @@ class ResourcesGenerator:
         available = numa_total_memory - wekanodes_memory
         if available <= 0:
             logger.warning("_get_hugepages_memory_per_compute_node not enough available memory, will set memory to the minimal")
-            return DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES
-        non_compute_nodes_count = len(io_nodes) - num_compute_nodes
-        non_compute_nodes_hugepages_memory = DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES * non_compute_nodes_count
+            return MIN_COMPUTE_NODE_HUGEPAGES_MEMORY_BYTES
+
+        non_compute_nodes_hugepages_memory = DEFAULT_DRIVE_NODE_HUGEPAGES_MEMORY_BYTES * num_drive_nodes + DEFAULT_FE_NODE_HUGEPAGES_MEMORY_BYTES * num_fe_nodes
         logger.debug("_get_hugepages_memory_per_compute_node non_compute_nodes_hugepages_memory=%s GiB (%s non compute nodes)",
-                     non_compute_nodes_hugepages_memory / GiB, non_compute_nodes_count)
+                     non_compute_nodes_hugepages_memory / GiB, num_drive_nodes+num_fe_nodes)
 
         available_for_compute = available - non_compute_nodes_hugepages_memory
         logger.debug("_get_hugepages_memory_per_compute_node: available_for_compute=%s GiB", available_for_compute / GiB)
@@ -912,7 +931,7 @@ class ResourcesGenerator:
         hugepages_memory = hugepages_count * HUGEPAGE_SIZE_BYTES
         per_compute_node_memory = hugepages_memory / num_compute_nodes
         logger.debug("_get_hugepages_memory_per_compute_node per_compute_node_memory=%s", per_compute_node_memory)
-        return max(DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES, per_compute_node_memory)
+        return max(MIN_COMPUTE_NODE_HUGEPAGES_MEMORY_BYTES, per_compute_node_memory)
 
     def _get_compute_slot_memory_requirement(self):
         long_max = minimal_per_compute_node_memory = sys.maxsize
@@ -934,7 +953,7 @@ class ResourcesGenerator:
                 continue
             minimal_per_compute_node_memory = min(minimal_per_compute_node_memory, per_compute_node_memory)
 
-            if minimal_per_compute_node_memory <= DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES:
+            if minimal_per_compute_node_memory <= DEFAULT_COMPUTE_NODE_HUGEPAGES_MEMORY_BYTES:
                 # If the memory for compute nodes is already at the minimum, we can stop iterating
                 logger.debug("NUMA %s minimal_per_compute_node_memory (%s GiB) is now at the minimum, stopping the search",
                              numa.id, minimal_per_compute_node_memory / GiB)
@@ -942,15 +961,15 @@ class ResourcesGenerator:
 
         if minimal_per_compute_node_memory == long_max:
             # If no value was determined for some reason (e.g not enough memory on any numa)
-            minimal_per_compute_node_memory = DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES
+            minimal_per_compute_node_memory = MIN_COMPUTE_NODE_HUGEPAGES_MEMORY_BYTES
         logger.debug("minimal_per_compute_node_memory=%sGiB = %sB", minimal_per_compute_node_memory / GiB, minimal_per_compute_node_memory)
         return int(minimal_per_compute_node_memory)
 
     def _get_validated_compute_memory_arg(self, specified_compute_memory):
-        auto_compute_node_hugaepages_memory = self._get_compute_slot_memory_requirement()
+        auto_compute_node_hugepages_memory = self._get_compute_slot_memory_requirement()
         compute_nodes_count = len(self.compute_nodes)
-        compute_node_hugaepages_memory = int(specified_compute_memory / compute_nodes_count)
-        if compute_node_hugaepages_memory > auto_compute_node_hugaepages_memory:
+        compute_node_hugepages_memory = int(specified_compute_memory / compute_nodes_count)
+        if compute_node_hugepages_memory > auto_compute_node_hugepages_memory:
             logger.warning("The specified memory per compute node is higher than the automatically computed value. "
                            "That might result in some lack of memory on 1 or more numa nodes for some containers")
             self.check_if_should_continue()
@@ -960,19 +979,19 @@ class ResourcesGenerator:
                 "Total requested memory for compute nodes: %s GiB is higher than available memory found on this server: %s GiB",
                 specified_compute_memory, available_memory)
             self.check_if_should_continue()
-        if compute_node_hugaepages_memory <= 0:
+        if compute_node_hugepages_memory <= 0:
             logger.error("Not enough memory for compute nodes")
             quit(1)
-        if compute_node_hugaepages_memory < DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES:
+        if compute_node_hugepages_memory < DEFAULT_COMPUTE_NODE_HUGEPAGES_MEMORY_BYTES:
             logger.warning("The requested memory per compute node: %s GiB is lower than the default minimum: %s GiB",
-                           compute_node_hugaepages_memory / GiB, DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES / GiB)
+                           compute_node_hugepages_memory / GiB, DEFAULT_COMPUTE_NODE_HUGEPAGES_MEMORY_BYTES / GiB)
             self.check_if_should_continue()
-        return compute_node_hugaepages_memory
+        return compute_node_hugepages_memory
 
     def _get_compute_mem_from_specified_total(self):
         non_compute_ionodes_counter = len(self.drive_nodes + self.frontend_nodes)
         logger.debug("non_compute_ionodes_counter: %s", non_compute_ionodes_counter)
-        total_compute_memory = self.args.weka_hugepages_memory - (DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES * non_compute_ionodes_counter)
+        total_compute_memory = self.args.weka_hugepages_memory - (DEFAULT_COMPUTE_NODE_HUGEPAGES_MEMORY_BYTES * non_compute_ionodes_counter)
         logger.debug("weka total memory specified by user: %s GiB", self.args.weka_hugepages_memory / GiB)
         logger.debug("total_compute_memory: %s GiB", total_compute_memory / GiB)
         return total_compute_memory
@@ -984,7 +1003,7 @@ class ResourcesGenerator:
                 if self.args.compute_memory:
                     logger.error("minimal-memory and compute-memory cannot be specified together")
                     quit(1)
-                compute_node_hugepages_memory = DEFAULT_NODE_HUGEPAGES_MEMORY_BYTES
+                compute_node_hugepages_memory = DEFAULT_COMPUTE_NODE_HUGEPAGES_MEMORY_BYTES
             elif self.args.weka_hugepages_memory:
                 compute_memory = self._get_compute_mem_from_specified_total()
                 compute_node_hugepages_memory = self._get_validated_compute_memory_arg(compute_memory)

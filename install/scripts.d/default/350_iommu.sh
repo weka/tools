@@ -1,7 +1,8 @@
 #!/bin/bash
 
-DESCRIPTION="Check for IOMMU disabled"
-SCRIPT_TYPE="parallel"
+DESCRIPTION="Check that IOMMU is set the same on all"
+# just make sure all the servers are the same
+SCRIPT_TYPE="parallel-compare-backends"
 
 
 
@@ -16,13 +17,11 @@ SCRIPT_TYPE="parallel"
 iommuclass=`ls /sys/class/iommu | wc -l`
 iommugroups=`ls /sys/kernel/iommu_groups | wc -l`
 if [ $iommuclass -eq "0" ] && [ $iommugroups -eq "0" ]; then    # check for iommu devices
-    echo "IOMMU not configured on `hostname`"
-    ret="0"
+    echo "IOMMU is not configured"
 else
-    echo "IOMMU configured on `hostname` - should be disabled"
-    ret="1"
+    echo "IOMMU is configured"
 fi
 
-exit $ret
+exit "0"
 
 
