@@ -8,7 +8,7 @@ SCRIPT_TYPE="parallel"
 
 RETURN_CODE=0
 
-for WEKA_CONTAINER in $(sudo weka local ps --output name --no-header | grep -vw -e envoy -e ganesha -e samba -e smbw -e s3); do
+for WEKA_CONTAINER in $(sudo weka local ps --output name --no-header | grep -vw -e envoy -e ganesha -e samba -e smbw -e s3 -e dataserv); do
     DEVICES_WITH_NO_GATEWAY=""
     NET_DEVICE=""
     NET_GATEWAY=""

@@ -4,11 +4,12 @@ DESCRIPTION="Check if kernel is supported..."
 SCRIPT_TYPE="parallel"
 
 # Spaces required around the value as we search for " x.x "
-weka_supported_kernels=$(echo ' '3.10 4.{4..19} 5.{3..15}' ')
+weka_supported_kernels=$(echo ' '3.10 4.{4..19} 5.{3..19} 6.{0..5} 6.8' ')
 declare -A ubuntu_ga_kernel=(
 	['18.04']='4.15'
 	['20.04']='5.4'
 	['22.04']='5.15'
+	['24.04']='6.8'
 )
 . /etc/os-release
 kernel=$(uname -r | cut -d '.' -f 1,2)

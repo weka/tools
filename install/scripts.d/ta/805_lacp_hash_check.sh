@@ -53,7 +53,7 @@ while read CONTAINER; do
             fi
         fi
     done < <(weka local resources -C ${CONTAINER} net --stable -J | grep -w -e name | tr -d \"\,[:blank:])
-done < <(weka local ps --output name --no-header | grep -vw -e envoy -e ganesha -e samba -e smbw -e s3)
+done < <(weka local ps --output name --no-header | grep -vw -e envoy -e ganesha -e samba -e smbw -e s3 -e dataserv)
 
 
 if [[ -n ${BONDED_INTERFACE} ]]; then
@@ -73,7 +73,7 @@ if [[ -n ${BONDED_INTERFACE} ]]; then
                 fi
             done < <(lshw -C network -businfo -quiet | awk '/'"$PCI"'/ && /ConnectX/{print $0}')
         done < <(weka local resources net -C "$CONTAINER" --stable | awk 'NR>1 {print $2}' | sed -e 's/\.[0-9]//g')
-    done < <(weka local ps --output name --no-header | grep -vw -e envoy -e ganesha -e samba -e smbw -e s3)
+    done < <(weka local ps --output name --no-header | grep -vw -e envoy -e ganesha -e samba -e smbw -e s3 -e dataserv)
 else
     echo "INFO: NIC bonding not enabled."
     exit 0

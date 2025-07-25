@@ -28,7 +28,7 @@ if [[ ${CURRENT_CGROUP_MODE} = "tmpfs" ]] ; then
     #No check required - cgroup v1 is in operation
     RETURN_CODE=0
 else
-    for CONTAINER in $(weka local ps --no-header | awk '{print $1}' | grep -w -e ganesha -e smbw -e s3) ; do
+    for CONTAINER in $(weka local ps --no-header | awk '{print $1}' | grep -w -e ganesha -e smbw -e s3 -e dataserv) ; do
         RETURN_CODE=254
         echo "Protocol container ${CONTAINER} is not yet compatible with cgroup mode ${CURRENT_CGROUP_MODE}"
         echo "Recommended Resolution: reboot the host with cgroup v1 enabled, likely by adding"
