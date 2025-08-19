@@ -39,7 +39,7 @@ declare -A WEKA_INTERFACES_OVERLAP
 #
 #       arp_filter for the interface will be enabled if at least one of conf/{all,interface}/arp_filter is set to TRUE, it will be disabled otherwise
 
-# arp_ignore -- Weka recommends a value of 0
+# arp_ignore -- Weka recommends a value of 1
 #  Ref: https://sysctl-explorer.net/net/ipv4/arp_ignore/
 #   Define different modes for sending replies in response to received ARP requests that resolve local target IP addresses: 
 #   0 - (default): reply for any local target IP address, configured on any interface 
@@ -180,15 +180,15 @@ for PREFIX in ${!WEKA_INTERFACES_OVERLAP[@]}; do
                fi
             fi
     
-            # Validate arp_ignore (should be 0)
-            if [[ $(sysctl -n net.ipv4.conf.${NIC}.arp_ignore) != "0" ]]; then
+            # Validate arp_ignore (should be 1)
+            if [[ $(sysctl -n net.ipv4.conf.${NIC}.arp_ignore) != "1" ]]; then
                 RETURN_CODE=254
-                echo "WARNING: arp_ignore is not set to 0 on interface ${NIC}".
+                echo "WARNING: arp_ignore is not set to 1 on interface ${NIC}".
             fi
         
-            if [[ $(sysctl -n net.ipv4.conf.all.arp_ignore) != "0" ]]; then
+            if [[ $(sysctl -n net.ipv4.conf.all.arp_ignore) != "1" ]]; then
                 RETURN_CODE=254
-                echo "WARNING: arp_ignore is not set to 0 on net.ipv4.conf.all.arp_ignore."
+                echo "WARNING: arp_ignore is not set to 1 on net.ipv4.conf.all.arp_ignore."
                 echo "This value may override the arp_ignore value on specific network interfaces."
             fi
         
