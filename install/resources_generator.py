@@ -12,7 +12,7 @@ from json import dumps
 from ipaddress import ip_address
 from math import ceil
 from urllib import request, error
-from socket import timeout
+from socket import AF_INET, AF_INET6, timeout
 logging.basicConfig()
 logger = logging.getLogger('resources generator')
 
@@ -76,6 +76,7 @@ CONST_RESOURCES = dict(
     memory=0,
     mode="BACKEND",
     net_devices=[],
+    rdma_devices=[],
     ena_llq=True,
 )
 MAX_DRIVE_NODES_PERCPU = 4
@@ -163,10 +164,20 @@ class NetDevice:
         self.netmask = kwargs.get('netmask', 0)
         self.network_label = kwargs.get('network_label', '')
         self.slots = kwargs.get('slots', [])
+        self.rdma_only = kwargs.get('rdma-only', False)
+        self.sa_family = kwargs.get('sa_family', AF_INET)
 
     def as_dict(self):
         return self.__dict__
 
+
+class RdmaDevice:
+    def __init__(self, name, sa_family):
+        self.name = name
+        self.sa_family = sa_family
+
+    def as_dict(self):
+        return self.__dict__
 
 class Node:
     def __init__(self,
@@ -216,6 +227,7 @@ class Container:
         self.memory = memory
         self.nodes = dict()
         self.net_devices = []
+        self.rdma_devices = []
         self.resources_json = None
         self.failure_domain = failure_domain
         self.hostname = os.uname().nodename
@@ -223,6 +235,7 @@ class Container:
     def prepare_members(self):
         self.nodes = {slot_id: self.nodes[slot_id].as_dict() for slot_id in self.nodes}
         self.net_devices = [dev.as_dict() for dev in self.net_devices]
+        self.rdma_devices = [rdma.as_dict() for rdma in self.rdma_devices]
 
     def create_json(self):
         resources_dict = CONST_RESOURCES.copy()
@@ -255,6 +268,7 @@ class ResourcesGenerator:
         self.default_num_frontend_nodes = 1
         self.args = None
         self.net_devices = []
+        self.rdma_devices = []
         self.drives = []
         self.num_available_cores = None
         self.all_available_cpus = None
@@ -555,6 +569,7 @@ class ResourcesGenerator:
                     container.net_devices.append(nic)
             else:
                 container.net_devices = self.net_devices[:]
+                container.rdma_devices = self.rdma_devices[:]
             self.containers[role].append(container)
             logger.info("Added %s container resources", role)
 
@@ -622,6 +637,17 @@ class ResourcesGenerator:
             kwargs = dict()
             arg_parts = net_arg.split('/')
             name = arg_parts.pop(0)
+
+            if arg_parts and arg_parts[0] == "rdma-only":
+                sa_family = AF_INET
+                arg_parts.pop(0)
+                if arg_parts and arg_parts[0] == "inet6":
+                    sa_family = AF_INET6
+
+                rdma_dev = RdmaDevice(name, sa_family)
+                logger.debug("Added rdma device: %s", rdma_dev.__dict__)
+                self.rdma_devices.append(rdma_dev)
+                continue
 
             # If MAC address provided, convert to NIC name, selecting bond if
             # present. Note that this occurs in _validate_net_dev as well;
