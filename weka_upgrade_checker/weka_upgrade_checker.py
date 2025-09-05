@@ -47,7 +47,7 @@ else:
     InvalidVersion = ValueError  # Since distutils doesn't have InvalidVersion, we use a generic exception
 
 
-pg_version = "1.5.8"
+pg_version = "1.6.0"
 
 
 known_issues_file = "known_issues.json"
@@ -758,42 +758,17 @@ def weka_cluster_checks(skip_mtu_check, target_version):
             printlist(down_clhost, 5)
 
     if V(weka_version) >= V("4.0"):
-        INFO("Validating all containers on the same source version")
-        weka_version_current = (
-            subprocess.check_output(["weka", "version", "current"]).decode().strip()
-        )
+        INFO("Validating all containers are on the same version")
 
-        def extract_main_version(version):
-            if isinstance(version, str) and version:  # Check if it's a non-empty string
-                match = re.match(r"(\d+\.\d+)", version)
-                return match.group(1) if match else version
-            else:
-                WARN(f"Unable to determine sw_release_string: {version}")
-                return None
+        container_versions = [host.sw_release_string for host in backend_hosts]
 
-        weka_main_version_current = extract_main_version(weka_version_current)
+        unique_versions = set(container_versions)
 
-        if all(
-            extract_main_version(host.sw_release_string) == weka_main_version_current
-            for host in backend_hosts
-        ):
-            GOOD("All containers are on the same source version")
-        else:
-            WARN(
-                "Containers running multiple source versions detected. Please contact WEKA customer success if upgrade is possible ref WEKAPP-434837"
-            )
-    if V(weka_version) >= V("4.0"):
-        INFO("Validating compute containers are on same version")
-        compute_release = []
-        for host in backend_hosts:
-            if host.container.startswith("compute"):
-                compute_release.append(host.sw_release_string)
-
-        if all(version == compute_release[0] for version in compute_release):
-            GOOD("All compute containers are on the same WEKA version")
+        if len(unique_versions) == 1:
+            GOOD(f"All containers are on the same version: {unique_versions.pop()}")
         else:
             BAD(
-                "Multiple version detected for compute containers. All compute containers should be on the same version before upgrading"
+                f"Multiple container versions detected: {', '.join(unique_versions)}. Upgrade is not possible until all container versions match."
             )
 
     INFO("Validating compute processes avg CPU utilization")
@@ -2046,8 +2021,8 @@ def weka_cluster_checks(skip_mtu_check, target_version):
         )
         config = json.loads(output)
 
-        if "config_fs" not in config:
-            WARN("NFS global-config missing 'config_fs' entry")
+        if config.get("config_fs") is None:
+                WARN("NFS global-config missing 'config_fs' entry")
         else:
             GOOD(f"NFS config_fs defined: {config['config_fs']}")
 
@@ -4366,6 +4341,7 @@ def target_version_check(
                 if min_v and target_v and min_v <= current_v and target_v > current_v:
                     next_versions.append(ver)
 
+            next_versions = [nv for nv in next_versions if parse_version(nv) is not None]
             next_versions.sort(key=parse_version, reverse=True)
 
             for nv in next_versions:
