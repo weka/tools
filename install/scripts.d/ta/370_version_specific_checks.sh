@@ -21,6 +21,7 @@ WEKA_VERSION_TABLE+=("     ;4.2.0;   WEKAPP-315823;WTA-08292023;KB 1180;NDU roll
 WEKA_VERSION_TABLE+=("4.2.0;4.2.0   ;WEKAPP-323045;            ;KB 1183;Check for possible Weka bucket count disparity")
 WEKA_VERSION_TABLE+=("     ;4.2.1.21;WEKAPP-312395;            ;KB 1178;Potentially unroutable cluster management addresses")
 WEKA_VERSION_TABLE+=("4.1.0;4.2.0   ;WEKAPP-318113;WTA 08302023;KB 1177;Batch client upgrade issues")
+WEKA_VERSION_TABLE+=("     ;4.2.14  ;WEKAPP-429276;            ;       ;Known exposure to segfault causing unavailability")
 
 RETURN_CODE=0
 
