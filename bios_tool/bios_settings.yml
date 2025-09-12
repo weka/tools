@@ -1,94 +1,184 @@
-Dell:
+WEKA:
   AMD:
-    LogicalProc: Disabled
-    NumaNodesPerSocket: "1"
-    PcieAspmL1: Disabled
-    PcieEnhancedPreferredIo: Enabled
-    PciePreferredIoBus: Enabled
-    ProcCStates: Disabled
-    ProcPwrPerf: MaxPerf
-    ProcVirtualization: Disabled
-    PxeDev1Interface: NIC.Embedded.1-1-1
-    SysProfile: PerfOptimized
-    WorkloadProfile: HpcProfile
-    SriovGlobalEnable: Disabled
-    BootMode: Uefi
-  Intel:
-    WorkloadProfile: LowLatencyOptimizedProfile
-    SysProfile: Custom
-    ControlledTurbo: Enabled
-    LogicalProc: Disabled
-    MadtCoreEnumeration: Linear
-    MemPatrolScrub: Disabled
-    MonitorMwait: Disabled
-    ProcCStates: Disabled
-    ProcHwPrefetcher: Enabled
-    ProcPwrPerf: MaxPerf
-    ProcTurboMode: Enabled
-    ProcVirtualization: Disabled
-    ProcX2Apic: Disabled
-    #SubNumaCluster: Disabled
-    SubNumaCluster: 2-Way
-    #PackageCStates: Disabled
-    ProcC1E: Disabled
-    SecureBoot: Disabled
-    SriovGlobalEnable: Enabled
-    EnergyPerformanceBias: MaxPower
-    #WorkloadConfiguration: Balance
-Hpe:
+    '*':
+      #WEKApod - R6615:
+      LogicalProc: Enabled
+      NumaNodesPerSocket: "1"
+      PcieAspmL1: Disabled
+      ProcCStates: Disabled
+      ProcPwrPerf: MaxPerf
+      ProcVirtualization: Disabled
+      SysProfile: Custom
+      WorkloadProfile: NotConfigured
+      DeterminismSlider: PerfDeterminism
+      DfCState: Disabled
+      DfPstateFreqOptimizer: Disabled
+      DfPstateLatencyOptimizer: Disabled
+      PowerProfileSelect: MaxIOPerformanceMode
+      BootMode: Uefi
+      SecureBoot: Disabled
+      SerialComm: OnConRedir
+
+Dell Inc.:
   AMD:
-    ApplicationPowerBoost: Enabled
-    DeterminismControl: DeterminismCtrlAuto
-    NumaMemoryDomainsPerSocket: OneMemoryDomainPerSocket
-    ProcAmdIoVt: Enabled
-    Sriov: Enabled
-    ThermalConfig: IncreasedCooling
-    WorkloadProfile: GeneralThroughputCompute
-    CStateEfficiencyMode: Disabled
-    DataFabricCStateEnable: Disabled
-    InfinityFabricPstate: P0
-    MinProcIdlePower: NoCStates
-    NumaGroupSizeOpt: Clustered
-    PerformanceDeterminism: PerformanceDeterministic
-    PowerRegulator: StaticHighPerf
-    ProcSMT: Disabled
-    ProcAmdIoVt: Disabled
-    BootMode: Uefi
-    SecureBootStatus: Disabled
+    PowerEdge R6615:
+      LogicalProc: Enabled
+      NumaNodesPerSocket: "1"
+      PcieAspmL1: Disabled
+      ProcCStates: Disabled
+      ProcPwrPerf: MaxPerf
+      ProcVirtualization: Disabled
+      SysProfile: Custom
+      WorkloadProfile: NotConfigured
+      DeterminismSlider: PerfDeterminism
+      DfCState: Disabled
+      DfPstateFreqOptimizer: Disabled
+      DfPstateLatencyOptimizer: Disabled
+      PowerProfileSelect: MaxIOPerformanceMode
+      BootMode: Uefi
+      SecureBoot: Disabled
+      SerialComm: OnConRedir
+    '*':
+      LogicalProc: Enabled
+      NumaNodesPerSocket: "1"
+      PcieAspmL1: Disabled
+      ProcCStates: Disabled
+      ProcPwrPerf: MaxPerf
+      ProcVirtualization: Disabled
+      SysProfile: Custom
+      WorkloadProfile: NotConfigured
+      DeterminismSlider: PerfDeterminism
+      DfCState: Disabled
+      DfPstateFreqOptimizer: Disabled
+      DfPstateLatencyOptimizer: Disabled
+      PowerProfileSelect: MaxIOPerformanceMode
+      BootMode: Uefi
+      SecureBoot: Disabled
+      SerialComm: OnConRedir
   Intel:
-    IntelProcVtd: Disabled
-    ThermalConfig: IncreasedCooling
-    WorkloadProfile: I/OThroughput
-    ProcHyperthreading: Disabled
+    '*':
+      WorkloadProfile: LowLatencyOptimizedProfile
+      SysProfile: Custom
+      ControlledTurbo: Enabled
+      LogicalProc: Disabled
+      MadtCoreEnumeration: Linear
+      MemPatrolScrub: Disabled
+      MonitorMwait: Disabled
+      ProcCStates: Disabled
+      ProcHwPrefetcher: Enabled
+      ProcPwrPerf: MaxPerf
+      ProcTurboMode: Enabled
+      ProcVirtualization: Disabled
+      ProcX2Apic: Disabled
+      #SubNumaCluster: Disabled
+      SubNumaCluster: 2-Way
+      #PackageCStates: Disabled
+      ProcC1E: Disabled
+      SecureBoot: Disabled
+      SriovGlobalEnable: Enabled
+      EnergyPerformanceBias: MaxPower
+      #WorkloadConfiguration: Balance
+HPE:
+  AMD:
+    ProLiant DL325 Gen10 Plus:
+      ApplicationPowerBoost: Enabled
+      DeterminismControl: DeterminismCtrlAuto
+      NumaMemoryDomainsPerSocket: OneMemoryDomainPerSocket
+      ProcAmdIoVt: Enabled
+      Sriov: Enabled
+      ThermalConfig: IncreasedCooling
+      WorkloadProfile: GeneralThroughputCompute
+      CStateEfficiencyMode: Disabled
+      DataFabricCStateEnable: Disabled
+      InfinityFabricPstate: P0
+      MinProcIdlePower: NoCStates
+      NumaGroupSizeOpt: Clustered
+      PerformanceDeterminism: PerformanceDeterministic
+      PowerRegulator: StaticHighPerf
+      ProcSMT: Enabled
+      ProcAmdIoVt: Disabled
+      BootMode: Uefi
+      SecureBootStatus: Disabled
+    '*':
+      ApplicationPowerBoost: Enabled
+      DeterminismControl: DeterminismCtrlAuto
+      NumaMemoryDomainsPerSocket: OneMemoryDomainPerSocket
+      ProcAmdIoVt: Enabled
+      Sriov: Enabled
+      ThermalConfig: IncreasedCooling
+      WorkloadProfile: GeneralThroughputCompute
+      CStateEfficiencyMode: Disabled
+      DataFabricCStateEnable: Disabled
+      InfinityFabricPstate: P0
+      MinProcIdlePower: NoCStates
+      NumaGroupSizeOpt: Clustered
+      PerformanceDeterminism: PerformanceDeterministic
+      PowerRegulator: StaticHighPerf
+      ProcSMT: Enabled
+      ProcAmdIoVt: Disabled
+      BootMode: Uefi
+      SecureBootStatus: Disabled
+
+  Intel:
+    '*':
+      IntelProcVtd: Disabled
+      ThermalConfig: IncreasedCooling
+      WorkloadProfile: I/OThroughput
+      ProcHyperthreading: Enabled
 Supermicro:
   AMD:
-    ACPISRATL3CacheAsNUMADomain: Disabled
-    IOMMU: Disabled
-    NUMANodesPerSocket: NPS1
-    SMTControl: Disabled
-    DFCstates: Disabled
-    GlobalC_stateControl: Disabled
-    DeterminismControl: Manual
-    PowerProfileSelection: "Maximum IO Performance Mode"
+    AS -1115CS-TNR:
+      ACPISRATL3CacheAsNUMADomain_0099: Disabled
+      DFCstates_7103: Disabled
+      DeterminismControl_00F4: Manual
+      GlobalC_stateControl_00CD: Disabled
+      IOMMU_00EA: Disabled
+      NUMANodesPerSocket_703E: NPS1
+      PowerProfileSelection_00F8: Maximum IO Performance Mode
+      SMTControl_00CB: Enabled
+    '*':
+      ACPISRATL3CacheAsNUMADomain: Disabled
+      IOMMU: Disabled
+      NUMANodesPerSocket: NPS1
+      SMTControl: Enabled
+      DFCstates: Disabled
+      GlobalC_stateControl: Disabled
+      DeterminismControl: Manual
+      PowerProfileSelection: "Maximum IO Performance Mode"
   Intel:
-    EnhancedHaltState(C1E): Disabled
-    HardwareP-States: Disabled
-    Hyper-Threading[ALL]: Disabled
-    PackageCState: Disabled
-    SR-IOVSupport: Enabled
-    SpeedStep(P-States): Disabled
-    Intel\u00aeVTforDirectedI/O(VT-d): Disabled
+    '*':
+      EnhancedHaltState(C1E): Disabled
+      HardwareP-States: Disabled
+      Hyper-Threading[ALL]: Enabled
+      PackageCState: Disabled
+      SR-IOVSupport: Enabled
+      SpeedStep(P-States): Disabled
+      Intel\u00aeVTforDirectedI/O(VT-d): Disabled
 Lenovo:
   AMD:
-    Secured_Core_IOMMU: Disabled
-    Processors_P_state1: Disabled
-    Processors_P_state2: Disabled
-    Processors_GlobalC_stateControl: Disabled
-    Processors_DeterminismSlider: Performance
-    Processors_DFC_States: Disabled
-    DevicesandIOPorts_IOMMU: Disabled
-    Processors_SMTMode: Disabled
-    Power_PCIePowerBrake: Disabled
-    OperatingModes_ChooseOperatingMode: CustomMode
-    LegacyBIOS_LegacyBIOS: Disabled
-    Processors_SOCP_states: P0
+    ThinkSystem SR635 V3:
+      Secured_Core_IOMMU: Disabled
+      Processors_P_state1: Disabled
+      Processors_P_state2: Disabled
+      Processors_GlobalC_stateControl: Disabled
+      Processors_DeterminismSlider: Performance
+      Processors_DFC_States: Disabled
+      DevicesandIOPorts_IOMMU: Disabled
+      Processors_SMTMode: Enabled
+      Power_PCIePowerBrake: Disabled
+      OperatingModes_ChooseOperatingMode: CustomMode
+      LegacyBIOS_LegacyBIOS: Disabled
+      Processors_SOCP_states: P0
+    '*':
+      Secured_Core_IOMMU: Disabled
+      Processors_P_state1: Disabled
+      Processors_P_state2: Disabled
+      Processors_GlobalC_stateControl: Disabled
+      Processors_DeterminismSlider: Performance
+      Processors_DFC_States: Disabled
+      DevicesandIOPorts_IOMMU: Disabled
+      Processors_SMTMode: Enabled
+      Power_PCIePowerBrake: Disabled
+      OperatingModes_ChooseOperatingMode: CustomMode
+      LegacyBIOS_LegacyBIOS: Disabled
+      Processors_SOCP_states: P0

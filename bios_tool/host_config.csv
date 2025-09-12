@@ -1,11 +1,5 @@
 name,user,password
-192.168.2.1,root,WekaService
-192.168.2.2,root,WekaService
-192.168.2.3,root,WekaService
-192.168.2.4,root,WekaService
-192.168.2.5,root,WekaService
-192.168.2.6,root,WekaService
-192.168.2.7,root,WekaService
-192.168.2.8,root,WekaService
-192.168.2.9,root,WekaService
-
+172.29.3.110,root,<secret password>
+172.29.3.101,ADMIN,<secret password>
+172.29.1.235,Administrator,<secret password>
+172.29.3.65,ADMIN,<secret password>
