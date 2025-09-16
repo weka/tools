@@ -3,8 +3,8 @@ A tool for viewing/setting bios settings for Weka servers
 
 ```angular2html
 
-usage: bios_tool [-h] [-c [HOSTCONFIGFILE]] [-b [BIOS]] [--bmc_config] [--fix] [--reboot] [--dump] [--reset_bios] [--diff DIFF DIFF] [--bmc_ips [BMC_IPS ...]]
-                 [--bmc_username BMC_USERNAME] [--bmc_password BMC_PASSWORD] [-v] [--version]
+usage: bios_tool [-h] [-c [HOSTCONFIGFILE]] [-b [BIOS]] [--bmc-config] [--fix] [--reboot] [--dump] [--save-defaults] [--defaults-database DEFAULTS_DATABASE] [-f] [--reset-bios] [--diff DIFF DIFF] [--diff-defaults]
+                 [--bmc-ips [BMC_IPS ...]] [--bmc-username BMC_USERNAME] [--bmc-password BMC_PASSWORD] [-v] [--version]
 
 View/Change BIOS Settings on servers
 
@@ -14,17 +14,22 @@ optional arguments:
                         filename of host config file
   -b [BIOS], --bios [BIOS]
                         bios configuration filename
-  --bmc_config          Configure the BMCs to allow RedFish access
+  --bmc-config          Configure the BMCs to allow RedFish access
   --fix                 Correct any bios settings that do not match the definition
   --reboot              Reboot server if changes have been made
   --dump                Print out BIOS settings only
-  --reset_bios          Reset BIOS to default settings. To also reboot, add the --reboot option
+  --save-defaults       Save default BIOS settings to defaults-database - should be factory reset values
+  --defaults-database DEFAULTS_DATABASE
+                        Filename of the factory defaults-database
+  -f, --force           Force overwriting existing BIOS settings and such
+  --reset-bios          Reset BIOS to default settings. To also reboot, add the --reboot option
   --diff DIFF DIFF      Compare 2 hosts BIOS settings
-  --bmc_ips [BMC_IPS ...]
+  --diff-defaults       Compare hosts BIOS settings to factory defaults
+  --bmc-ips [BMC_IPS ...]
                         a list of hosts to configure, or none to use cluster beacons
-  --bmc_username BMC_USERNAME
+  --bmc-username BMC_USERNAME
                         a username to use on all hosts in --bmc_ips
-  --bmc_password BMC_PASSWORD
+  --bmc-password BMC_PASSWORD
                         a password to use on all hosts in --bmc_ips
   -v, --verbose         enable verbose mode
   --version             report program version and exit
@@ -32,12 +37,12 @@ optional arguments:
 ```
 
 ## Getting Started
-There are 2 configuration files for bios_tool: a host configuration file ("host_config.yml" or host_config.csv) and a BIOS settings configuration file ("bios_config.yml")
+There are 3 configuration files for bios_tool: a host configuration file ("host_config.yml" or host_config.csv), a BIOS settings configuration file ("bios_config.yml"), and a defaults database ("defaults-db.yml")
 You can either use these default names or override the configuration file names using the provided command-line switches, -c/--hostconfigfile and -b/--bios or --bmc_ips.  (see Optional Behaviors/Command-line Host Specification below for --bmc_ips)
 ### host_config.yml or csv
 The host_config.yml/csv defines the list of hosts, and their logon credentials for the BMC (ipmi, iLO, iDRAC).  This may be in YAML or CSV format.  Use the file extension `.yml` or `.csv` to indicate the format.
 
-The default format is be standard CSV, as such: (compatible with Excel)
+The default format is standard CSV, as such: (compatible with Excel)
 ```angular2html
 name,user,password
 172.29.3.164,ADMIN,_PASSWORD_1!
@@ -68,14 +73,16 @@ The format of the bios settings file is standard YAML, as such:
 ```angular2html
 server-manufacturer:
   architecture:
-    setting: value
-    setting: value
+    server-model:
+      setting: value
+      setting: value
   architecture2:
-    setting: value
-    setting: value
+    server-model2:
+      setting: value
+      setting: value
 ```
 The server-manufacturer is matched to the manufacturer ("Oem") listed in the RedFish data so this tool can be used with most manufacturers that supports RedFish.
-Currently known manufacturer names are "Dell", "Hpe", "Lenovo", and "Supermicro" and defaults for these manufacturers are in the example file.
+Currently known manufacturer names are "Dell Inc.", "HPE", "Lenovo", and "Supermicro" and defaults for these manufacturers are in the example file.
 
 The architecture can be either "AMD" or "Intel".   No other architectures are currently supported.
 
@@ -83,13 +90,16 @@ See the provided `bios_config.yml` for a full example, but here's what it looks 
 ```angular2html
 Dell:
   AMD:
-    LogicalProc: Disabled
-    NumaNodesPerSocket: "1"
-    PcieAspmL1: Disabled
-    ProcCStates: Disabled
-    ProcPwrPerf: MaxPerf
+    PowerEdge R6615:
+      LogicalProc: Disabled
+      NumaNodesPerSocket: "1"
+      PcieAspmL1: Disabled
+      ProcCStates: Disabled
+      ProcPwrPerf: MaxPerf
 [...snip...]
 ```
+
+Also NEW is specifying `'*'` as a model, which will match all models of a particular manufacturer and architecture.  This can be useful for new server models that use the same BIOS as a known server model.
 
 ## Default Behavior
 With no command-line overrides, bios_tool will scan the hosts in the `host_config.csv` and note where they differ (if they differ) from the settings in the `bios_settings.yml` file.
@@ -123,8 +133,16 @@ Using a `--reboot` with `--fix` will make bios_tool reboot the servers after any
 Only servers that have been modified are rebooted (this causes them to APPLY the changes)
 ### Dump option
 Using the `--dump` command line option will cause the tool to simply print out all the bios settings for each server. (read-only)
+### Save Defaults option
+Using `--save-defaults`, it will record the server(s) bios settings and populate the `defaults-db.yml` file.  It will not overwrite existing definitions unless you also add `--force`.
+The defaults db is used to help generate the `bios_settings.yml` definitions, and the servers should be in factory-reset state so that you record the bios default values.
+### Defaults Database option
+Use a different filename for the defaults database (default name is `defaults-db.yml`)
+### Force option
+Using `--force` will allow bios_tool to do some possibly destructive behaviors.  There are two currently implemented - if the BIOS definition does not exactly match the server's keys, the tool will attempt to guess the correct key value.   Byu default, f it does not get a 100% match, it will not apply the change.  Using force will allow the tool to make the change.
+Force also applies to the `--save-defaults` option - if a default definition already exists for a particular server, the tool will not overwrite it's definition unless Forced.
 ### Diff option
-Using the `--diff` option will compare all the settings on 2 servers, and print out which settings differ.
+Using the `--diff` option will compare all the settings on 2 servers, and print out which settings differ.  This is used to help generate the `bios_settings.yml` file.
 
 Example diff output:
 ```angular2html
@@ -151,6 +169,33 @@ Sriov                       Disabled                   Enabled
 ThermalConfig               IncreasedCooling           OptimalCooling
 WorkloadProfile             I/OThroughput              GeneralPowerEfficientCompute
 ```
+### Diff Defaults option
+Using `--diff-defaults` will compare the server(s) bios settings with the `defaults-db.yml`, and output YAML that is suitable for inclusion in `bios_settings.yml`.
+
+The idea here is to help make definitions for new servers easier.   Simply record the factory default settings with `--save-defaults`, and then manually set one server's bios settings, and run the tool with `--diff-defaults` and you get the YAML needed to change all future servers of that make/model.
+
+Example diff-defaults output:
+```angular2html
+Bios Differences (Edit these before adding to the bios_settings file):
+Dell Inc.:
+  AMD:
+    PowerEdge R6615:
+      DeterminismSlider: PerfDeterminism
+      DfCState: Disabled
+      DfPstateFreqOptimizer: Disabled
+      DfPstateLatencyOptimizer: Disabled
+      PowerProfileSelect: MaxIOPerformanceMode
+      ProcVirtualization: Disabled
+      SysProfile: Custom
+HPE:
+  AMD:
+    ProLiant DL325 Gen10 Plus:
+      CStateEfficiencyMode: Disabled
+      DataFabricCStateEnable: Disabled
+      InfinityFabricPstate: P0
+[...snip...]
+```
+
 ### Command-line Host Specification
 Using `--bmc_ips` with a space separated list of IP addresses (ie: `--bmc_ips 192.168.1.1 192.168.1.2`) and `--bmc_username` and `--bmc_password` will allow you to easily configure a set of servers that have the same userid/password settings, rather than providing a configuration file.
 ### Version option
