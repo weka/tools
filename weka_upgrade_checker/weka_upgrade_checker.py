@@ -498,7 +498,7 @@ def weka_cluster_checks(skip_mtu_check, target_version):
                         BAD(
                             f"DataIntegrity alert present: "
                             f"{alert['title']} - {alert['description']} - "
-                            f"Do not attempt until DataIntegrity alerts are resolved!"
+                            f"Do not attempt upgrade until DataIntegrity alerts are resolved!"
                         )
 
     except subprocess.CalledProcessError as e:
