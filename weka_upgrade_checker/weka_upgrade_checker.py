@@ -47,7 +47,7 @@ else:
     InvalidVersion = ValueError  # Since distutils doesn't have InvalidVersion, we use a generic exception
 
 
-pg_version = "1.6.0"
+pg_version = "1.6.1"
 
 
 known_issues_file = "known_issues.json"
@@ -483,8 +483,19 @@ def weka_cluster_checks(skip_mtu_check, target_version):
             GOOD("No Weka alerts present")
         else:
             WARN(f"{len(weka_alerts_data)} Weka alerts present")
+            # Track if any DataIntegrity alerts exist
+            data_integrity_alerts = []
+
             for alert in weka_alerts_data:
-                logging.warning(alert["description"])
+                if alert.get("type") == "DataIntegrity":
+                    data_integrity_alerts.append(alert)
+
+            # Fail upgrade if DataIntegrity alerts exist
+            if data_integrity_alerts:
+                for alert in data_integrity_alerts:
+                    BAD(
+                        f"DataIntegrity alert present: {alert['title']} - {alert['description']} - Do not attempt until DataIntegrity alerts are resolved!"
+                    )
 
     except subprocess.CalledProcessError as e:
         error_output = e.output.decode("utf-8", errors="replace")
@@ -493,10 +504,9 @@ def weka_cluster_checks(skip_mtu_check, target_version):
 
     except json.JSONDecodeError as e:
         logging.error(f"Failed to parse JSON: {e}")
-        logging.debug(
-            f"Raw output: {weka_alerts_json_string[:500]}"
-        )  # Show first 500 chars
+        logging.debug(f"Raw output: {weka_alerts_json_string[:500]}")  # Show first 500 chars
         WARN("Failed to decode Weka alerts JSON")
+
 
     INFO("VERIFYING CUSTOM TLS CERT")
     try:
@@ -3558,6 +3568,22 @@ def backend_host_checks(
     if connection_counts:
         max_per_host = get_rpc_max_connections()
         evaluate_nfs_failover_risk(connection_counts, max_per_host, good_nfs_hosts)
+
+    if good_nfs_hosts:
+        INFO("VALIDATING IPV6 ON NFS BACKENDS")
+        results = parallel_execution(
+            good_nfs_hosts,
+            ["test -f /proc/net/if_inet6"],
+            use_check_output=False,
+            use_call=True,
+            ssh_identity=ssh_identity,
+        )
+        for host_name, result in results:
+            INFO2(f'{" " * 2}Checking IPv6 status on NFS Host: {host_name}:')
+            if result == 0:
+                GOOD(f"IPv6 is enabled")
+            else:
+                BAD(f"IPv6 should be enabled on NFS hosts")
 
     INFO("CHECKING WEKA AGENT STATUS ON BACKENDS")
     command = r"""
