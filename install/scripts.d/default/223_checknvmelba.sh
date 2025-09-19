@@ -1,6 +1,6 @@
 #!/bin/bash
 
-DESCRIPTION="Check NVMe LBA format..."
+DESCRIPTION="Check NVMe LBA format"
 SCRIPT_TYPE="parallel"
 
 # Array containing all available LBA formats per array
@@ -43,7 +43,7 @@ rc=0
 
 # Exit with warning if no NVMes are found
 if ! compgen -G /dev/nvme*n* 2> /dev/null; then
-	echo 'No NVMe devices found'
+	echo "No NVMe devices found.  Shouldn't you have some drives?"
 	exit 254
 fi
 
@@ -69,6 +69,7 @@ if [ "$unified_block_size" -ne 1 ]; then
 	echo 'Block size mismatch among NVMe devices:'
 	echo "$block_size_table"
 	echo
+	echo "The blocksize of your drives should all be the same.  Please ensure the blocksize is set the same on all drives"
 	rc=254
 fi
 
@@ -90,7 +91,7 @@ for namespace in /dev/nvme*n*; do
 
 	if [ "$rp" -ne 0 ]; then
 		echo "$namespace: Relative performance ($rp) is not set to 0 (Best)"
-		rc=1
+		rc=254
 	fi
 done
 

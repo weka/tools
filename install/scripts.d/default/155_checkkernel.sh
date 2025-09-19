@@ -1,6 +1,6 @@
 #!/bin/bash
 
-DESCRIPTION="Check if kernel is supported..."
+DESCRIPTION="Check if kernel is supported"
 SCRIPT_TYPE="parallel"
 
 # Spaces required around the value as we search for " x.x "
@@ -25,7 +25,8 @@ if [[ $weka_supported_kernels == *' '$kernel' '* ]]; then
 		echo 'to verify this, and if required, use'
 		echo 'https://github.com/weka/tools/tree/master/preinstall/ubuntu-hwe-to-ga-kernel.sh'
 		echo 'to fix this.'
-		ret=1
+		# make this a warning
+		ret=254
 
 	else
 		echo "Current running kernel ($kernel) is supported by Weka"

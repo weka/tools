@@ -14,12 +14,12 @@ else
 	if [ ! -f /etc/selinux/config ]; then
 		which getenforce &> /dev/null
 		if [ $? -eq 1 ]; then
-			echo "Could not find getenforce tool to get SELinux status"
-			ret="1"
+			echo "Could not find getenforce tool to get SELinux status.  Please install getenforce"
+			ret="254"
 		else
 			conf_status=`getenforce`
 			if [[ "$conf_status" -ne "Disabled" ]] || [[ "$conf_status" -ne "Permissive" ]]; then
-				echo "The current SELinux configuration status would not allow Weka.IO to run properly"
+				echo "The current SELinux configuration status would not allow Weka.IO to run properly.  Please configure SELinux in a compatible mode"
 				ret="1"
 			else
 				ret="0"
@@ -34,7 +34,7 @@ else
 			if [[ "$securstat" -ne "Permissive" ]] || [[ "$securstat" -ne "Disabled" ]]; then
 				echo "SELinux configuration seem to be configured to $seconfstat and running status is $securstat and this might cause some issues with Weka runtime"
 				NOT_DISABLED="True"
-				ret="1"
+				ret="254"
 			else
 				echo "SELinux configuration seem to be OK and set to $securstat"
 				ret="0"
@@ -44,7 +44,7 @@ else
 			if [[ "$seconfstat" -ne "disabled" ]] || [[ "$seconfstat" -ne "Disabled" ]]; then
 				echo "SELinux configuration seem to be configured to $seconfstat and this might cause some issues with Weka runtime"
 				NOT_DISABLED="True"
-				ret="1"
+				ret="254"
 			else
 				echo "SELinux configuration seem to be OK and set to $seconfstat"
 				ret="0"

@@ -12,7 +12,7 @@ if [[ $ID_LIKE == *rhel* ]]; then
 	echo "REQUIRED packages missing for weka installation (Red Hat based system)"
 	red_hat_pkg_list_weka=( "elfutils-libelf-devel" \
                              "gcc" "glibc-headers" "glibc-devel" \
-                             "make" "perl" "rpcbind" "xfsprogs" \
+                             "make" "perl" "xfsprogs" \
                              "kernel-devel" )
 
 	for i in ${red_hat_pkg_list_weka[@]}; do
@@ -40,7 +40,7 @@ elif [[ $ID_LIKE == *debian* ]]; then
 	echo "REQUIRED packages missing for weka installation (Debian/Ubuntu based system)"
 	debian_pkg_list_weka=( "libelf-dev" "linux-headers-$(uname -r)" \
                             "gcc" "make" "perl" "python2-minimal" \
-                            "rpcbind" "xfsprogs" )
+                            "xfsprogs" )
 
 	for i in ${debian_pkg_list_weka[@]}; do
 		dpkg -l | awk {'print $2'} | grep -i $i &> /dev/null

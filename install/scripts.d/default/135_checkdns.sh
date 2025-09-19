@@ -1,6 +1,6 @@
 #!/bin/bash
 
-DESCRIPTION="Check DNS configuration..."
+DESCRIPTION="Check DNS configuration"
 SCRIPT_TYPE="parallel"
 
 # Checking OS internal DNS servers
@@ -12,12 +12,12 @@ if [ ! -z $current_dns_server ]; then
 		echo "Could not find nslookup utility, please install yum -y install bind-utils or apt-get install dnsutils"
 		ret="254"
 	else
-		nslookup $current_dns_server &> /dev/null
+		nslookup home.weka.io &> /dev/null
 		if [ $? -eq 1 ]; then
-			echo "Unfortunately, the specified DNS found in /etc/resolv.conf would not be able to perform DNS resolution properly"
-			ret="1"
+			echo "home.weka.io is not resolvable; phone-home may not be possible.  Please verify that this is correct."
+			ret="254"
 		else
-			echo "DNS server with IP: $current_dns_server is operational and reachable"
+			echo "DNS server with IP: $current_dns_server appears operational and reachable"
 			ret="0"
 		fi
 	fi
