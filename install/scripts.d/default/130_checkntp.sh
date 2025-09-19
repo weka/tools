@@ -1,6 +1,6 @@
 #!/bin/bash
 
-DESCRIPTION="Check for NTP/Chrony/timesyncd..."
+DESCRIPTION="Check for NTP/Chrony/timesyncd"
 SCRIPT_TYPE="parallel"
 
 # General requirement is to have time synced for all Weka.IO cluster nodes, since this script is running as standalone on per node basis, it would check if there is NTP running and if time is synced properly
@@ -79,6 +79,7 @@ fi
 
 
 if [ $CHRONY -eq 0 ] && [ $NTP -eq 0 ] && [ $TIMESYNCD -eq 0 ] ; then
+  echo "    FAIL: It appears that no means of syncing time is installed or configured"
 	ret=1
 fi
 

@@ -1,6 +1,7 @@
-#!/bin/bash 
+#!/bin/bash
 
-set -ueo pipefail # Fail with an error code if there's any sub-command/variable error
+#set -ueo pipefail # Fail with an error code if there's any sub-command/variable error
+set -eo pipefail # Fail with an error code if there's any sub-command/variable error
 
 DESCRIPTION="Verify if source-based IP routing is required (and set up)"
 SCRIPT_TYPE="parallel"
@@ -12,45 +13,43 @@ RETURN_CODE=0
 declare -A WEKA_INTERFACES
 declare -A WEKA_INTERFACES_OVERLAP
 
-# Last modified: 2025-03-25
+# Last modified: 2025-08-21
 
 # arp_announce -- Weka recommends a value of 2
 #  Ref: https://sysctl-explorer.net/net/ipv4/arp_announce/
-#   Define different restriction levels for announcing the local source IP address from IP packets in ARP requests sent on interface: 
-#   0 - (default) Use any local address, configured on any interface 
-#   1 - Try to avoid local addresses that are not in the target’s subnet for this interface. 
-#       This mode is useful when target hosts reachable via this interface require the source IP address in ARP requests to be part of their logical network configured on the receiving interface. 
-#       When we generate the request we will check all our subnets that include the target IP and will preserve the source address if it is from such subnet. 
-#       If there is no such subnet we select source address according to the rules for level 2. 
-#   2 - Always use the best local address for this target. In this mode we ignore the source address in the IP packet and try to select local address that we prefer for talks with the target host. 
-#       Such local address is selected by looking for primary IP addresses on all our subnets on the outgoing interface that include the target IP address. 
+#   Define different restriction levels for announcing the local source IP address from IP packets in ARP requests sent on interface:
+#   0 - (default) Use any local address, configured on any interface
+#   1 - Try to avoid local addresses that are not in the target’s subnet for this interface.
+#       This mode is useful when target hosts reachable via this interface require the source IP address in ARP requests to be part of their logical network configured on the receiving interface.
+#       When we generate the request we will check all our subnets that include the target IP and will preserve the source address if it is from such subnet.
+#       If there is no such subnet we select source address according to the rules for level 2.
+#   2 - Always use the best local address for this target. In this mode we ignore the source address in the IP packet and try to select local address that we prefer for talks with the target host.
+#       Such local address is selected by looking for primary IP addresses on all our subnets on the outgoing interface that include the target IP address.
 #       If no suitable local address is found we select the first local address we have on the outgoing interface or on all other interfaces, with the hope we will receive reply for our request and even sometimes no matter the source IPaddress we announce.
 #
 #       The max value from conf/{all,interface}/arp_announce is used.
 
 # arp_filter -- Weka recommends a value of 1
 #  Ref: https://sysctl-explorer.net/net/ipv4/arp_filter/
-#   1 - Allows you to have multiple network interfaces on the same subnet, and have the ARPs for each interface be answered based on whether or not the kernel would route a packet from the ARP’d IP out that interface (therefore you must use source based routing for this to work). 
+#   1 - Allows you to have multiple network interfaces on the same subnet, and have the ARPs for each interface be answered based on whether or not the kernel would route a packet from the ARP’d IP out that interface (therefore you must use source based routing for this to work).
 #       In other words it allows control of which cards (usually 1) will respond to an arp request.
-#   0 - (default) The kernel can respond to arp requests with addresses from other interfaces. 
-#       This may seem wrong but it usually makes sense, because it increases the chance of successful communication. 
-#       IP addresses are owned by the complete host on Linux, not by particular interfaces. 
+#   0 - (default) The kernel can respond to arp requests with addresses from other interfaces.
+#       This may seem wrong but it usually makes sense, because it increases the chance of successful communication.
+#       IP addresses are owned by the complete host on Linux, not by particular interfaces.
 #       Only for more complex setups like load- balancing, does this behaviour cause problems.
 #
 #       arp_filter for the interface will be enabled if at least one of conf/{all,interface}/arp_filter is set to TRUE, it will be disabled otherwise
-
 # arp_ignore -- Weka recommends a value of 1
 #  Ref: https://sysctl-explorer.net/net/ipv4/arp_ignore/
-#   Define different modes for sending replies in response to received ARP requests that resolve local target IP addresses: 
-#   0 - (default): reply for any local target IP address, configured on any interface 
-#   1 - reply only if the target IP address is local address configured on the incoming interface 
-#   2 - reply only if the target IP address is local address configured on the incoming interface and both with the sender’s IP address are part from same subnet on this interface 
-#   3 - do not reply for local addresses configured with scope host, only resolutions for global and link addresses are replied 
-#   4-7 - reserved 
+#   Define different modes for sending replies in response to received ARP requests that resolve local target IP addresses:
+#   0 - (default): reply for any local target IP address, configured on any interface
+#   1 - reply only if the target IP address is local address configured on the incoming interface
+#   2 - reply only if the target IP address is local address configured on the incoming interface and both with the sender’s IP address are part from same subnet on this interface
+#   3 - do not reply for local addresses configured with scope host, only resolutions for global and link addresses are replied
+#   4-7 - reserved
 #   8 - do not reply for all local addresses
 #
 #   The max value from conf/{all,interface}/arp_ignore is used when ARP request is received on the {interface
-
 
 get_network_prefix() {
     local cidr="$1"
@@ -116,9 +115,7 @@ get_network_prefix() {
     fi
 }
 
-
-
-# Checks: 
+# Checks:
 #  IP rule exists for each mgmt ip
 #  IP route table exists for each IP rule above
 
@@ -126,7 +123,6 @@ get_network_prefix() {
 #  Verify arp_filter
 #  Verify arp_ignore
 
-	
 # Determine what NICs are being used as dataplane NICs
 for WEKA_CONTAINER in $(weka local ps --output name --no-header | grep -e compute -e drive -e frontend); do
     while read NET_ENTRY; do
@@ -143,11 +139,10 @@ for WEKA_CONTAINER in $(weka local ps --output name --no-header | grep -e comput
     done < <(weka local resources -C ${WEKA_CONTAINER} net --stable -J | grep -w -e name | tr -d \"\,[:blank:])
 done
 
-
 # Determine the network prefix associated with each dataplane NIC
 if [[ ${#WEKA_INTERFACES[@]} -gt 1 ]]; then
     declare -A network_prefixes
-    
+
     # Do the dataplane NICs have addresses in overlapping networks?
     for NET in "${!WEKA_INTERFACES[@]}"; do
         network_prefix=$(get_network_prefix "${WEKA_INTERFACES[$NET]}")
@@ -155,13 +150,12 @@ if [[ ${#WEKA_INTERFACES[@]} -gt 1 ]]; then
     done
 fi
 
-
 # If we have multiple, overlapping, dataplane NICs, perform validation
 for PREFIX in ${!WEKA_INTERFACES_OVERLAP[@]}; do
     readarray -d ' ' overlapping_nics  <<< "${WEKA_INTERFACES_OVERLAP[${PREFIX}]}"
     if [[ ${#overlapping_nics[@]} -gt 1 ]]; then
         for NIC in ${overlapping_nics[@]}; do
-        
+
             # Validate arp_announce (should be equal to 2)
             ARP_ANNOUNCE_ALL=$(sysctl -n net.ipv4.conf.all.arp_announce)
             if [[ ${ARP_ANNOUNCE_ALL} != "2" ]]; then
@@ -170,7 +164,7 @@ for PREFIX in ${!WEKA_INTERFACES_OVERLAP[@]}; do
                     echo "WARNING: arp_announce is not set to 2 on interface ${NIC}".
                 fi
             fi
-    
+
             # Validate arp_filter (should be equal to 1)
             ARP_FILTER_ALL=$(sysctl -n net.ipv4.conf.all.arp_filter)
             if [[ ${ARP_FILTER_ALL} != "1" ]]; then
@@ -179,36 +173,42 @@ for PREFIX in ${!WEKA_INTERFACES_OVERLAP[@]}; do
                     echo "WARNING: arp_filter is not set to 1 on interface ${NIC}".
                fi
             fi
-    
+
             # Validate arp_ignore (should be 1)
-            if [[ $(sysctl -n net.ipv4.conf.${NIC}.arp_ignore) != "1" ]]; then
-                RETURN_CODE=254
-                echo "WARNING: arp_ignore is not set to 1 on interface ${NIC}".
-            fi
-        
+            #  If all set to 1, that's good enough
             if [[ $(sysctl -n net.ipv4.conf.all.arp_ignore) != "1" ]]; then
-                RETURN_CODE=254
-                echo "WARNING: arp_ignore is not set to 1 on net.ipv4.conf.all.arp_ignore."
-                echo "This value may override the arp_ignore value on specific network interfaces."
+                if [[ $(sysctl -n net.ipv4.conf.${NIC}.arp_ignore) != "1" ]]; then
+                    RETURN_CODE=254
+                    echo "WARNING: arp_ignore is not set to 1 on interface ${NIC}".
+                elif [[ $(sysctl -n net.ipv4.conf.all.arp_ignore) -gt "1" ]]; then
+                    RETURN_CODE=254
+                    echo "WARNING: net.ipv4.conf.all.arp_ignore is set to $(sysctl -n net.ipv4.conf.all.arp_ignore), which overrides"
+                    echo "the arp_ignore value on specific network interfaces."
+                fi
             fi
-        
+
             ###################################
             # Check ip rules / routing tables #
             ###################################
             readarray -d "/" -t netinfo  <<< "${WEKA_INTERFACES[${NIC}]}"
-        
+
             # Does this interface's IP appear in the rule table?
             if ! ip rule | grep -q -m 1 -F "${netinfo[0]}"; then
                 RETURN_CODE=254
                 echo "WARNING: No ip rule found for IP ${netinfo[0]}".
             else
                 ROUTE_TABLE=$(ip rule | grep -m 1 -F "${netinfo[0]}" | sed -r 's/.*lookup *(\w+).*/\1/')
-                if ! ip route show table ${ROUTE_TABLE} &> /dev/null; then
-                    RETURN_CODE=254
-                    echo "WARNING: route table ${ROUTE_TABLE} not found."
+                ROUTE_ENTRY=$(ip route show table ${ROUTE_TABLE} 2>/dev/null)
+                if [[ -z "$ROUTE_ENTRY" ]]; then
+                   RETURN_CODE=254
+                   echo "WARNING: route table ${ROUTE_TABLE} not found."
+               elif ! echo "$ROUTE_ENTRY" | grep -e ^default ; then
+                   RETURN_CODE=254
+                   echo "WARNING: No default route entry in table ${ROUTE_TABLE} was found."
+                   echo "This may or may not be an issue, but should be confirmed."
                fi
             fi
-        done 
+        done
     fi
 done
 

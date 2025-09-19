@@ -5,7 +5,7 @@ SCRIPT_TYPE="parallel"
 
 which mkfs.xfs &> /dev/null
 if [ $? == 1 ]; then
-    echo "ERROR: XFS not installed"
+    echo "ERROR: XFS not installed. XFS is required for WEKA installation.  Please install XFS"
     exit 255
 else
 	echo "XFS installed"

@@ -7,7 +7,7 @@ ret="1"
 # Check if current CPU has AES enabled and supported
 res=`grep -m1 -o aes /proc/cpuinfo`
 if [ -z $res ]; then
-	echo "`hostname` CPU doesn't have AES supported or enabled"
+	echo "`hostname` CPU doesn't have AES supported or enabled.  WEKA cannot run on this CPU."
 	ret="1"
 else
 	echo "`hostname` CPU supports AES and it is enabled"

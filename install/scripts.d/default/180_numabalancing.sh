@@ -1,6 +1,6 @@
 #!/bin/bash
 
-DESCRIPTION="Checking if Numa balancing is enabled"
+DESCRIPTION="Check if Numa balancing is enabled"
 SCRIPT_TYPE="parallel"
 
 # Put your stuff here

@@ -63,27 +63,34 @@ if [ $# -gt 0 ]; then
 	  if [ $IF != $IFLAST ]; then IFLAST=$IF; IFHW=""; fi
 	  DEVINFO=`ip -o link show dev $IF`
 	  LINKTYPE=`echo $DEVINFO | grep -oE "(ether|infiniband|loopback)"` # link type
-	  CONF_MTU=`echo $DEVINFO | grep -oP "mtu \K[0-9]*"` # extract mtu 
+	  CONF_MTU=`echo $DEVINFO | grep -oP "mtu \K[0-9]*"` # extract mtu
+
+	  # Check that we have an appropriate speed for Dataplane interfaces
+	  SPEED=$(cat /sys/class/net/$IF/speed)
+	  if [ $SPEED -lt 50000 ]; then
+	  	echo "    WARN: Host IP/names given are less than 50Gbps; You must run this tool using Dataplane interfaces for it to be valid"
+	  	exit "254"
+	  fi
 
 	  # LINK should now be either "ether" or "infiniband" or "loopback"
 	  if [ "$LINKTYPE" == "loopback" ]; then continue; fi
-      if [ "$LINKTYPE" == "ether" ]; then 
+    if [ "$LINKTYPE" == "ether" ]; then
 	    MTU="9000"; PINGMTU="8972"
-      elif [ "$LINKTYPE" == "infiniband" ]; then
+    elif [ "$LINKTYPE" == "infiniband" ]; then
 	    MTU="4092"; PINGMTU="4064"
-      else
-        echo "Unknown link type $LINKTYPE when determining target MTU - $DEVINFO"
+    else
+      echo "Unknown link type $LINKTYPE when determining target MTU - $DEVINFO"
 	    if [ -z "$IFHW" ]; then IFHW=`lshw -class network -short  2> /dev/null | grep $IF`; fi
-		IFHWA=($IFHW)
-		echo "             $IF hardware: \"${IFHWA[@]:3}\""
+		  IFHWA=($IFHW)
+		  echo "             $IF hardware: \"${IFHWA[@]:3}\""
 	    let LINKTYPEERRORS=$LINKTYPEERRORS+1
-		continue
-      fi
+		  continue
+    fi
 	  if [ ! -z "$VIA" ]; then
 	  	echo "    WARN: `hostname` to $DESTIPADDR routes via gateway $VIA from dev $IF (src ip $SRC)"
 		if [ $ROUTEWARNS -eq 0 ]; then
 			echo "           Is $IF a dataplane interface?  Is routed dataplane path intentional? "
-	    	if [ -z "$IFHW" ]; then IFHW=`lshw -class network -short  2> /dev/null | grep $IF`; fi
+	    if [ -z "$IFHW" ]; then IFHW=`lshw -class network -short  2> /dev/null | grep $IF`; fi
 			IFHWA=($IFHW)
 			echo "             $IF hardware: \"${IFHWA[@]:3}\""
 		fi
@@ -91,8 +98,8 @@ if [ $# -gt 0 ]; then
 	  fi
  
       if [ "$CONF_MTU" != "$MTU" ]; then
-			let LOCALMTUERRORS=$LOCALMTUERRORS+1
-        	echo "   *FAIL: `hostname` interface $IF MTU is $CONF_MTU not $MTU (type '$LINKTYPE', src: $SRC, dest: $DESTIPADDR)"
+			  let LOCALMTUERRORS=$LOCALMTUERRORS+1
+        echo "   *FAIL: `hostname` interface $IF MTU is $CONF_MTU not $MTU (type '$LINKTYPE', src: $SRC, dest: $DESTIPADDR)"
 	    	if [ -z "$IFHW" ]; then 
 				IFHW=`lshw -class network -short 2> /dev/null | grep $IF`; 
 				echo "          Is $IF a dataplane interface?"

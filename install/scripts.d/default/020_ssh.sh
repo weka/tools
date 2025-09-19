@@ -20,7 +20,7 @@ if [ $# -gt 0 ]; then
 		then
 			echo "Host $i ssh test passed"
 		else
-			echo "Host $i ssh test failed"
+			echo "Host $i ssh test failed. Please correct the issue(s) and re-run this tool"
 			let ERRORS=$ERRORS+1
 		fi
 	done

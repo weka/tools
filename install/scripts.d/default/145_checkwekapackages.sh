@@ -1,6 +1,6 @@
 #!/bin/bash
 
-DESCRIPTION="Check for Weka Required Packages..."
+DESCRIPTION="Check for Weka Required Packages"
 SCRIPT_TYPE="parallel"
 
 # Checking if OS has the required packages installed for proper Weka.IO runtime
@@ -13,7 +13,7 @@ OS=$(grep -oP '(?<=VERSION_ID=")[^"]*' /etc/os-release | cut -d. -f1)
 # Red Hat based system                      
 if [[ $ID_LIKE == *rhel* ]]; then
     echo "REQUIRED packages missing for Weka installation (Red Hat based system)"
-    red_hat_pkg_list_weka=("elfutils-libelf-devel" "gcc" "glibc-headers" "glibc-devel" "make" "perl" "rpcbind" "xfsprogs" "kernel-devel")
+    red_hat_pkg_list_weka=("elfutils-libelf-devel" "gcc" "glibc-headers" "glibc-devel" "make" "perl" "xfsprogs" "kernel-devel")
 
     for pkg in "${red_hat_pkg_list_weka[@]}"; do
         if ! rpm -q "$pkg" &> /dev/null; then
@@ -41,7 +41,7 @@ elif [[ $ID_LIKE == *debian* ]]; then
     else
         minimal_python="python-minimal"
     fi
-    debian_pkg_list_weka=("libelf-dev" "linux-headers-$(uname -r)" "gcc" "make" "perl" "$minimal_python" "rpcbind" "xfsprogs")
+    debian_pkg_list_weka=("libelf-dev" "linux-headers-$(uname -r)" "gcc" "make" "perl" "$minimal_python" "xfsprogs")
     for pkg in "${debian_pkg_list_weka[@]}"; do
         if ! dpkg -l | awk '{print $2}' | grep -i "$pkg" &> /dev/null; then
             missing_list+=("$pkg")

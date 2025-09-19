@@ -1,6 +1,6 @@
 #!/bin/bash
 
-DESCRIPTION="Check if internet connection available..."
+DESCRIPTION="Check if internet connection available"
 SCRIPT_TYPE="parallel"
 
 # Checking if there is an internet connection available
