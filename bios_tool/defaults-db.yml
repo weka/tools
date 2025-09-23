@@ -1600,8 +1600,8 @@ WEKA:
       RedundantOsLocation: None
       RedundantOsState: Visible
       Rmp: Disabled
-      SHA256SetupPassword: D8BDA36ADDED2C9883EDCD78FAF09DC773F9741233B21E4269E9906C9A9CA5C6
-      SHA256SetupPasswordSalt: E9A756AAE543DDD40E0CF457E7B75CDF
+      SHA256SetupPassword: ''
+      SHA256SetupPasswordSalt: ''
       SHA256SystemPassword: ''
       SHA256SystemPasswordSalt: ''
       SecureBoot: Disabled
