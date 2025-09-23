@@ -56,6 +56,17 @@ Dell Inc.:
       SecureBoot: Disabled
       SerialComm: OnConRedir
   Intel:
+    PowerEdge R670:
+      CpuInterconnectBusLinkPower: Disabled
+      EnergyEfficientTurbo: Disabled
+      EnergyPerformanceBias: MaxPower
+      PcieAspmL1: Disabled
+      ProcC1E: Disabled
+      ProcCStates: Disabled
+      ProcPwrPerf: MaxPerf
+      SriovGlobalEnable: Enabled
+      SysProfile: PerfOptimized
+      UncoreFrequency: MaxUFS
     '*':
       WorkloadProfile: LowLatencyOptimizedProfile
       SysProfile: Custom
