@@ -1,0 +1,20 @@
+WEKA:
+  AMD:
+    '*':
+    #WEKApod - R6615:
+      LogicalProc: Enabled
+      NumaNodesPerSocket: "1"
+      PcieAspmL1: Disabled
+      ProcCStates: Disabled
+      ProcPwrPerf: MaxPerf
+      ProcVirtualization: Disabled
+      SysProfile: Custom
+      WorkloadProfile: NotConfigured
+      DeterminismSlider: PerfDeterminism
+      DfCState: Disabled
+      DfPstateFreqOptimizer: Disabled
+      DfPstateLatencyOptimizer: Disabled
+      PowerProfileSelect: MaxIOPerformanceMode
+      BootMode: Uefi
+      SecureBoot: Disabled
+      SerialComm: OnConRedir
