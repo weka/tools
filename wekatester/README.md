@@ -6,55 +6,75 @@ Includes fio both consistency (versions vary) and convienience.
 
 ```
 # ./wekatester --help
-usage: wekatester [-h] [-v] [-c] [-s] [-d DIRECTORY] [-w WORKLOAD] [-o] [-a] [--no-weka] [--local-fio LOCAL_FIO] [--auth AUTHFILE] [--version] [server ...]
+usage: wekatester.py [-h] -d DIRECTORY [-w WORKLOAD] [--fio-bin LOCAL_FIO]
+                     [-V] [-v]
+                     [server ...]
 
-Acceptance Test a weka cluster
+Basic Performance Test a Network/Parallel Filesystem
 
 positional arguments:
-  server                One or more Servers to use a workers (weka mode [default] will get names from the cluster)
+  server                One or more Servers to use a workers
 
 optional arguments:
   -h, --help            show this help message and exit
-  -v, --verbosity       increase output verbosity
-  -c, --clients         run fio on weka clients
-  -s, --servers         run fio on weka servers
   -d DIRECTORY, --directory DIRECTORY
-                        target directory for workload (default is /mnt/weka)
+                        target directory on the workers for test files
   -w WORKLOAD, --workload WORKLOAD
-                        workload definition directory (a subdir of fio-jobfiles)
-  -o, --output          run fio with output file
-  -a, --autotune        automatically tune num_jobs to maximize performance (experimental)
-  --no-weka             force non-weka mode
-  --local-fio LOCAL_FIO
-                        Specify the fio binary on the target servers
-  --auth AUTHFILE       auth file for authenticating with weka (default is auth-token.json)
-  --version             Display version number
+                        workload definition directory (a subdir of fio-
+                        jobfiles)
+  --fio-bin LOCAL_FIO   Specify the fio binary on the target servers (default
+                        /usr/bin/fio)
+  -V, --version         Display version number
+  -v, --verbosity       increase output verbosity
 ```                        
 
 # Basics
 fio is a benchmark for IO, and is quite popular.  However, running it in a distributed fashion across multiple servers can be a bit of a bear to manage, and the output can be quite difficult to read.
 
-The idea of wekatester is to bring some order to this chaos.   To make running fio in a distributed environment, wekatester automatically distributes and executes fio commands on remote servers, runs a standard set of benchmark workloads, and summarizes the results.  It's also aware of Weka clusters, in particular.
+The idea of wekatester is to bring some order to this chaos.   To make running fio in a distributed environment, wekatester automatically distributes and executes fio commands on remote servers, runs a standard set of benchmark workloads, and summarizes the results.
 
 # Options
-Servers - a list of weka servers to connect to via the API, or when combined with --no-weka, a list of servers to use as workers.
+`servers` - a list of servers to use as workers.
 
-`-c` makes wekatester query the cluster for what clients exist and uses ALL of them as workers
-
-`-s` makes wekatester query the cluster for what backends exist and uses ALL of them as workers
-
-`-d DIRECTORY` sets the directory where the benchmark files will be created.  Default is /mnt/weka
+`-d DIRECTORY` sets the directory where the benchmark files will be created.  This is a required argument.
 
 `-w WORKLOAD` get fio jobfile specifications from a subdirectory of fio-jobfiles.   The default is 'default'.  Currently, there are 2 discributed with wekatester, "default" (4-corners tests), and "mixed", a set of 70/30 RW workloads.  You can add your own directories, and use the with -w.
 
-`-o` will create an output file with all the fio output in it in JSON format.
-
-`-a` automatically adjust numjobs= to 2x the number of available cores.  Works on all workloads.
+`--fio-bin` Default is `/usr/bin/fio`.  You can use this argument to set a different location.
 
 `-v` Sets verbosity.  `-vv`, and `-vvv` are supported to set ever increasing verbosity.
 
-`--no-weka` Assumes the Servers are not weka servers or clients and just runs the workload on them
+# Output
+The output will be summarized after each workload run, and all results are writting to a log file.
 
-`--local-fio` Use the fio binary that is already local to the servers.   Make sure all the servers have the same version.
+Typical output will look something like this:
+```
+starting test run for job 011-bandwidthR.job on <hostname> with <n> workers:
+    read bandwidth: 9.37 GiB/s
+    total bandwidth: 9.37 GiB/s
+    average bandwidth: 2.34 GiB/s per host
 
-`--auth` Specify an alternate file instead of the default auth-token.json
+starting test run for job 012-bandwithW.job on <hostname> with <n> workers:
+    write bandwidth: 7.72 GiB/s
+    total bandwidth: 7.72 GiB/s
+    average bandwidth: 1.93 GiB/s per host
+
+starting test run for job 021-latencyR.job on <hostname> with <n> workers:
+    read latency: 237 us
+
+starting test run for job 022-latencyW.job on <hostname> with <n> workers:
+    write latency: 180 us
+
+starting test run for job 031-iopsR.job on <hostname> with <n> workers:
+    read iops: 376,697/s
+    total iops: 376,697/s
+    average iops: 94,174/s per host
+
+starting test run for job 032-iopsW.job on <hostname> with <n> workers:
+    write iops: 302,132/s
+    total iops: 302,132/s
+    average iops: 75,533/s per host
+
+Writing raw fio results to results_2025-10-07_1112.json
+```
+The raw output is the actual raw JSON output from the FIO commands.
