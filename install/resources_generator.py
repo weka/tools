@@ -545,6 +545,28 @@ class ResourcesGenerator:
             nodes = self.compute_nodes[:]
         failure_domain = "" if self.args.use_auto_failure_domain else get_failure_domain_based_on_nodename()
 
+        num_nodes = len(nodes)
+        num_containers = self.num_containers_by_role[role]
+        average_nodes_per_container = int(num_nodes / num_containers)
+        logger.debug(f"average nodes per container for {role}: {average_nodes_per_container}")
+        num_nodes_by_container = dict()     # key is container number
+
+        # are there leftover nodes? (ie: the containers will have uneven numbers of cores)
+        nodes_per_average = average_nodes_per_container * num_containers
+        extra_nodes = 0
+        if nodes_per_average != num_nodes:
+            extra_nodes = num_nodes - nodes_per_average
+
+        for i in range(self.num_containers_by_role[role]):
+            num_nodes_by_container[i] = average_nodes_per_container
+            num_nodes -= average_nodes_per_container
+            if i < extra_nodes:
+                num_nodes_by_container[i] += 1
+                num_nodes -= 1
+
+        for container_no, num_nodes in num_nodes_by_container.items():
+            logger.debug(f"container {container_no}: {num_nodes}")
+
         for i in range(self.num_containers_by_role[role]):
             slot_id = 0
             base_port = self._get_next_base_port(role)
@@ -552,7 +574,7 @@ class ResourcesGenerator:
             mgmt_node = Node(dedicate_core=False, http_port=base_port, rpc_port=base_port)
             mgmt_node.roles.append(MANAGEMENT_ROLE)
             container.nodes[str(slot_id)] = mgmt_node
-            while nodes and slot_id < self.args.max_cores_per_container:
+            while nodes and slot_id < num_nodes_by_container[i]:
                 slot_id += 1
                 node = nodes.pop()
                 node.http_port = base_port
@@ -582,20 +604,30 @@ class ResourcesGenerator:
             logger.info("num_containers_by_role[%s]: %s, nodes count: %s", role, num_containers, nodes_count)
 
     def _add_drives(self):
-        num_drives = len(self.args.drives) if self.args.drives else len(self.drive_nodes)
-        drives_to_allocate = self.drives[:num_drives]
+        drives_to_allocate = self.args.drives if self.args.drives else self.drives
+        num_drives = len(drives_to_allocate)
+        num_drives_containers = len(self.containers[DRIVE_ROLE])
+
+
+        # multiple drives containers make it more complicated
+        total_drives_nodes = 0
+        for container in self.containers[DRIVE_ROLE]:
+            total_drives_nodes += len(container.nodes) -1
+
+        drive_node_ratio = float(num_drives / total_drives_nodes)  # typically 1.0 or 2.0
+        logger.info(f"drive_node_ratio = {drive_node_ratio}: {num_drives}/{total_drives_nodes}")
+
         while drives_to_allocate:
+            logger.debug(f"{self.containers[DRIVE_ROLE]} drives: {drives_to_allocate}")
             for container in self.containers[DRIVE_ROLE]:
                 keep_iterating = True
                 num_drive_nodes = len(container.nodes) - 1
-                for i in range(num_drive_nodes):
-                    if drives_to_allocate:
-                        container.drives.append(drives_to_allocate.pop())
-                    else:
-                        keep_iterating = False
-                        break
-                if not keep_iterating:
-                    break
+                num_drives_to_allocate = num_drive_nodes * drive_node_ratio
+                logger.debug(f"assigning {num_drives_to_allocate} drives to {num_drive_nodes} nodes with ratio: {drive_node_ratio}")
+                drives_to_assign = drives_to_allocate[:int(num_drives_to_allocate)]  # make a subset
+                logger.debug(f"assigning {drives_to_assign}")
+                container.drives += drives_to_assign
+                drives_to_allocate = list(set(drives_to_allocate) - set(drives_to_assign))
 
     def _ensure_base_port_is_used(self):
         if not self.containers[DRIVE_ROLE] and self.containers[COMPUTE_ROLE]:
