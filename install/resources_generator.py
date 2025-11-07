@@ -545,6 +545,28 @@ class ResourcesGenerator:
             nodes = self.compute_nodes[:]
         failure_domain = "" if self.args.use_auto_failure_domain else get_failure_domain_based_on_nodename()
 
+        num_nodes = len(nodes)
+        num_containers = self.num_containers_by_role[role]
+        average_nodes_per_container = int(num_nodes / num_containers)
+        logger.debug(f"average nodes per container for {role}: {average_nodes_per_container}")
+        num_nodes_by_container = dict()     # key is container number
+
+        # are there leftover nodes? (ie: the containers will have uneven numbers of cores)
+        nodes_per_average = average_nodes_per_container * num_containers
+        extra_nodes = 0
+        if nodes_per_average != num_nodes:
+            extra_nodes = num_nodes - nodes_per_average
+
+        for i in range(self.num_containers_by_role[role]):
+            num_nodes_by_container[i] = average_nodes_per_container
+            num_nodes -= average_nodes_per_container
+            if i < extra_nodes:
+                num_nodes_by_container[i] += 1
+                num_nodes -= 1
+
+        for container_no, num_nodes in num_nodes_by_container.items():
+            logger.debug(f"container {container_no}: {num_nodes}")
+
         for i in range(self.num_containers_by_role[role]):
             slot_id = 0
             base_port = self._get_next_base_port(role)
@@ -552,7 +574,7 @@ class ResourcesGenerator:
             mgmt_node = Node(dedicate_core=False, http_port=base_port, rpc_port=base_port)
             mgmt_node.roles.append(MANAGEMENT_ROLE)
             container.nodes[str(slot_id)] = mgmt_node
-            while nodes and slot_id < self.args.max_cores_per_container:
+            while nodes and slot_id < num_nodes_by_container[i]:
                 slot_id += 1
                 node = nodes.pop()
                 node.http_port = base_port
