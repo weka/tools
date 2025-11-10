@@ -604,10 +604,8 @@ class ResourcesGenerator:
             logger.info("num_containers_by_role[%s]: %s, nodes count: %s", role, num_containers, nodes_count)
 
     def _add_drives(self):
-        drives_to_allocate = self.args.drives if self.args.drives else self.drives
-        num_drives = len(drives_to_allocate)
-        num_drives_containers = len(self.containers[DRIVE_ROLE])
-
+        drives_to_allocate = sorted(self.drives)
+        num_drives = len(self.drives)
 
         # multiple drives containers make it more complicated
         total_drives_nodes = 0
@@ -618,15 +616,14 @@ class ResourcesGenerator:
         logger.info(f"drive_node_ratio = {drive_node_ratio}: {num_drives}/{total_drives_nodes}")
 
         while drives_to_allocate:
-            logger.debug(f"{self.containers[DRIVE_ROLE]} drives: {drives_to_allocate}")
+            logger.debug(f"{self.containers[DRIVE_ROLE]} drives: {self.drives}")
             for container in self.containers[DRIVE_ROLE]:
-                keep_iterating = True
                 num_drive_nodes = len(container.nodes) - 1
-                num_drives_to_allocate = num_drive_nodes * drive_node_ratio
+                num_drives_to_allocate = round(num_drive_nodes * drive_node_ratio)
                 logger.debug(f"assigning {num_drives_to_allocate} drives to {num_drive_nodes} nodes with ratio: {drive_node_ratio}")
                 drives_to_assign = drives_to_allocate[:int(num_drives_to_allocate)]  # make a subset
                 logger.debug(f"assigning {drives_to_assign}")
-                container.drives += drives_to_assign
+                container.drives += [{"path": drive} for drive in drives_to_assign]
                 drives_to_allocate = list(set(drives_to_allocate) - set(drives_to_assign))
 
     def _ensure_base_port_is_used(self):
@@ -1095,7 +1092,7 @@ class ResourcesGenerator:
                     return True
             return False
 
-        def _is_relevand_device(dev):
+        def _is_relevant_device(dev):
             is_disk_type = dev[2] == 'disk'
             is_mounted = any(True for mounted_device in all_mounted_devices if dev[0] in mounted_device)
             is_swap = any(True for swap in swaps if dev[0] in swap)
@@ -1109,9 +1106,11 @@ class ResourcesGenerator:
 
         devices = [dev for dev in os.popen("lsblk -d -o name,rota,type").read().splitlines()]
         devices = [dev.split() for dev in devices[1:]]
-        relevant_devices = [dev[0] for dev in devices if _is_relevand_device(dev)]
-        self.drives = [{"path": "/dev/" + dev} for dev in relevant_devices]
-        self.drives.sort(key=lambda s: s["path"])
+        relevant_devices = [dev[0] for dev in devices if _is_relevant_device(dev)]
+        #self.drives = [{"path": "/dev/" + dev} for dev in relevant_devices]
+        #self.drives.sort(key=lambda s: s["path"])
+        self.drives = ["/dev/" + dev for dev in relevant_devices]
+        self.drives.sort()
         logger.info("Drives to be allocated: %s", self.drives)
 
     def set_specified_drives(self):
@@ -1133,9 +1132,9 @@ class ResourcesGenerator:
                     container.prepare_members()
                     container.create_json()
                     resources_path = os.path.join(self.args.path, role.lower() + str(i) + '.json')
-                    if os.path.isfile(resources_path):
-                        logger.warning("Resources file: %s already exists, continuing the current run will overwrite it" % resources_path)
-                        self.check_if_should_continue()
+                    #if os.path.isfile(resources_path):
+                    #    logger.warning("Resources file: %s already exists, continuing the current run will overwrite it" % resources_path)
+                    #    self.check_if_should_continue()
                     with open(resources_path, 'w') as f:
                         f.write(container.resources_json + '\n')
                     resources_filenames_file.write(resources_path + '\n')
