@@ -1120,7 +1120,8 @@ class ResourcesGenerator:
                 logger.warning("Drive: %s was not found on the server", dev)
                 logger.warning("Known devices: %s", devices)
                 self.check_if_should_continue()
-            self.drives.append({"path": dev})
+            #self.drives.append({"path": dev})
+            self.drives.append(dev)
         logger.info("Drives to be allocated: %s", self.drives)
 
     def create_resources_files(self):
