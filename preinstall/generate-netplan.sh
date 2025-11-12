@@ -3,17 +3,19 @@
 # generate-netplan.sh
 #
 # Generate a netplan YAML file for multiple NICs with source-based routing.
-# Local subnets are link-scoped (no via), client/default routes use via/gateway.
+# Local subnets are link-scoped (no via), default route uses gateway if provided.
 # Also generates sysctl file for ARP tuning and NUMA balancing.
-# Does not apply netplan or sysctl automatically; admin must review before applying.
-# The NICs might be defined in other files or separately
+# Does not apply netplan automatically; admin can review before applying.
+# Optional flags:
+#   --no-mtu         : Do not set MTU to 9000
+#   --renderer       : Choose networkd (default) or NetworkManager
+#   --apply-sysctl   : Apply sysctl immediately after generating
 
 set -euo pipefail
 
 OUTPUT_FILE="99-weka-netplan.yaml"
 SYSCTL_FILE="99-weka-sysctl.conf"
 NIC_LIST=()
-CLIENT_SUBNET=""
 GATEWAY=""
 START_TABLE=101
 MTU=9000
@@ -22,14 +24,13 @@ APPLY_SYSCTL=false
 RENDERER="networkd"
 
 usage() {
-    echo "Usage: $0 --nics <nic1> [nic2 ...] [--client-subnet <CIDR>] [--gateway <IP>]"
-    echo "          [--no-mtu] [--renderer networkd|NetworkManager] [--apply-sysctl]"
+    echo "Usage: $0 --nics <nic1> [nic2 ...] [--gateway <IP>] [--no-mtu] [--renderer networkd|NetworkManager] [--apply-sysctl]"
     exit 1
 }
 
 errmsg() { echo "[ERROR] $*" >&2; }
 
-# Parse CLI
+# Parse CLI arguments
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --nics)
@@ -38,10 +39,6 @@ while [[ $# -gt 0 ]]; do
                 NIC_LIST+=("$1")
                 shift
             done
-            ;;
-        --client-subnet)
-            CLIENT_SUBNET="$2"
-            shift 2
             ;;
         --gateway)
             GATEWAY="$2"
@@ -68,6 +65,7 @@ done
 
 [[ ${#NIC_LIST[@]} -lt 1 ]] && { errmsg "At least one NIC must be specified"; usage; }
 
+# Functions
 get_ip_for_nic() { ip -4 addr show "$1" | awk '/inet / {print $2}' | head -n1; }
 
 get_local_subnet() {
@@ -80,11 +78,6 @@ get_local_subnet() {
     fi
     echo "$subnet"
 }
-
-# Auto-add /mask if missing for client subnet
-if [[ -n "$CLIENT_SUBNET" && "$CLIENT_SUBNET" != */* ]]; then
-    CLIENT_SUBNET="$CLIENT_SUBNET/24"
-fi
 
 # --- Generate Netplan YAML ---
 echo "network:" > "$OUTPUT_FILE"
@@ -112,9 +105,9 @@ for nic in "${NIC_LIST[@]}"; do
     echo "        - to: $local_subnet" >> "$OUTPUT_FILE"
     echo "          table: $table_id" >> "$OUTPUT_FILE"
 
-    # Optional client/default route
-    if [[ -n "$CLIENT_SUBNET" && -n "$GATEWAY" ]]; then
-        echo "        - to: $CLIENT_SUBNET" >> "$OUTPUT_FILE"
+    # Default route if gateway specified
+    if [[ -n "$GATEWAY" ]]; then
+        echo "        - to: 0.0.0.0/0" >> "$OUTPUT_FILE"
         echo "          via: $GATEWAY" >> "$OUTPUT_FILE"
         echo "          table: $table_id" >> "$OUTPUT_FILE"
     fi
