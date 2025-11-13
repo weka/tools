@@ -329,6 +329,15 @@ class ResourcesGenerator:
                                  self.args.num_cores, len(self.args.core_ids))
                     quit(1)
 
+        def _extract_nic_name(net_arg):
+            ''' in some cases (i.e., LACP), self.args.net passes virtual interfaces (i.e., bond0:0)
+            split(':') ensuring that both virtual and physical interfaces point to the same NIC '''
+            nic_part = net_arg.split('/')[0]
+            if _is_mac_address(nic_part):
+                return nic_part
+            else:
+                return nic_part.split(':')[0]
+
         def _validate_net_dev():
             missing_nics = []
             nic_names = []
@@ -337,7 +346,7 @@ class ResourcesGenerator:
             if not self.args.net:
                 logger.error("At least 1 net device is required")
                 quit(1)
-            nics = [net_arg.split('/')[0] for net_arg in self.args.net]
+            nics = [_extract_nic_name(net_arg) for net_arg in self.args.net]
 
             for nic in nics:
                 # Check if NICs are present on the machine
@@ -1107,8 +1116,6 @@ class ResourcesGenerator:
         devices = [dev for dev in os.popen("lsblk -d -o name,rota,type").read().splitlines()]
         devices = [dev.split() for dev in devices[1:]]
         relevant_devices = [dev[0] for dev in devices if _is_relevant_device(dev)]
-        #self.drives = [{"path": "/dev/" + dev} for dev in relevant_devices]
-        #self.drives.sort(key=lambda s: s["path"])
         self.drives = ["/dev/" + dev for dev in relevant_devices]
         self.drives.sort()
         logger.info("Drives to be allocated: %s", self.drives)
@@ -1133,9 +1140,6 @@ class ResourcesGenerator:
                     container.prepare_members()
                     container.create_json()
                     resources_path = os.path.join(self.args.path, role.lower() + str(i) + '.json')
-                    #if os.path.isfile(resources_path):
-                    #    logger.warning("Resources file: %s already exists, continuing the current run will overwrite it" % resources_path)
-                    #    self.check_if_should_continue()
                     with open(resources_path, 'w') as f:
                         f.write(container.resources_json + '\n')
                     resources_filenames_file.write(resources_path + '\n')
