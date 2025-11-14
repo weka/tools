@@ -76,7 +76,7 @@ CONST_RESOURCES = dict(
     memory=0,
     mode="BACKEND",
     net_devices=[],
-    rdma_devices=[],
+    rdma_devices=dict(),
     ena_llq=True,
 )
 MAX_DRIVE_NODES_PERCPU = 4
@@ -227,7 +227,7 @@ class Container:
         self.memory = memory
         self.nodes = dict()
         self.net_devices = []
-        self.rdma_devices = []
+        self.rdma_devices = dict()
         self.resources_json = None
         self.failure_domain = failure_domain
         self.hostname = os.uname().nodename
@@ -235,7 +235,11 @@ class Container:
     def prepare_members(self):
         self.nodes = {slot_id: self.nodes[slot_id].as_dict() for slot_id in self.nodes}
         self.net_devices = [dev.as_dict() for dev in self.net_devices]
-        self.rdma_devices = [rdma.as_dict() for rdma in self.rdma_devices]
+        self.rdma_devices = dict(
+            devicesValid = ResourcesGenerator.scan_rdma != 'OFF' or len(self.rdma_devices) > 0,
+            devices = [rdma.as_dict() for rdma in self.rdma_devices],
+            rdma_scan = ResourcesGenerator.scan_rdma,
+        )
 
     def create_json(self):
         resources_dict = CONST_RESOURCES.copy()
@@ -263,6 +267,7 @@ class Numa:
 
 
 class ResourcesGenerator:
+    scan_rdma = 'OFF'
     def __init__(self):
         self.num_containers_by_role = dict()
         self.default_num_frontend_nodes = 1
@@ -392,6 +397,13 @@ class ResourcesGenerator:
             if nic_error:
                 quit(1)
 
+        def _validate_scan_rdma(layer):
+            if layer not in ['IB', 'ETH', 'ALL', 'OFF']:
+                logger.error("scan-rdma can only be 'IB', 'ETH', 'ALL' or 'OFF")
+                quit(1)
+
+            return layer
+
 
         def _parse_pretty_bytes(size):
             units = dict(
@@ -496,6 +508,8 @@ class ResourcesGenerator:
         parser.add_argument("--use-only-nic-identifier", action='store_true', dest='use_only_nic_identifier',
                             help="use only the nic identifier when allocating the nics")
         parser.add_argument("--base-port", default=DEFAULT_DRIVES_BASE_PORT, type=int, help="Specify the base port")
+        parser.add_argument("--scan-rdma", default="OFF", type=_validate_scan_rdma,
+                            help="Scan for RDMA devices by network type, either 'IB', 'ETH', 'ALL' or 'OFF' (default)")
 
         # Create a mutually exclusive group
         group = parser.add_mutually_exclusive_group()
@@ -516,6 +530,7 @@ class ResourcesGenerator:
         else:
             self.exclusive_nics_policy = is_cloud_env() or self.args.allocate_nics_exclusively
 
+        ResourcesGenerator.scan_rdma = self.args.scan_rdma
         self.next_base_port = self.args.base_port + 200
 
         _validate_net_dev()
@@ -677,6 +692,9 @@ class ResourcesGenerator:
             name = arg_parts.pop(0)
 
             if arg_parts and arg_parts[0] == "rdma-only":
+                if self.args.scan_rdma is not 'OFF':
+                    logger.error("Mixing rdma-only and scan-rdma is not permitted")
+                    quit(1)
                 sa_family = AF_INET
                 arg_parts.pop(0)
                 if arg_parts and arg_parts[0] == "inet6":
