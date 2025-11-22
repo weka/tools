@@ -47,7 +47,7 @@ else:
     InvalidVersion = ValueError  # Since distutils doesn't have InvalidVersion, we use a generic exception
 
 
-pg_version = "1.6.2"
+pg_version = "1.6.3"
 
 
 known_issues_file = "known_issues.json"
@@ -2158,6 +2158,31 @@ def weka_cluster_checks(skip_mtu_check, target_version):
                         f"ETCD DB is not healthy or not running please contact Weka support"
                     )
 
+            spinner.stop()
+            
+        # Added 2025-11-22
+        #  There may be CX-4 compatibility issues (see WEKAPP-540128)
+        if V(target_version) >= V("4.4"):
+            INFO("CHECKING FOR CX-4 NICs")
+            spinner = Spinner("  Retrieving Data  ", color=colors.OKCYAN)
+            spinner.start()
+
+            cx4_found = False
+            weka_nics = json.loads(
+                subprocess.check_output(["weka", "cluster", "container", "net", "-J"])
+            )
+            for container in weka_nics:
+                for nic in container["net_devices"]:
+                    if "connectx-4" in nic["device"].lower():
+                        cx4_found = True
+                        break
+            if cx4_found:
+                BAD("CX4 detected. (The ConnectX-4 Lx ethernet NICs from NVIDIA Mellanox were officially announced " \
+                    "as End of Life (EOL) on November 2020). We currently recommend delaying upgrades to 4.4.x " \
+                    "which may cause unintended service disruption on servers using these cards in DPDK mode." \
+                    "Using UDP mode is a viable workaround.")
+            else:
+                GOOD(f"No CX-4 NICs located")
             spinner.stop()
 
     return (
