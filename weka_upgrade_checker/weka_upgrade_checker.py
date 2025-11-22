@@ -47,7 +47,7 @@ else:
     InvalidVersion = ValueError  # Since distutils doesn't have InvalidVersion, we use a generic exception
 
 
-pg_version = "1.6.2"
+pg_version = "1.6.3"
 
 
 known_issues_file = "known_issues.json"
