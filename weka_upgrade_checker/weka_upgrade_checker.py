@@ -2179,7 +2179,8 @@ def weka_cluster_checks(skip_mtu_check, target_version):
             if cx4_found:
                 BAD("CX4 detected. (The ConnectX-4 Lx ethernet NICs from NVIDIA Mellanox were officially announced " \
                     "as End of Life (EOL) on November 2020). We currently recommend delaying upgrades to 4.4.x " \
-                    "which may cause unintended service disruption on servers using these cards.")
+                    "which may cause unintended service disruption on servers using these cards in DPDK mode." \
+                    "Using UDP mode is a viable workaround.")
             else:
                 GOOD(f"No CX-4 NICs located")
             spinner.stop()
