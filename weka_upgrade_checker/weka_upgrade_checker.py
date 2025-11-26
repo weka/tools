@@ -22,32 +22,31 @@ from collections import deque
 
 warnings.filterwarnings("ignore", category=DeprecationWarning, module="distutils")
 
-if sys.version_info < (3, 7):
-    print("Must have Python version 3.7 or later installed.")
+if sys.version_info < (3, 8):
+    print("Must have Python version 3.8 or later installed.")
     sys.exit(1)
 
-# Install and import the necessary version module based on Python version
-if sys.version_info >= (3, 10):
-    try:
-        import pkg_resources
+# Ensure 'packaging' is installed
+try:
+    import pkg_resources
+    pkg_resources.get_distribution("packaging")
+except (pkg_resources.DistributionNotFound, ImportError):
+    print("The 'packaging' module is not installed. Installing it now...")
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "packaging"])
 
-        pkg_resources.get_distribution("packaging")
-    except (pkg_resources.DistributionNotFound, ImportError):
-        print("The 'packaging' module is not installed. Installing it now...")
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "packaging"])
-        from packaging.version import parse, InvalidVersion, Version as V
-    else:
-        from packaging.version import parse, InvalidVersion, Version as V
-else:
-    # For Python versions 3.7 up to 3.9, use distutils
+# Import version parsing
+try:
+    from packaging.version import parse as V, InvalidVersion
+except ImportError:
+    # Fallback for older Python or if packaging cannot be imported
     from distutils.version import LooseVersion as V
+    InvalidVersion = ValueError
 
-    parse = V
-    Version = V  # Ensure Version is defined for older versions
-    InvalidVersion = ValueError  # Since distutils doesn't have InvalidVersion, we use a generic exception
+# Optional: alias parse to V for consistent naming
+parse = V
 
 
-pg_version = "1.6.3"
+pg_version = "1.6.4"
 
 
 known_issues_file = "known_issues.json"
@@ -2160,30 +2159,30 @@ def weka_cluster_checks(skip_mtu_check, target_version):
 
             spinner.stop()
             
-        # Added 2025-11-22
-        #  There may be CX-4 compatibility issues (see WEKAPP-540128)
-        if V(target_version) >= V("4.4"):
-            INFO("CHECKING FOR CX-4 NICs")
-            spinner = Spinner("  Retrieving Data  ", color=colors.OKCYAN)
-            spinner.start()
+    # Added 2025-11-22
+    #  There may be CX-4 compatibility issues (see WEKAPP-540128)
+    if V(target_version) >= V("4.4"):
+        INFO("CHECKING FOR CX-4 NICs")
+        spinner = Spinner("  Retrieving Data  ", color=colors.OKCYAN)
+        spinner.start()
 
-            cx4_found = False
-            weka_nics = json.loads(
-                subprocess.check_output(["weka", "cluster", "container", "net", "-J"])
-            )
-            for container in weka_nics:
-                for nic in container["net_devices"]:
-                    if "connectx-4" in nic["device"].lower():
-                        cx4_found = True
-                        break
-            if cx4_found:
-                BAD("CX4 detected. (The ConnectX-4 Lx ethernet NICs from NVIDIA Mellanox were officially announced " \
-                    "as End of Life (EOL) on November 2020). We currently recommend delaying upgrades to 4.4.x " \
-                    "which may cause unintended service disruption on servers using these cards in DPDK mode." \
-                    "Using UDP mode is a viable workaround.")
-            else:
-                GOOD(f"No CX-4 NICs located")
-            spinner.stop()
+        cx4_found = False
+        weka_nics = json.loads(
+            subprocess.check_output(["weka", "cluster", "container", "net", "-J"])
+        )
+        for container in weka_nics:
+            for nic in container["net_devices"]:
+                if "connectx-4" in nic["device"].lower():
+                    cx4_found = True
+                    break
+        if cx4_found:
+            BAD("CX4 detected. (The ConnectX-4 Lx ethernet NICs from NVIDIA Mellanox were officially announced " \
+                "as End of Life (EOL) on November 2020). We currently recommend delaying upgrades to 4.4.x " \
+                "which may cause unintended service disruption on servers using these cards in DPDK mode." \
+                "Using UDP mode is a viable workaround.")
+        else:
+            GOOD(f"No CX-4 NICs located")
+        spinner.stop()
 
     return (
         backend_hosts,
