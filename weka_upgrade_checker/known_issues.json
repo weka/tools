@@ -1,176 +1,34 @@
 {
-    "5.0.2.119": [
-        {
-            "description": "Weka tsmb-server continuously restarts attempting to reach unavailable AD/LDAP servers",
-            "related_protocols": ["smb"],
-            "link_types": [ ],
-            "problematic_kernel_arguments": [ ],
-            "internal_reference": "WEKAPP-513906 | https://wekaio.lightning.force.com/lightning/r/Knowledge__kav/ka0Qr0000008V3RIAU/view",
-            "version_from": [],
-            "obj_store": false
-        }
-    ],
-    "5.0.1.101": [
-        {
-            "description": "Weka tsmb-server continuously restarts attempting to reach unavailable AD/LDAP servers",
-            "related_protocols": ["smb"],
-            "link_types": [ ],
-            "problematic_kernel_arguments": [ ],
-            "internal_reference": "WEKAPP-513906 | https://wekaio.lightning.force.com/lightning/r/Knowledge__kav/ka0Qr0000008V3RIAU/view",
-            "version_from": [],
-            "obj_store": false
-        }
-    ],
-    "4.4.8.76": [
-        {
-            "description": "Weka tsmb-server continuously restarts attempting to reach unavailable AD/LDAP servers",
-            "related_protocols": ["smb"],
-            "link_types": [ ],
-            "problematic_kernel_arguments": [ ],
-            "internal_reference": "WEKAPP-513906 | https://wekaio.lightning.force.com/lightning/r/Knowledge__kav/ka0Qr0000008V3RIAU/view",
-            "version_from": [],
-            "obj_store": false
-        }
-    ],
-    "4.4.8.66": [
-        {
-            "description": "Weka tsmb-server continuously restarts attempting to reach unavailable AD/LDAP servers",
-            "related_protocols": ["smb"],
-            "link_types": [ ],
-            "problematic_kernel_arguments": [ ],
-            "internal_reference": "WEKAPP-513906 | https://wekaio.lightning.force.com/lightning/r/Knowledge__kav/ka0Qr0000008V3RIAU/view",
-            "version_from": [],
-            "obj_store": false
-        }
-    ],
-    "4.4.8.53": [
-        {
-            "description": "Weka tsmb-server continuously restarts attempting to reach unavailable AD/LDAP servers",
-            "related_protocols": ["smb"],
-            "link_types": [ ],
-            "problematic_kernel_arguments": [ ],
-            "internal_reference": "WEKAPP-513906 | https://wekaio.lightning.force.com/lightning/r/Knowledge__kav/ka0Qr0000008V3RIAU/view",
-            "version_from": [],
-            "obj_store": false
-        }
-    ],
-    "4.4.7.89": [
-        {
-            "description": "IOMMU enabled in passthrough mode",
-            "related_protocols": [],
-            "link_types": [],
-            "problematic_kernel_arguments": [ "iommu=pt" ],
-            "internal_reference": "WEKAPP-513581",
-            "version_from": [],
-            "obj_store": false
-        },
-       {
-            "description": "Weka tsmb-server continuously restarts attempting to reach unavailable AD/LDAP servers",
-            "related_protocols": ["smb"],
-            "link_types": [],
-            "problematic_kernel_arguments": [ ],
-            "internal_reference": "WEKAPP-513906 | https://wekaio.lightning.force.com/lightning/r/Knowledge__kav/ka0Qr0000008V3RIAU/view",
-            "version_from": [],
-            "obj_store": false
-        }
-    ],
-    "4.4.6.122": [
-        {
-            "description": "Weka tsmb-server continuously restarts attempting to reach unavailable AD/LDAP servers",
-            "related_protocols": ["smb"],
-            "link_types": [ ],
-            "problematic_kernel_arguments": [ ],
-            "internal_reference": "WEKAPP-513906 | https://wekaio.lightning.force.com/lightning/r/Knowledge__kav/ka0Qr0000008V3RIAU/view",
-            "version_from": [],
-            "obj_store": false
-        }
-    ],
-    "4.4.6.114": [
-        {
-            "description": "Weka tsmb-server continuously restarts attempting to reach unavailable AD/LDAP servers",
-            "related_protocols": ["smb"],
-            "link_types": [ ],
-            "problematic_kernel_arguments": [ ],
-            "internal_reference": "WEKAPP-513906 | https://wekaio.lightning.force.com/lightning/r/Knowledge__kav/ka0Qr0000008V3RIAU/view",
-            "version_from": [],
-            "obj_store": false
-        }
-    ],
-    "4.4.6": [
-        {
-            "description": "Weka tsmb-server continuously restarts attempting to reach unavailable AD/LDAP servers",
-            "related_protocols": ["smb"],
-            "link_types": [ ],
-            "problematic_kernel_arguments": [ ],
-            "internal_reference": "WEKAPP-513906 | https://wekaio.lightning.force.com/lightning/r/Knowledge__kav/ka0Qr0000008V3RIAU/view",
-            "version_from": [],
-            "obj_store": false
-        }
-    ],
-    "4.4.1-2": [
-        {
-            "description": "Will need to backup and remove WEKA SMB configuration before upgrading to 4.4.1-2 or higher",
-            "related_protocols": ["smb"],
-            "link_types": [],
-            "problematic_kernel_arguments": [],
-            "internal_reference": "",
-            "version_from": ["4.4.1"],
-            "obj_store": false
-        }
-    ],
-    "4.2.18": [
-        {
-            "description": "If the weka-agent init.d or systemd unit files have been modified, revert all changes and restore them to their original state.",
-            "related_protocols": [],
-            "link_types": [],
-            "problematic_kernel_arguments": [],
-            "internal_reference": "",
-            "version_from": [],
-            "obj_store": false
-        }
-    ],
-    "4.2.16": [
-        {
-            "description": "If the weka-agent init.d or systemd unit files have been modified, revert all changes and restore them to their original state.",
-            "related_protocols": [],
-            "link_types": [],
-            "problematic_kernel_arguments": [],
-            "internal_reference": "",
-            "version_from": [],
-            "obj_store": false
-        }
-    ],
-    "4.2.15": [
-        {
-            "description": "If the weka-agent init.d or systemd unit files have been modified, revert all changes and restore them to their original state.",
-            "related_protocols": [],
-            "link_types": [],
-            "problematic_kernel_arguments": [],
-            "internal_reference": "",
-            "version_from": [],
-            "obj_store": false
-        }
-    ],
-    "4.2.14": [
-        {
-            "description": "If the weka-agent init.d or systemd unit files have been modified, revert all changes and restore them to their original state.",
-            "related_protocols": [],
-            "link_types": [],
-            "problematic_kernel_arguments": [],
-            "internal_reference": "",
-            "version_from": [],
-            "obj_store": false
-        }
-    ],
-    "4.2.12": [
-        {
-            "description": "If the weka-agent init.d or systemd unit files have been modified, revert all changes and restore them to their original state.",
-            "related_protocols": [],
-            "link_types": [],
-            "problematic_kernel_arguments": [],
-            "internal_reference": "",
-            "version_from": [],
-            "obj_store": false
-        }
-    ]
+    "WEKAPP-513906":
+    {
+        "description": "Weka tsmb-server continuously restarts attempting to reach unavailable AD/LDAP servers",
+        "related_protocols": ["smb"],
+        "link_types": [ ],
+        "problematic_kernel_arguments": [ ],
+        "internal_reference": "WEKAPP-513906 | https://wekaio.lightning.force.com/lightning/r/Knowledge__kav/ka0Qr0000008V3RIAU/view",
+        "version_min": ["4.4.6", "5.0.0"],
+        "version_max": [],
+        "obj_store": false
+    },
+    "WEKAPP-513581":
+    {
+        "description": "IOMMU enabled in passthrough mode",
+        "related_protocols": [],
+        "link_types": [],
+        "problematic_kernel_arguments": [ "iommu=pt" ],
+        "internal_reference": "WEKAPP-513581",
+        "version_min": ["4.4.7", "5.0.1"],
+        "version_max": ["4.4.9.99", "5.0.1.101"],
+        "obj_store": false
+    },
+    "WEKAPP-450389":
+    {
+        "description": "Will need to backup and remove the WEKA SMB configuration before upgrading to 4.4.7 or higher",
+        "related_protocols": ["smb"],
+        "link_types": [],
+        "problematic_kernel_arguments": [],
+        "internal_reference": "WEKAPP-450389",
+        "version_from": "4.4.6",
+        "obj_store": false
+    }
 }
