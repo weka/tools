@@ -1,7 +1,40 @@
 {
+    "WEKAPP-562429":
+    {
+        "description": "localstateindex overflow could lead to cluster unavailability",
+        "related_protocols": [],
+        "link_types": [ ],
+        "problematic_kernel_arguments": [ ],
+        "internal_reference": "WEKAPP-562429",
+        "version_min": ["4.4.7.89"],
+        "version_max": ["4.4.10.171"],
+        "obj_store": false
+    },
+    "WEKAPP-558408":
+    {
+        "description": "libcurl 'happy eyeballs' (OBS performance degradation)",
+        "related_protocols": [],
+        "link_types": [ ],
+        "problematic_kernel_arguments": [ ],
+        "internal_reference": "WEKAPP-558408",
+        "version_min": ["4.3.2"],
+        "version_max": ["4.4.10.150"],
+        "obj_store": false
+    },
+    "WEKAPP-518953":
+    {
+        "description": "DPDK initialization failure when using multiple dataplane NICs",
+        "related_protocols": [],
+        "link_types": [ ],
+        "problematic_kernel_arguments": [ ],
+        "internal_reference": "WEKAPP-518953",
+        "version_min": ["4.4.0"],
+        "version_max": ["4.4.11"],
+        "obj_store": false
+    },
     "WEKAPP-513906":
     {
-        "description": "Weka tsmb-server continuously restarts attempting to reach unavailable AD/LDAP servers",
+        "description": "Weka tsmb-server continuously restarts attempting to reach AD/LDAP servers",
         "related_protocols": ["smb"],
         "link_types": [ ],
         "problematic_kernel_arguments": [ ],
