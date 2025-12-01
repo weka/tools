@@ -26,27 +26,9 @@ if sys.version_info < (3, 8):
     print("Must have Python version 3.8 or later installed.")
     sys.exit(1)
 
-# Ensure 'packaging' is installed
-try:
-    import pkg_resources
-    pkg_resources.get_distribution("packaging")
-except (pkg_resources.DistributionNotFound, ImportError):
-    print("The 'packaging' module is not installed. Installing it now...")
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "packaging"])
+from packaging.version import parse as V, InvalidVersion
 
-# Import version parsing
-try:
-    from packaging.version import parse as V, InvalidVersion
-except ImportError:
-    # Fallback for older Python or if packaging cannot be imported
-    from distutils.version import LooseVersion as V
-    InvalidVersion = ValueError
-
-# Optional: alias parse to V for consistent naming
-parse = V
-
-
-pg_version = "1.7.0"
+pg_version = "1.7.1"
 
 
 known_issues_file = "known_issues.json"
