@@ -76,7 +76,7 @@ CONST_RESOURCES = dict(
     memory=0,
     mode="BACKEND",
     net_devices=[],
-    rdma_devices=[],
+    rdma_devices=dict(),
     ena_llq=True,
 )
 MAX_DRIVE_NODES_PERCPU = 4
@@ -227,7 +227,7 @@ class Container:
         self.memory = memory
         self.nodes = dict()
         self.net_devices = []
-        self.rdma_devices = []
+        self.rdma_devices = dict()
         self.resources_json = None
         self.failure_domain = failure_domain
         self.hostname = os.uname().nodename
@@ -235,7 +235,11 @@ class Container:
     def prepare_members(self):
         self.nodes = {slot_id: self.nodes[slot_id].as_dict() for slot_id in self.nodes}
         self.net_devices = [dev.as_dict() for dev in self.net_devices]
-        self.rdma_devices = [rdma.as_dict() for rdma in self.rdma_devices]
+        self.rdma_devices = dict(
+            devicesValid = ResourcesGenerator.scan_rdma != 'OFF' or len(self.rdma_devices) > 0,
+            devices = [rdma.as_dict() for rdma in self.rdma_devices],
+            rdma_scan = ResourcesGenerator.scan_rdma,
+        )
 
     def create_json(self):
         resources_dict = CONST_RESOURCES.copy()
@@ -263,6 +267,7 @@ class Numa:
 
 
 class ResourcesGenerator:
+    scan_rdma = 'OFF'
     def __init__(self):
         self.num_containers_by_role = dict()
         self.default_num_frontend_nodes = 1
@@ -329,6 +334,15 @@ class ResourcesGenerator:
                                  self.args.num_cores, len(self.args.core_ids))
                     quit(1)
 
+        def _extract_nic_name(net_arg):
+            ''' in some cases (i.e., LACP), self.args.net passes virtual interfaces (i.e., bond0:0)
+            split(':') ensuring that both virtual and physical interfaces point to the same NIC '''
+            nic_part = net_arg.split('/')[0]
+            if _is_mac_address(nic_part):
+                return nic_part
+            else:
+                return nic_part.split(':')[0]
+
         def _validate_net_dev():
             missing_nics = []
             nic_names = []
@@ -337,7 +351,7 @@ class ResourcesGenerator:
             if not self.args.net:
                 logger.error("At least 1 net device is required")
                 quit(1)
-            nics = [net_arg.split('/')[0] for net_arg in self.args.net]
+            nics = [_extract_nic_name(net_arg) for net_arg in self.args.net]
 
             for nic in nics:
                 # Check if NICs are present on the machine
@@ -382,6 +396,13 @@ class ResourcesGenerator:
 
             if nic_error:
                 quit(1)
+
+        def _validate_scan_rdma(layer):
+            if layer not in ['IB', 'ETH', 'ALL', 'OFF']:
+                logger.error("scan-rdma can only be 'IB', 'ETH', 'ALL' or 'OFF")
+                quit(1)
+
+            return layer
 
 
         def _parse_pretty_bytes(size):
@@ -487,6 +508,8 @@ class ResourcesGenerator:
         parser.add_argument("--use-only-nic-identifier", action='store_true', dest='use_only_nic_identifier',
                             help="use only the nic identifier when allocating the nics")
         parser.add_argument("--base-port", default=DEFAULT_DRIVES_BASE_PORT, type=int, help="Specify the base port")
+        parser.add_argument("--scan-rdma", default="OFF", type=_validate_scan_rdma,
+                            help="Scan for RDMA devices by network type, either 'IB', 'ETH', 'ALL' or 'OFF' (default)")
 
         # Create a mutually exclusive group
         group = parser.add_mutually_exclusive_group()
@@ -507,6 +530,7 @@ class ResourcesGenerator:
         else:
             self.exclusive_nics_policy = is_cloud_env() or self.args.allocate_nics_exclusively
 
+        ResourcesGenerator.scan_rdma = self.args.scan_rdma
         self.next_base_port = self.args.base_port + 200
 
         _validate_net_dev()
@@ -668,6 +692,9 @@ class ResourcesGenerator:
             name = arg_parts.pop(0)
 
             if arg_parts and arg_parts[0] == "rdma-only":
+                if self.args.scan_rdma is not 'OFF':
+                    logger.error("Mixing rdma-only and scan-rdma is not permitted")
+                    quit(1)
                 sa_family = AF_INET
                 arg_parts.pop(0)
                 if arg_parts and arg_parts[0] == "inet6":
@@ -1107,8 +1134,6 @@ class ResourcesGenerator:
         devices = [dev for dev in os.popen("lsblk -d -o name,rota,type").read().splitlines()]
         devices = [dev.split() for dev in devices[1:]]
         relevant_devices = [dev[0] for dev in devices if _is_relevant_device(dev)]
-        #self.drives = [{"path": "/dev/" + dev} for dev in relevant_devices]
-        #self.drives.sort(key=lambda s: s["path"])
         self.drives = ["/dev/" + dev for dev in relevant_devices]
         self.drives.sort()
         logger.info("Drives to be allocated: %s", self.drives)
@@ -1120,7 +1145,8 @@ class ResourcesGenerator:
                 logger.warning("Drive: %s was not found on the server", dev)
                 logger.warning("Known devices: %s", devices)
                 self.check_if_should_continue()
-            self.drives.append({"path": dev})
+            #self.drives.append({"path": dev})
+            self.drives.append(dev)
         logger.info("Drives to be allocated: %s", self.drives)
 
     def create_resources_files(self):
@@ -1132,9 +1158,6 @@ class ResourcesGenerator:
                     container.prepare_members()
                     container.create_json()
                     resources_path = os.path.join(self.args.path, role.lower() + str(i) + '.json')
-                    #if os.path.isfile(resources_path):
-                    #    logger.warning("Resources file: %s already exists, continuing the current run will overwrite it" % resources_path)
-                    #    self.check_if_should_continue()
                     with open(resources_path, 'w') as f:
                         f.write(container.resources_json + '\n')
                     resources_filenames_file.write(resources_path + '\n')

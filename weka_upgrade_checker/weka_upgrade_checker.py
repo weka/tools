@@ -22,32 +22,31 @@ from collections import deque
 
 warnings.filterwarnings("ignore", category=DeprecationWarning, module="distutils")
 
-if sys.version_info < (3, 7):
-    print("Must have Python version 3.7 or later installed.")
+if sys.version_info < (3, 8):
+    print("Must have Python version 3.8 or later installed.")
     sys.exit(1)
 
-# Install and import the necessary version module based on Python version
-if sys.version_info >= (3, 10):
-    try:
-        import pkg_resources
+# Ensure 'packaging' is installed
+try:
+    import pkg_resources
+    pkg_resources.get_distribution("packaging")
+except (pkg_resources.DistributionNotFound, ImportError):
+    print("The 'packaging' module is not installed. Installing it now...")
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "packaging"])
 
-        pkg_resources.get_distribution("packaging")
-    except (pkg_resources.DistributionNotFound, ImportError):
-        print("The 'packaging' module is not installed. Installing it now...")
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "packaging"])
-        from packaging.version import parse, InvalidVersion, Version as V
-    else:
-        from packaging.version import parse, InvalidVersion, Version as V
-else:
-    # For Python versions 3.7 up to 3.9, use distutils
+# Import version parsing
+try:
+    from packaging.version import parse as V, InvalidVersion
+except ImportError:
+    # Fallback for older Python or if packaging cannot be imported
     from distutils.version import LooseVersion as V
+    InvalidVersion = ValueError
 
-    parse = V
-    Version = V  # Ensure Version is defined for older versions
-    InvalidVersion = ValueError  # Since distutils doesn't have InvalidVersion, we use a generic exception
+# Optional: alias parse to V for consistent naming
+parse = V
 
 
-pg_version = "1.6.2"
+pg_version = "1.7.0"
 
 
 known_issues_file = "known_issues.json"
@@ -2159,6 +2158,31 @@ def weka_cluster_checks(skip_mtu_check, target_version):
                     )
 
             spinner.stop()
+            
+    # Added 2025-11-22
+    #  There may be CX-4 compatibility issues (see WEKAPP-540128)
+    if V(target_version) >= V("4.4"):
+        INFO("CHECKING FOR CX-4 NICs")
+        spinner = Spinner("  Retrieving Data  ", color=colors.OKCYAN)
+        spinner.start()
+
+        cx4_found = False
+        weka_nics = json.loads(
+            subprocess.check_output(["weka", "cluster", "container", "net", "-J"])
+        )
+        for container in weka_nics:
+            for nic in container["net_devices"]:
+                if "connectx-4" in nic["device"].lower():
+                    cx4_found = True
+                    break
+        if cx4_found:
+            BAD("CX4 detected. (The ConnectX-4 Lx ethernet NICs from NVIDIA Mellanox were officially announced " \
+                "as End of Life (EOL) on November 2020). We currently recommend delaying upgrades to 4.4.x " \
+                "which may cause unintended service disruption on servers using these cards in DPDK mode." \
+                "Using UDP mode is a viable workaround.")
+        else:
+            GOOD(f"No CX-4 NICs located")
+        spinner.stop()
 
     return (
         backend_hosts,
@@ -2672,6 +2696,79 @@ supported_os = {
             "almalinux": ["8.10", "9.4"],
         },
     },
+    "5.0": {
+        "backends_clients": {
+            "centos": [
+                "8.0",
+                "8.1",
+                "8.2",
+                "8.3",
+                "8.4",
+                "8.5",
+            ],
+            "rhel": [
+                "8.0",
+                "8.1",
+                "8.2",
+                "8.3",
+                "8.4",
+                "8.5",
+                "8.6",
+                "8.7",
+                "8.8",
+                "8.9",
+                "8.10",
+                "9.0",
+                "9.1",
+                "9.2",
+                "9.3",
+                "9.4",
+            ],
+            "rocky": [
+                "8.6",
+                "8.7",
+                "8.8",
+                "8.9",
+                "8.10",
+                "9.0",
+                "9.1",
+                "9.2",
+                "9.3",
+                "9.4",
+            ],
+            "sles": [],
+            "ubuntu": [
+                "18.04.0",
+                "18.04.1",
+                "18.04.2",
+                "18.04.3",
+                "18.04.4",
+                "18.04.5",
+                "18.04.6",
+                "20.04.0",
+                "20.04.1",
+                "20.04.2",
+                "20.04.3",
+                "20.04.4",
+                "20.04.5",
+                "20.04.6",
+                "22.04.0",
+                "22.04.1",
+                "22.04.2",
+                "22.04.3",
+                "22.04.4",
+                "22.04.5",
+                "22.04.6",
+            ],
+            "amzn": ["17.09", "17.12", "18.03", "2"],
+        },
+        "clients_only": {
+            "sles": ["12.5", "15.2", "15.4", "15.5", "15.6"],
+            "ol": ["8.9", "9"],
+            "debian": ["10", "12"],
+            "almalinux": ["8.10", "9.4"],
+        },
+    },
 }
 
 
@@ -2809,9 +2906,18 @@ def get_rpc_max_connections():
             ["weka", "nfs", "custom-options", "-J"], text=True
         )
         data = json.loads(output)
+        # If JSON is null, empty, or not a dict → return default
+        if not isinstance(data, dict):
+            return 1024
+
         nfs_options = data.get("customNfsOptions", "")
-        match = re.search(r"RPC_Max_Connections\s*=\s*(\d+)", nfs_options)
-        return int(match.group(1)) if match else 1024  # Default if not explicitly set
+
+        if nfs_options:
+            match = re.search(r"RPC_Max_Connections\s*=\s*(\d+)", nfs_options)
+            return int(match.group(1)) if match else 1024
+
+        return 1024  # No customNfsOptions key → return default
+
     except Exception as e:
         WARN(f"Error getting RPC_Max_Connections: {e}")
         return 1024
@@ -3259,6 +3365,7 @@ def check_os_kernel(host_name, result):
 
 def check_kernel_arguments(host_name, result, target_weka_version):
     known_issues = {}
+    found_any_problem = False
 
     try:
         with open(known_issues_file, "r") as file:
@@ -3269,32 +3376,32 @@ def check_kernel_arguments(host_name, result, target_weka_version):
     except json.JSONDecodeError:
         WARN(f"Error: {known_issues_file} contains invalid JSON.")
         return
-
+   
     current_kernel_arguments = result.split()
-    issues = known_issues.get(target_weka_version, [])
+ 
+    for key, issue in known_issues.items():
+        if not issue.get("version_from"):
+            for vmin, vmax in zip(issue['version_min'], issue['version_max'] + [None]*len(issue['version_min']) ):
+                if major(target_weka_version) == major(vmin): # only compare same major version
+                    min_ok = V(target_weka_version) >= V(vmin)
+                    max_ok = True if not vmax else V(target_weka_version) < V(vmax)
+                    if min_ok and max_ok:
+                        problematic_kernel_arguments = issue['problematic_kernel_arguments']
+                        description = issue['description']
+                        internal_reference = issue['internal_reference']
 
-    if not issues:
-        GOOD(f"Host {host_name} has no known problematic kernel arguments for WEKA version {target_weka_version}.")
-        return
+                        if not problematic_kernel_arguments:
+                            continue
 
-    found_any_problem = False
-
-    for issue in issues:
-        description = issue.get("description", "No description available.")
-        internal_reference = issue.get("internal_reference", "No internal reference available.")
-        problematic_kernel_arguments = set(issue.get("problematic_kernel_arguments", []))
-
-        if not problematic_kernel_arguments:
-            continue
-
-        for problematic_kernel_argument in problematic_kernel_arguments:
-            if problematic_kernel_argument in current_kernel_arguments:
-                BAD(
-                    f"Host {host_name} kernel has been booted with '{problematic_kernel_argument}', which is affected by: {description}. Contact Customer Success and refer to {internal_reference}."
-                )
-                found_any_problem = True
-            else:
-                GOOD(f"Host {host_name} kernel does not feature '{problematic_kernel_argument}'.")
+                        for problematic_kernel_argument in problematic_kernel_arguments:
+                            if problematic_kernel_argument in current_kernel_arguments:
+                                BAD(
+                                   f"Host {host_name} kernel has been booted with '{problematic_kernel_argument}', which is affected by: {description}. Contact Customer Success and refer to {internal_reference}."
+                                   )
+                                found_any_problem = True
+                            else:
+                                GOOD(f"Host {host_name} kernel does not feature '{problematic_kernel_argument}'.")
+                    
 
     if not found_any_problem:
         GOOD(f"Host {host_name} kernel arguments do not contain any known problematic values for WEKA version {target_weka_version}.")
@@ -4198,6 +4305,8 @@ def cluster_summary():
     WARN(f"Total Warnings: {num_warn}")
     BAD(f"Total Checks Failed: {num_bad}")
 
+def major(v):
+    return v.split('.')[0]
 
 def check_known_issues(
     upgrade_hops,
@@ -4218,10 +4327,10 @@ def check_known_issues(
             known_issues = json.load(file)
 
         if not isinstance(known_issues, dict):
-            WARN(
-                f"Error: Invalid format in {known_issues_file}. Expected a dictionary."
-            )
+            WARN(f"Error: Invalid format in {known_issues_file}. Expected a dictionary.")
             return
+
+        found_issues = "" 
 
         # Determine enabled protocols
         enabled_protocols = set()
@@ -4232,65 +4341,44 @@ def check_known_issues(
         if weka_smb:
             enabled_protocols.add("smb")
 
-        for i, version in enumerate(upgrade_hops):
-            issues = known_issues.get(version, [])
-            if not issues:
-                print(
-                    f"{colors.OKCYAN}No known issues for version {version}.{colors.ENDC}"
-                )
-                continue
-
-            # Set previous_version to the current version if it's the only version in the path
-            previous_version = upgrade_hops[i - 1] if i > 0 else upgrade_hops[0]
-
-            print(
-                f"\n{colors.WARNING}Known issues for version {version}:\n{colors.ENDC}"
-            )
-            for issue in issues:
-                description = issue.get("description", "No description available.")
-                related_protocols = set(issue.get("related_protocols", []))
-                related_link_types = set(issue.get("link_types", []))
-                problematic_kernel_arguments = set(
-                    issue.get("problematic_kernel_arguments", [])
-                )
-                version_from = issue.get("version_from", [])
-                requires_obj_store = issue.get("obj_store", False)
-
-                # Normalize version_from to a list
-                if not isinstance(version_from, list):
-                    version_from = [version_from]
-
-                # Initialize skipped reason
-                skipped_reason = []
-
-                # Check if the current version matches any version_from values
-                if version_from:
-                    if not any(V(previous_version) == V(vf) for vf in version_from):
-                        skipped_reason.append(
-                            f"Upgrade not from expected version(s): {', '.join(version_from)}"
-                        )
-
-                # Check protocols
-                if related_protocols and not (related_protocols & enabled_protocols):
-                    skipped_reason.append(
-                        f"Protocols not enabled: {', '.join(related_protocols)}"
-                    )
-
-                # Check link type
-                if related_link_types and link_type not in related_link_types:
-                    skipped_reason.append(
-                        f"Link type mismatch: {', '.join(related_link_types)}"
-                    )
-
-                # Check object store
-                if requires_obj_store and not obj_store_enabled:
-                    skipped_reason.append("Object store not enabled")
-
-                # Print issue or skipped reason
-                if not skipped_reason:
-                    WARN(f" {description}")
+        for index, version in enumerate(upgrade_hops):
+            for key, issue in known_issues.items():
+                if index == 0:
+                    if issue.get("version_from"):
+                        if V(version) <= V(issue['version_from']) and V(upgrade_hops[-1]) > V(issue['version_from']):
+                            found_issues += (f"{key}: {description}\n")
                 else:
-                    GOOD(f'[SKIPPED] {description} ({" + ".join(skipped_reason)})')
+                    if not issue.get("version_from"):
+                        for vmin, vmax in zip(issue['version_min'], issue['version_max'] + [None]*len(issue['version_min']) ):
+                            if major(version) == major(vmin): # only compare same major version
+                                min_ok = V(version) >= V(vmin)
+                                max_ok = True if not vmax else V(version) < V(vmax)
+                                if min_ok and max_ok:
+                                    description = issue.get("description", "No description available.")
+                                    related_protocols = set(issue.get("related_protocols", []))
+                                    related_link_types = set(issue.get("link_types", []))
+                                    requires_obj_store = issue.get("obj_store", False)
+
+                                    # Check protocols
+                                    if related_protocols and not (related_protocols & enabled_protocols):
+                                        continue
+
+                                    # Check link type
+                                    if related_link_types and link_type not in related_link_types:
+                                        continue
+
+                                    # Check object store
+                                    if requires_obj_store and not obj_store_enabled:
+                                        continue
+
+                                    found_issues += (f"{key}: {description}\n")
+
+                    
+        if found_issues:                       
+            print(f"\n{colors.WARNING}Known issues for version {version}:{colors.ENDC}")
+            print(f"{colors.WARNING}{found_issues}{colors.ENDC}")
+        else:
+            print(f"{colors.OKCYAN}No known issues for version {version}.{colors.ENDC}")
 
     except FileNotFoundError:
         WARN(f"Error: {known_issues_file} not found.")
@@ -4601,3 +4689,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
