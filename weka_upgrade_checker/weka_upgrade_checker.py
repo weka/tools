@@ -28,7 +28,7 @@ if sys.version_info < (3, 8):
 
 from packaging.version import parse as V, InvalidVersion
 
-pg_version = "1.7.1"
+pg_version = "1.7.2"
 
 
 known_issues_file = "known_issues.json"
@@ -4325,6 +4325,7 @@ def check_known_issues(
 
         for index, version in enumerate(upgrade_hops):
             for key, issue in known_issues.items():
+                description = issue.get("description", "No description available.")
                 if index == 0:
                     if issue.get("version_from"):
                         if V(version) <= V(issue['version_from']) and V(upgrade_hops[-1]) > V(issue['version_from']):
@@ -4336,7 +4337,6 @@ def check_known_issues(
                                 min_ok = V(version) >= V(vmin)
                                 max_ok = True if not vmax else V(version) < V(vmax)
                                 if min_ok and max_ok:
-                                    description = issue.get("description", "No description available.")
                                     related_protocols = set(issue.get("related_protocols", []))
                                     related_link_types = set(issue.get("link_types", []))
                                     requires_obj_store = issue.get("obj_store", False)
