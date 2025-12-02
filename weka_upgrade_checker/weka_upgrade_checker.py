@@ -26,9 +26,19 @@ if sys.version_info < (3, 8):
     print("Must have Python version 3.8 or later installed.")
     sys.exit(1)
 
+# Ensure 'packaging' is installed
+try:
+    import pkg_resources
+    pkg_resources.get_distribution("packaging")
+except (pkg_resources.DistributionNotFound, ImportError):
+    print("The 'packaging' module is not installed. Installing it now...")
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "packaging"])
+
 from packaging.version import parse as V, InvalidVersion
 
-pg_version = "1.7.2"
+parse = V 
+
+pg_version = "1.7.3"
 
 
 known_issues_file = "known_issues.json"
@@ -2145,18 +2155,18 @@ def weka_cluster_checks(skip_mtu_check, target_version):
     #  There may be CX-4 compatibility issues (see WEKAPP-540128)
     if V(target_version) >= V("4.4"):
         INFO("CHECKING FOR CX-4 NICs")
-        spinner = Spinner("  Retrieving Data  ", color=colors.OKCYAN)
-        spinner.start()
 
         cx4_found = False
-        weka_nics = json.loads(
-            subprocess.check_output(["weka", "cluster", "container", "net", "-J"])
-        )
-        for container in weka_nics:
-            for nic in container["net_devices"]:
-                if "connectx-4" in nic["device"].lower():
-                    cx4_found = True
-                    break
+
+        for key, val in host_hw_info.items():
+            if host_hw_info.get(key) is not None:
+                try:
+                    if "connectx-4" in (str(val["eths"]).lower()):
+                        cx4_found = True
+                        break
+                except Exception as e:
+                    print(f"Error processing host {key}: {e}")
+
         if cx4_found:
             BAD("CX4 detected. (The ConnectX-4 Lx ethernet NICs from NVIDIA Mellanox were officially announced " \
                 "as End of Life (EOL) on November 2020). We currently recommend delaying upgrades to 4.4.x " \
@@ -2164,7 +2174,6 @@ def weka_cluster_checks(skip_mtu_check, target_version):
                 "Using UDP mode is a viable workaround.")
         else:
             GOOD(f"No CX-4 NICs located")
-        spinner.stop()
 
     return (
         backend_hosts,
