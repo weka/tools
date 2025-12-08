@@ -37,6 +37,12 @@ except (pkg_resources.DistributionNotFound, ImportError):
 from packaging.version import parse as V, InvalidVersion
 
 parse = V 
+<<<<<<< HEAD
+=======
+
+pg_version = "1.7.3"
+
+>>>>>>> origin/cst-vragosta-upgrade-checker-cleanup
 
 pg_version = "1.8.0"
 known_issues_file = "known_issues.json"
