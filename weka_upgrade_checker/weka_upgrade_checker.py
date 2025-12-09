@@ -37,12 +37,6 @@ except (pkg_resources.DistributionNotFound, ImportError):
 from packaging.version import parse as V, InvalidVersion
 
 parse = V 
-<<<<<<< HEAD
-=======
-
-pg_version = "1.7.3"
-
->>>>>>> origin/cst-vragosta-upgrade-checker-cleanup
 
 pg_version = "1.8.0"
 known_issues_file = "known_issues.json"
@@ -334,9 +328,9 @@ def check_version():
 
     if online_version:
         if V(pg_version) < V(online_version):
-            BAD(f"You are not running the latest version of the WEKA upgrade checker - current version {pg_version}, latest version {online_version}")
+            BAD(f"You are not running the latest version of the WEKA upgrade checker - current version {pg_version}, latest version {online_version}\n")
         else:
-            GOOD(f"Running the latest version of WEKA upgrade checker {pg_version}")
+            GOOD(f"Running the latest version of WEKA upgrade checker {pg_version}\n")
     else:
         WARN(f"Unable to verify if this is the latest version of the WEKA upgrade checker - currentlly running {pg_version}\n" \
               "Check https://github.com/weka/tools/blob/master/weka_upgrade_checker/version.txt to validate."
@@ -414,7 +408,7 @@ def weka_cluster_checks(target_version):
     weka_buckets = weka_info["buckets"]["total"]
     link_type = weka_info["net"]["link_layer"]
 
-    GOOD(f"CLUSTER:{cluster_name} STATUS:{weka_status} VERSION:{weka_versions} UUID:{uuid}")
+    GOOD(f"CLUSTER:{cluster_name} STATUS:{weka_status} VERSION:{weka_versions} UUID:{uuid}\n")
 
     if any(c.isalpha() for c in weka_versions) and not weka_versions.endswith("-hcfs"):
         INFO("CHECKING WEKA HOTFIX VERSION")
@@ -423,8 +417,9 @@ def weka_cluster_checks(target_version):
     weka_version = clean_version_string(weka_versions)
 
     if V(weka_version) < V("4.2.0"):
-        BAD(f"This version of the WEKA upgrade checker will not work with clusters running releases older than 4.2.0." \
+        BAD(f"This version of the WEKA upgrade checker will not work with clusters running releases older than 4.2.0.\n" \
              "Please contact the WEKA Customer Success Team for assistance.")
+        sys.exit(1)
 
     if V(target_version) <= V(weka_version):
         BAD(f"Target version {target_version} should be higher than cluster version {weka_version}, cannot continue")
@@ -439,8 +434,6 @@ def weka_cluster_checks(target_version):
             self.is_up = machine_json["status"]
             self.uid = str(machine_json["uid"])
             self.versions = machine_json["versions"][0]
-            if V("4.1") <= V(weka_version) < V("4.4.6"):
-                self.containers = machine_json["hosts"]["map"]
 
     INFO("CHECKING FOR WEKA ALERTS")
     try:
@@ -1528,7 +1521,7 @@ def evaluate_nfs_failover_risk(connection_counts, rpc_max_connections, good_nfs_
     if len(good_nfs_hosts) == 1:
         host = good_nfs_hosts[0]
         WARN(
-            f"Only one NFS host ({host.get('hostname', host.get('ip', 'unknown'))}) is configured — NFS client connection will be interrupted during an upgrade or failure due to lack of redundancy."
+            f"Only one NFS host ({host.get('hostname', host.get('ip', 'unknown'))}) is configured — NFS client connections will be interrupted during an upgrade or failure due to lack of redundancy."
         )
         return
 
@@ -1617,19 +1610,21 @@ def free_space_check_data(results):
 
 
 def free_space_check_logs(results):
-    for result in results:
-        hname = result[0]
-        result = result[1].split(" ")
-        logs_partition_used = int(result[0])
-        free_capacity_needed = logs_partition_used * 1.5
-        logs_partition_available = int(result[1])
-        if (free_capacity_needed) > (logs_partition_available):
+    for hname, output in results:
+        used_str, avail_str = output.split()
+
+        used = int(used_str)
+        avail = int(avail_str)
+
+        percent_free = int((avail / (used + avail)) * 100)
+
+        if percent_free < 20:
             WARN(
-                f"Host: {hname} does not have enough free capacity, need to free up "
-                + f"~{(free_capacity_needed - logs_partition_available) / 1000}G"
+                f"Host: {hname} /opt/weka/logs partition is only {percent_free}% free. "
+                "Consider freeing space."
             )
         else:
-            GOOD(f"Host: {hname} has adequate free space")
+            GOOD(f"Host: {hname} has {percent_free}% free — OK.")
 
 
 def weka_container_status(results, weka_version):
@@ -2058,16 +2053,30 @@ def host_port_connectivity(results):
 
 def parse_available_memory(mem_output):
     for line in mem_output.splitlines():
-        if line.startswith("Mem:"):
+        if line.strip().startswith("Mem:"):
             parts = line.split()
             available = parts[-1]
-            # Convert to GiB float
-            if available.endswith('Gi'):
-                return float(available[:-2])
-            elif available.endswith('Mi'):
-                return float(available[:-2]) / 1024
-            elif available.endswith('Ti'):
-                return float(available[:-2]) * 1024
+
+            m = re.match(r"([\d\.]+)([KMGTP]i?)$", available)
+            if not m:
+                return 0.0
+
+            num, unit = m.groups()
+            num = float(num)
+
+            multipliers = {
+                "K": 1/1024/1024,
+                "Ki": 1/1024/1024,
+                "M": 1/1024,
+                "Mi": 1/1024,
+                "G": 1,
+                "Gi": 1,
+                "T": 1024,
+                "Ti": 1024,
+            }
+
+            return num * multipliers[unit]
+
     return 0.0
 
 def available_memory_check(host_name, result):
@@ -2080,7 +2089,7 @@ def available_memory_check(host_name, result):
         min_required = max(5, num_containers * 1)
 
         if available_gib < min_required:
-            WARN(f"{host_name} has only {available_gib:.2f}GiB available — below {min_required}GiB minimum")
+            WARN(f"{host_name} has only {available_gib:.2f}GiB available for {num_containers} containers — below {min_required}GiB minimum")
         elif available_gib < num_containers:
             WARN(f"{host_name} has only {available_gib:.2f}GiB available for {num_containers} containers")
         else:
@@ -2922,9 +2931,9 @@ def check_known_issues(
             enabled_protocols.add("smb")
 
         for index, version in enumerate(upgrade_hops):
-            for key, issue in known_issues.items():
-                description = issue.get("description", "No description available.")
-                if index != 0:
+            if index != 0:
+                for key, issue in known_issues.items():
+                    description = issue.get("description", "No description available.")
                     if issue.get("version_from"):
                         if V(version) <= V(issue['version_from']) and V(upgrade_hops[-1]) > V(issue['version_from']):
                             found_issues += (f"{key}: {description}\n")
@@ -2964,11 +2973,11 @@ def check_known_issues(
 
                                 found_issues += (f"{key}: {description}\n")
 
-        if found_issues:                       
-            print(f"\n{colors.WARNING}Known issues for version {version}:{colors.ENDC}")
-            print(f"{colors.WARNING}{found_issues}{colors.ENDC}")
-        else:
-            print(f"{colors.OKCYAN}No known issues for version {version}.{colors.ENDC}")
+                if found_issues:                       
+                    print(f"\n{colors.WARNING}Known issues for version {version}:{colors.ENDC}")
+                    print(f"{colors.WARNING}{found_issues}{colors.ENDC}")
+                else:
+                    print(f"{colors.OKCYAN}No known issues for version {version}.{colors.ENDC}")
 
     except FileNotFoundError:
         WARN(f"Error: {known_issues_file} not found.")
@@ -3127,8 +3136,8 @@ def target_version_check(
             total_hops = len(upgrade_hops) - 1
             if total_hops == 1:
                 total_hops = "Direct path upgrade"
-            print(f"{colors.OKCYAN}Total upgrade hops: {total_hops}.{colors.ENDC}")
-            print(f"{colors.OKCYAN}Upgrade path: {' > '.join(upgrade_hops)}{colors.ENDC}\n")
+            print(f"{colors.OKCYAN}Total upgrade hops: {total_hops}{colors.ENDC}")
+            print(f"{colors.OKCYAN}Upgrade path: {' --> '.join(upgrade_hops)}{colors.ENDC}\n")
 
             # Check for known issues with protocol filtering
             check_known_issues(
@@ -3157,7 +3166,7 @@ def main():
         dest="check_specific_backend_hosts",
         nargs="+",
         default=False,
-        help="Provide one or more IPs or FQDNs of hosts to check, separated by space.",
+        help="Provide one or more IPs or FQDNs of hosts to check, separated by spaces.",
     )
     parser.add_argument(
         "-d",
@@ -3194,25 +3203,18 @@ def main():
         "-t",
         "--target-version",
         type=str,
-        required=True,
         help="Specify the target version for upgrade path calculation.",
-    )
-    parser.add_argument(
-        "-p",
-        "--upgrade-path",
-        default="upgrade_path.json",
-        help="Path to the upgrade map JSON file.",
     )
 
     args = parser.parse_args()
+    if args.version:
+        print("WEKA upgrade checker version: %s" % pg_version)
+        sys.exit(0)
+
     if not args.target_version:
         parser.error("--target-version is required.")
 
     ssh_identity = args.ssh_identity or None
-
-    if args.version:
-        print("WEKA upgrade checker version: %s" % pg_version)
-        sys.exit(0)
 
     if args.run_all_checks:
         weka_cluster_results = weka_cluster_checks(
@@ -3317,7 +3319,7 @@ def main():
             target_version_check(
                 weka_version,
                 args.target_version,
-                args.upgrade_path,
+                "upgrade_path.json",
                 s3_enabled,
                 weka_nfs,
                 weka_smb,
