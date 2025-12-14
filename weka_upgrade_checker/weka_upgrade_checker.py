@@ -824,6 +824,7 @@ def weka_cluster_checks(target_version):
     host_hw_info = json.loads(subprocess.check_output(cmd + backend_ips))
     spinner.stop()
 
+
     INFO("CHECKING FOR SMALL WEKA FILE SYSTEMS")
     wekafs = json.loads(subprocess.check_output(["weka", "fs", "-J"]))
     small_wekafs = []
@@ -842,6 +843,66 @@ def weka_cluster_checks(target_version):
     else:
         WARN2(f"Found small file systems\n")
         printlist(small_wekafs, 5)
+
+    ##########################################
+    # OFED CHECK - START                     #
+    ##########################################
+    if V(target_version) < V("4.4"):
+        INFO("VALIDATING BACKEND SUPPORTED NIC DRIVERS INSTALLED")
+        spinner = Spinner("  Processing Data   ", color=colors.OKCYAN)
+        spinner.start()
+
+        supported_ofed = (
+            "5.1", "5.4", "5.6", "5.7",
+            "5.8", "5.9", "23.04", "23.10"
+        )
+
+        hostname_found_ofed = set()
+        ofed_versions = {}
+
+        for hostname, hw_info in host_hw_info.items():
+            # Validate structure
+            if not isinstance(hw_info, dict):
+                WARN(f"Unexpected hw info format for host {hostname}: {type(hw_info)}")
+                continue
+
+            # Check for Mellanox NICs
+            if "Mellanox Technologies" not in str(hw_info.get("eths", "")):
+                continue
+
+            # Extract OFED version
+            ofed_info = hw_info.get("ofed", {})
+            result = ofed_info.get("host")
+
+            if not result:
+                WARN(f"No OFED version found for host {hostname}")
+                continue
+
+            ofed_versions[hostname] = result
+            hostname_found_ofed.add(hostname)
+
+            # Validate OFED version
+            if result.startswith(supported_ofed):
+                GOOD(
+                    f"Host: {hostname} on WEKA version {weka_version} "
+                    f"is running supported OFED version {result}"
+                )
+            else:
+                BAD(
+                    f"Host: {hostname} on WEKA version {weka_version} "
+                    f"does not support OFED version {result}"
+                )
+
+        # Post-validation checks
+        if not ofed_versions:
+            GOOD("Mellanox NICs not found")
+        elif len(set(ofed_versions.values())) > 1:
+            WARN("\nMismatch OFED versions found on backend hosts\n")
+            unique_versions = sorted(set(ofed_versions.values()))
+            printlist(unique_versions, 1)
+
+        spinner.stop()
+
 
     INFO("VERIFYING WEKA CLUSTER DRIVE STATUS")
     weka_drives = json.loads(
@@ -1142,11 +1203,7 @@ def weka_cluster_checks(target_version):
         else:
             GOOD(f"S3 mount options set correctly")
 
-    smb_cluster_hosts = json.loads(
-        subprocess.check_output(["weka", "smb", "cluster", "status", "-J"])
-    )
 
-    if s3_status:
         if V(target_version) >= V("4.4.9"):
             INFO("CHECKING WEKA S3 BUCKET LIFECYCLE RULES COMPLIANCE")
             try:
@@ -1204,34 +1261,6 @@ def weka_cluster_checks(target_version):
                     if "The lifecycle configuration does not exist" not in output:
                         WARN(f"Error checking bucket '{bucket_name}': {output}")
 
-
-    if len(smb_cluster_hosts) != 0:
-        INFO("CHECKING WEKA SMB CLUSTER HOST HEALTH")
-        bad_smb_hosts = []
-        failed_smbhosts = []
-        for host, status in smb_cluster_hosts.items():
-            if not status:
-                bad_smb_hosts += [host]
-
-        if not bad_smb_hosts:
-            GOOD(f"No failed SMB hosts found")
-        else:
-            WARN(f"Found SMB cluster hosts in not ready status:\n")
-            for smbhost in bad_smb_hosts:
-                for bkhost in backend_hosts:
-                    if smbhost == bkhost.typed_id:
-                        failed_smbhosts.append(
-                            dict(
-                                id=bkhost.typed_id,
-                                hostname=bkhost.hostname,
-                                ip=bkhost.ip,
-                                version=bkhost.sw_version,
-                                mode=bkhost.mode,
-                            )
-                        )
-
-            for host_info in failed_smbhosts:
-                WARN(f'Host: {host_info["id"]} {host_info["hostname"]} {host_info["ip"]} {host_info["version"]} {host_info["mode"]}')
 
     nfs_server_hosts = json.loads(
         subprocess.check_output(["weka", "nfs", "interface-group", "-J"])
@@ -2713,6 +2742,69 @@ def backend_host_checks(
             available_memory_check(host_name, result)
         else:
             WARN(f"Unable to determine available memory on Host: {host_name}")
+
+    #####################
+    #    SMBW Checks    #
+    #####################
+    # Load SMB cluster host statuses
+    output = subprocess.check_output(
+        ["weka", "smb", "cluster", "status", "-J"]
+    )
+    smb_cluster_hosts = json.loads(output)
+
+    if smb_cluster_hosts:
+        INFO("CHECKING WEKA SMB CLUSTER HOST HEALTH AND PATCH STATUS")
+        spinner = Spinner("  Processing Data   ", color=colors.OKCYAN)
+        spinner.start()
+
+        all_smb_hosts = []
+
+        # Build SMB host list by matching backend host typed_id
+        for smbhost, status in smb_cluster_hosts.items():
+            for bkhost in backend_hosts:
+                if smbhost == bkhost.typed_id:
+                    all_smb_hosts.append(
+                        {
+                            "id": bkhost.typed_id,
+                            "hostname": bkhost.hostname,
+                            "ip": bkhost.ip,
+                            "version": bkhost.sw_version,
+                            "mode": bkhost.mode,
+                            "status": status
+                        }
+                    )
+
+        # Run remote command to fetch tsmb-server version
+        results = parallel_execution(
+            all_smb_hosts,
+            [r"weka local exec -C smbw tsmb-server -v | awk 'NR==1 {print $NF}'"],
+            use_check_output=True,
+            ssh_identity=ssh_identity,
+        )
+
+        result_map = dict(results)
+        combined = [{**h, "tsmb_version": result_map.get(h["hostname"])} for h in all_smb_hosts]
+
+        for smb_host in combined:
+            if not smb_host["status"]:
+                WARN(
+                    f"SMBW host not active: "
+                    f"{smb_host['id']} - {smb_host['hostname']} - "
+                    f"{smb_host['ip']} - {smb_host['version']} - {smb_host['mode']} - {smb_host['tsmb_version']}"
+                )
+            else:
+                GOOD(
+                    f"SMBW host is active: "
+                    f"{smb_host['id']} - {smb_host['hostname']} - "
+                    f"{smb_host['ip']} - {smb_host['version']} - {smb_host['mode']} - {smb_host['tsmb_version']}"
+                )
+
+            if smb_host['tsmb_version'] == "3024.3.22.7":
+                BAD(
+                    f"SMBW Host {smb_host['hostname']} is running patched version ({smb_host['tsmb_version']}) "
+                    f"of tsmb-server -- please review with WEKA Customer Success"
+                )
+        spinner.stop()
 
 
 # client checks
