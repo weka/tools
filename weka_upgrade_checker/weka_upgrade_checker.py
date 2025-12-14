@@ -663,20 +663,6 @@ def weka_cluster_checks(target_version):
 
     spinner.stop()
 
-    INFO("Validating accepted versions list is empty")
-    accepted_version = json.loads(
-        subprocess.check_output(
-            ["weka", "debug", "upgrade", "accepted-versions", "list"] # 4.0+
-        )
-    )
-
-    if accepted_version and isinstance(accepted_version, list):
-        WARN(
-            "WEKA clients may have issues auto upgrading after rebooting current accepted version: "
-            + ", ".join(accepted_version)
-        )
-    else:
-        GOOD("Accepted version list is empty")
 
     INFO("Validating client target version")
     client_target_verion = (
