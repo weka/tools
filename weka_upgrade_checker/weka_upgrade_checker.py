@@ -2785,7 +2785,7 @@ def backend_host_checks(
                     f"{smb_host['ip']} - {smb_host['version']} - {smb_host['mode']} - {smb_host['tsmb_version']}"
                 )
 
-            if smb_host['tsmb_version'] == "3024.3.22.7":
+            if smb_host['tsmb_version'] in ("3024.3.22.7", "3024.3.22.9"):
                 BAD(
                     f"SMBW Host {smb_host['hostname']} is running patched version ({smb_host['tsmb_version']}) "
                     f"of tsmb-server -- please review with WEKA Customer Success"
