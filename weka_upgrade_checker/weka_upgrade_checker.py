@@ -2549,7 +2549,7 @@ def backend_host_checks(
     results = parallel_execution(
         ssh_bk_hosts,
         [
-            f"""for name in $(weka local ps --no-header -o name | grep -E '(dataserv|drive|compute|frontend)'); do du -sm {data_dir}"$name" 2>&1 | grep -v '^du:'; done"""
+            f"""for name in $(weka local ps --no-header -o name | grep -E '(dataserv|drive|compute|frontend|smbw)'); do du -sm {data_dir}"$name" 2>&1 | grep -v '^du:'; done"""
         ],
         use_check_output=True,
         ssh_identity=ssh_identity,
