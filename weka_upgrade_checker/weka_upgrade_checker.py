@@ -38,13 +38,10 @@ from packaging.version import parse as V, InvalidVersion
 
 parse = V 
 
-pg_version = "1.7.3"
-
-
+pg_version = "1.8.0"
 known_issues_file = "known_issues.json"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
-
 logging.basicConfig(
     handlers=[logging.FileHandler(filename=log_file_path, encoding="utf-8", mode="w")],
     format="%(asctime)s %(name)s:%(levelname)s:%(message)s",
@@ -53,13 +50,9 @@ logging.basicConfig(
 )
 
 if sys.stdout.encoding != "UTF-8":
-    if sys.version_info >= (3, 7):
+    if sys.version_info >= (3, 8):
         sys.stdout.reconfigure(encoding="utf-8")  # type: ignore
         sys.stdin.reconfigure(encoding="utf-8")  # type: ignore
-    else:
-        # This block is for Python 3.6
-        sys.stdout = open(sys.stdout.fileno(), mode="w", encoding="utf-8", buffering=1)
-        sys.stdin = open(sys.stdin.fileno(), mode="r", encoding="utf-8", buffering=1)
 
 try:
     "✅".encode(sys.stdout.encoding)
@@ -335,31 +328,19 @@ def check_version():
 
     if online_version:
         if V(pg_version) < V(online_version):
-            BAD(
-                f"You are not running the latest version of weka upgrade checker current version {pg_version} latest version {online_version}"
-            )
+            BAD(f"You are not running the latest version of the WEKA upgrade checker - current version {pg_version}, latest version {online_version}\n")
         else:
-            GOOD(f"Running the latest version of weka upgrade checker {pg_version}")
+            GOOD(f"Running the latest version of WEKA upgrade checker {pg_version}\n")
     else:
-        try:
-            with open("version.txt", "r") as file:
-                latest_version = file.read().strip("\n")
-                if V(pg_version) < V(latest_version):
-                    BAD(
-                        f"You are not running the latest version of weka upgrade checker current version {pg_version} latest version {latest_version}"
-                    )
-                else:
-                    GOOD(
-                        f"Running the latest version of weka upgrade checker {pg_version}"
-                    )
-        except FileNotFoundError:
-            BAD("Unable to check the latest version of weka upgrade checker.")
+        WARN(f"Unable to verify if this is the latest version of the WEKA upgrade checker - currentlly running {pg_version}\n" \
+              "Check https://github.com/weka/tools/blob/master/weka_upgrade_checker/version.txt to validate."
+            )
 
 
 check_version()
 
 
-def weka_cluster_checks(skip_mtu_check, target_version):
+def weka_cluster_checks(target_version):
     INFO("VERIFYING WEKA AGENT STATUS")
     weka_agent_service = subprocess.call(
         ["sudo", "service", "weka-agent", "status"],
@@ -375,10 +356,10 @@ def weka_cluster_checks(skip_mtu_check, target_version):
         )
 
     if weka_agent_service != 0:
-        BAD("Weka is NOT installed on host or the container is down, cannot continue")
+        BAD("WEKA is NOT installed on host or the container is down, cannot continue")
         sys.exit(1)
     else:
-        GOOD("Weka agent service is running")
+        GOOD("WEKA agent service is running")
 
     INFO("VERIFYING WEKA LOCAL CONTAINER STATUS")
     running_container = []
@@ -398,11 +379,11 @@ def weka_cluster_checks(skip_mtu_check, target_version):
         if con_status[container].get("type") == "weka" and con_status[container].get(
             "isRunning"
         ):
-            GOOD("Weka local container is running")
+            GOOD("WEKA local container is running")
             running_container += [container]
             break
     else:
-        BAD("Weka local container is NOT running, cannot continue")
+        BAD("WEKA local container is NOT running, cannot continue")
         sys.exit(1)
 
     INFO("WEKA USER LOGIN TEST")
@@ -411,7 +392,7 @@ def weka_cluster_checks(skip_mtu_check, target_version):
         BAD("Please login using weka user login first, cannot continue")
         sys.exit(1)
     else:
-        GOOD("Weka user login successful")
+        GOOD("WEKA user login successful")
 
     def clean_version_string(version_string):
         """Remove non-numeric suffixes from version string to use with python3.10"""
@@ -427,22 +408,21 @@ def weka_cluster_checks(skip_mtu_check, target_version):
     weka_buckets = weka_info["buckets"]["total"]
     link_type = weka_info["net"]["link_layer"]
 
-    GOOD(
-        f"CLUSTER:{cluster_name} STATUS:{weka_status} VERSION:{weka_versions} UUID:{uuid}"
-    )
+    GOOD(f"CLUSTER:{cluster_name} STATUS:{weka_status} VERSION:{weka_versions} UUID:{uuid}\n")
 
     if any(c.isalpha() for c in weka_versions) and not weka_versions.endswith("-hcfs"):
         INFO("CHECKING WEKA HOTFIX VERSION")
-        WARN(
-            f"The cluster may be running a specialized hotfix version of Weka {weka_versions}; confirm that required hotfixes are included in upgrade target version."
-        )
+        WARN(f"The cluster may be running a specialized hotfix version of WEKA {weka_versions}; confirm that required hotfixes are included in upgrade target version.")
 
     weka_version = clean_version_string(weka_versions)
 
+    if V(weka_version) < V("4.2.0"):
+        BAD(f"This version of the WEKA upgrade checker will not work with clusters running releases older than 4.2.0.\n" \
+             "Please contact the WEKA Customer Success Team for assistance.")
+        sys.exit(1)
+
     if V(target_version) <= V(weka_version):
-        BAD(
-            f"Target version {target_version} should be higher than cluster version {weka_version}, cannot continue"
-        )
+        BAD(f"Target version {target_version} should be higher than cluster version {weka_version}, cannot continue")
         sys.exit(1)
 
     class Machine:
@@ -454,8 +434,6 @@ def weka_cluster_checks(skip_mtu_check, target_version):
             self.is_up = machine_json["status"]
             self.uid = str(machine_json["uid"])
             self.versions = machine_json["versions"][0]
-            if V("4.1") <= V(weka_version) < V("4.4.6"):
-                self.containers = machine_json["hosts"]["map"]
 
     INFO("CHECKING FOR WEKA ALERTS")
     try:
@@ -472,9 +450,9 @@ def weka_cluster_checks(skip_mtu_check, target_version):
 
 
         if not weka_alerts_data:
-            GOOD("No Weka alerts present")
+            GOOD("No WEKA alerts present")
         else:
-            WARN(f"{len(weka_alerts_data)} Weka alerts present")
+            WARN(f"{len(weka_alerts_data)} WEKA alerts present")
 
             # Only perform DataIntegrity checks for target_version >= 5.0
             if V(target_version) >= V("5.0"):
@@ -500,22 +478,20 @@ def weka_cluster_checks(skip_mtu_check, target_version):
     except json.JSONDecodeError as e:
         logging.error(f"Failed to parse JSON: {e}")
         logging.debug(f"Raw output: {weka_alerts_json_string[:500]}")  # Show first 500 chars
-        WARN("Failed to decode Weka alerts JSON")
+        WARN("Failed to decode WEKA alerts JSON")
 
 
-    INFO("VERIFYING CUSTOM TLS CERT")
+    INFO("VERIFYING CUSTOM SSL_CERT_FILE")
     try:
         file_path = os.path.abspath(f"/opt/weka/dist/release/{weka_versions}.spec")
         with open(file_path, "r") as file:
             content = file.read()
             if "SSL_CERT_FILE" in content:
-                BAD(
-                    "Custom tls certificate detected, please contact Weka Support before upgrading"
-                )
+                BAD(f"SSL_CERT_FILE defined in {weka_versions}.spec. Please contact WEKA Support before upgrading")
             else:
-                GOOD("No custom tls certificate found")
+                GOOD("SSL_CERT_FILE not defined")
     except FileNotFoundError:
-        BAD("Unable to determine if custom tls certificate is installed.")
+        BAD("Unable to determine if SSL_CERT_FILE is defined.")
 
     INFO("VALIDATING SSL CERT KEY SIZE")
     if V(weka_version) >= V("4.2.7"):
@@ -540,21 +516,15 @@ def weka_cluster_checks(skip_mtu_check, target_version):
                     if match:
                         key_size = int(match.group(1))
                         if key_size < 2048:
-                            BAD(
-                                f"TLS cert key size is smaller than 2048 bits: current size {key_size} bits"
-                            )
+                            BAD(f"TLS cert key size is smaller than 2048 bits: current size {key_size} bits")
                         else:
-                            GOOD(
-                                f"TLS cert key size is 2048 bits or larger: current size {key_size} bits"
-                            )
+                            GOOD(f"TLS cert key size is 2048 bits or larger: current size {key_size} bits")
                     else:
                         WARN("Could not find key size in the certificate.")
                 else:
                     GOOD(f"TLS cert using non-rsa algorithm")
             except subprocess.CalledProcessError:
-                WARN(
-                    "Failed to read the certificate. Ensure the file path is correct and openssl is installed."
-                )
+                WARN("Failed to read the certificate. Ensure the file path is correct and openssl is installed.")
 
     INFO("CHECKING REBUILD STATUS")
     rebuild_status = json.loads(
@@ -563,235 +533,93 @@ def weka_cluster_checks(skip_mtu_check, target_version):
     if rebuild_status["progressPercent"] == 0:
         GOOD("No rebuild in progress")
     else:
-        WARN(f'Rebuild in progress {rebuild_status["progressPercent"]} complete')
+        WARN(f'Rebuild in progress - {rebuild_status["progressPercent"]} complete')
 
-    if V("4.0.5.39") <= V(weka_version) < V("4.1"):
-        INFO("VERIFYING WEKA BACKEND MACHINES")
-        weka_bk_machines = [
-            Machine(machine_json)
-            for machine_json in json.loads(
-                subprocess.check_output(
-                    ["weka", "cluster", "machines", "list", "--role", "backend", "-J"]
-                )
-            )
-        ]
-        backend_hosts = [
-            Host(host_json)
-            for host_json in json.loads(
-                subprocess.check_output(["weka", "cluster", "host", "-b", "-J"])
-            )
-        ]
-        ssh_bk_hosts = [
-            {"name": w_bk_machine.name, "ip": w_bk_machine.ip}
-            for w_bk_machine in weka_bk_machines
-            if w_bk_machine.is_up != "DOWN"
-        ]
-        down_bk_machine = []
-        for w_bk_machine in weka_bk_machines:
-            if w_bk_machine.is_up != "UP":
-                down_bk_machine += [
-                    w_bk_machine.name,
-                    w_bk_machine.ip,
-                    w_bk_machine.is_up,
-                ]
 
-        if not down_bk_machine:
-            GOOD("No failed hosts detected")
-        else:
-            WARN2(f"Unhealthy backend hosts detected\n")
-            printlist(down_bk_machine, 3)
-
-    elif V(weka_version) >= V("4.1"):
-        INFO("VERIFYING WEKA BACKEND MACHINES")
-        weka_bk_servers = [
-            Machine(machine_json)
-            for machine_json in json.loads(
-                subprocess.check_output(
-                    ["weka", "cluster", "servers", "list", "--role", "backend", "-J"]
-                )
+    INFO("VERIFYING WEKA BACKEND MACHINES")
+    weka_bk_servers = [
+        Machine(machine_json)
+        for machine_json in json.loads(
+            subprocess.check_output(
+                ["weka", "cluster", "servers", "list", "--role", "backend", "-J"] # 4.1+
             )
-        ]
-        backend_hosts = [
-            Host(host_json)
-            for host_json in json.loads(
-                subprocess.check_output(["weka", "cluster", "container", "-b", "-J"])
-            )
-        ]
-        ssh_bk_hosts = [
-            {"name": w_bk_server.name, "ip": w_bk_server.ip}
-            for w_bk_server in weka_bk_servers
-            if w_bk_server.is_up != "DOWN"
-        ]
-        down_bk_servers = []
-        for w_bk_server in weka_bk_servers:
-            if w_bk_server.is_up != "UP":
-                down_bk_servers += [w_bk_server.name, w_bk_server.ip, w_bk_server.is_up]
+        )
+    ]
+    backend_hosts = [
+        Host(host_json)
+        for host_json in json.loads(
+            subprocess.check_output(["weka", "cluster", "container", "-b", "-J"])
+        )
+    ]
+    ssh_bk_hosts = [
+        {"name": w_bk_server.name, "ip": w_bk_server.ip}
+        for w_bk_server in weka_bk_servers
+        if w_bk_server.is_up != "DOWN"
+    ]
+    down_bk_servers = []
+    for w_bk_server in weka_bk_servers:
+        if w_bk_server.is_up != "UP":
+            down_bk_servers += [w_bk_server.name, w_bk_server.ip, w_bk_server.is_up]
 
-        if not down_bk_servers:
-            GOOD("No failed hosts detected")
-        else:
-            WARN2(f"Unhealthy backend hosts detected\n")
-            printlist(down_bk_servers, 3)
+    if not down_bk_servers:
+        GOOD("No failed hosts detected")
     else:
-        INFO("VERIFYING WEKA BACKEND HOST STATUS")
-        backend_hosts = [
-            Host(host_json)
-            for host_json in json.loads(
-                subprocess.check_output(["weka", "cluster", "host", "-b", "-J"])
+        WARN2(f"Unhealthy backend hosts detected\n")
+        printlist(down_bk_servers, 3)
+
+
+    INFO("VERIFYING WEKA CLIENT MACHINES")
+    weka_cl_servers = [
+        Machine(machine_json)
+        for machine_json in json.loads(
+            subprocess.check_output(
+                ["weka", "cluster", "servers", "list", "--role", "client", "-J"] # 4.1+
             )
-        ]
-        ssh_bk_hosts = [
-            {"name": bkhost.hostname, "ip": bkhost.ip}
-            for bkhost in backend_hosts
-            if bkhost.is_up != "DOWN"
-        ]
-        down_bkhost = []
-        for bkhost in backend_hosts:
-            if bkhost.is_up != "UP":
-                down_bkhost += [
-                    bkhost.typed_id,
-                    bkhost.hostname,
-                    bkhost.ip,
-                    bkhost.sw_version,
-                    bkhost.mode,
-                ]
+        )
+    ]
+    client_hosts = [
+        Host(host_json)
+        for host_json in json.loads(
+            subprocess.check_output(["weka", "cluster", "container", "-c", "-J"])
+        )
+    ]
+    ssh_cl_hosts = [
+        {"name": w_cl_server.name, "ip": w_cl_server.ip}
+        for w_cl_server in weka_cl_servers
+        if w_cl_server.is_up
+    ]
+    down_cl_servers = []
+    for w_cl_server in weka_cl_servers:
+        if not w_cl_server.is_up:
+            down_cl_servers += [w_cl_server.name, w_cl_server.ip, w_cl_server.is_up]
 
-        if not down_bkhost:
-            GOOD("No failed hosts detected")
-        else:
-            WARN2(f"Unhealthy backend hosts detected\n")
-            printlist(down_bkhost, 5)
-
-    if V("4.0.6") <= V(weka_version) < V("4.1"):
-        INFO("VERIFYING WEKA CLIENT MACHINES")
-        weka_cl_machines = [
-            Machine(machine_json)
-            for machine_json in json.loads(
-                subprocess.check_output(
-                    ["weka", "cluster", "machines", "list", "--role", "client", "-J"]
-                )
-            )
-        ]
-        client_hosts = [
-            Host(host_json)
-            for host_json in json.loads(
-                subprocess.check_output(["weka", "cluster", "host", "-c", "-J"])
-            )
-        ]
-        ssh_cl_hosts = [
-            {"name": w_cl_machine.name, "ip": w_cl_machine.ip}
-            for w_cl_machine in weka_cl_machines
-            if w_cl_machine.is_up
-        ]
-        down_cl_machine = []
-        for w_cl_machine in weka_cl_machines:
-            if w_cl_machine.is_up != "UP":
-                down_cl_machine += (
-                    w_cl_machine.name,
-                    w_cl_machine.ip,
-                    w_cl_machine.is_up,
-                )
-
-        if not down_cl_machine:
-            GOOD("No failed clients detected")
-        else:
-            WARN2(f"Failed clients detected\n")
-            printlist(down_cl_machine, 3)
-
-    elif V(weka_version) >= V("4.1"):
-        INFO("VERIFYING WEKA CLIENT MACHINES")
-        weka_cl_servers = [
-            Machine(machine_json)
-            for machine_json in json.loads(
-                subprocess.check_output(
-                    ["weka", "cluster", "servers", "list", "--role", "client", "-J"]
-                )
-            )
-        ]
-        client_hosts = [
-            Host(host_json)
-            for host_json in json.loads(
-                subprocess.check_output(["weka", "cluster", "container", "-c", "-J"])
-            )
-        ]
-        ssh_cl_hosts = [
-            {"name": w_cl_server.name, "ip": w_cl_server.ip}
-            for w_cl_server in weka_cl_servers
-            if w_cl_server.is_up
-        ]
-        down_cl_servers = []
-        for w_cl_server in weka_cl_servers:
-            if not w_cl_server.is_up:
-                down_cl_servers += [w_cl_server.name, w_cl_server.ip, w_cl_server.is_up]
-
-        if not down_cl_servers:
-            GOOD("No failed hosts detected")
-        else:
-            WARN2(f"Unhealthy backend hosts detected\n")
-            printlist(down_cl_servers, 3)
-
+    if not down_cl_servers:
+        GOOD("No failed hosts detected")
     else:
-        INFO("VERIFYING WEKA CLIENT MACHINES")
-        client_hosts = [
-            Host(host_json)
-            for host_json in json.loads(
-                subprocess.check_output(["weka", "cluster", "host", "-c", "-J"])
-            )
-        ]
+        WARN2(f"Unhealthy backend hosts detected\n")
+        printlist(down_cl_servers, 3)
 
-        ssh_cl_hosts = [
-            {"name": cl_host.hostname, "ip": cl_host.ip}
-            for cl_host in client_hosts
-            if cl_host.is_up != "DOWN"
-        ]
+    INFO("Validating all containers are on the same version")
+    container_versions = [host.sw_release_string for host in backend_hosts] # 4.0+
 
-        down_clhost = []
-        for client in client_hosts:
-            if client.is_up != "UP":
-                down_clhost += [
-                    client.typed_id,
-                    client.hostname,
-                    client.ip[0],
-                    client.is_up,
-                    client.mode,
-                ]
+    unique_versions = set(container_versions)
 
-        if not down_clhost:
-            GOOD("No failed clients detected")
-        else:
-            WARN2(f"Failed clients detected\n")
-            printlist(down_clhost, 5)
-
-    if V(weka_version) >= V("4.0"):
-        INFO("Validating all containers are on the same version")
-
-        container_versions = [host.sw_release_string for host in backend_hosts]
-
-        unique_versions = set(container_versions)
-
-        if len(unique_versions) == 1:
-            GOOD(f"All containers are on the same version: {unique_versions.pop()}")
-        else:
-            BAD(
-                f"Multiple container versions detected: {', '.join(unique_versions)}. Upgrade is not possible until all container versions match."
-            )
+    if len(unique_versions) == 1:
+        GOOD(f"All containers are on the same version: {unique_versions.pop()}")
+    else:
+        BAD(
+            f"Multiple container versions detected: {', '.join(unique_versions)}. Upgrade is not possible until all container versions match."
+        )
 
     INFO("Validating compute processes avg CPU utilization")
     spinner = Spinner("  Processing Data   ", color=colors.OKCYAN)
     spinner.start()
     try:
-        if V(weka_version) >= V("4.0"):
-            compute_process_ids = json.loads(
-                subprocess.check_output(
-                    ["weka", "cluster", "process", "-b", "-F", "role=COMPUTE", "-J"]
-                )
+        compute_process_ids = json.loads(
+            subprocess.check_output(
+                ["weka", "cluster", "process", "-b", "-F", "role=COMPUTE", "-J"] # 4.0+
             )
-        else:
-            compute_process_ids = json.loads(
-                subprocess.check_output(
-                    ["weka", "cluster", "nodes", "-b", "-F", "role=COMPUTE", "-J"]
-                )
-            )
+        )
         node_ids = [item["node_id"] for item in compute_process_ids]
         just_node_ids = ",".join(
             [
@@ -799,55 +627,31 @@ def weka_cluster_checks(skip_mtu_check, target_version):
                 for node_id in node_ids
             ]
         )
-        if V(weka_version) >= V("4.0"):
-            percentage_str = (
-                subprocess.check_output(
-                    [
-                        "weka",
-                        "stats",
-                        "--stat",
-                        "CPU_UTILIZATION",
-                        "--interval",
-                        "21600",
-                        "--resolution-secs",
-                        "21600",
-                        "--no-header",
-                        "-o",
-                        "value",
-                        "--process-ids",
-                        just_node_ids,
-                    ]
-                )
-                .decode("utf-8")
-                .strip()
+
+        percentage_str = (
+            subprocess.check_output(
+                [
+                    "weka",
+                    "stats",
+                    "--stat",
+                    "CPU_UTILIZATION",
+                    "--interval",
+                    "21600",
+                    "--resolution-secs",
+                    "21600",
+                    "--no-header",
+                    "-o",
+                    "value",
+                    "--process-ids",
+                    just_node_ids,
+                ]
             )
-        else:
-            percentage_str = (
-                subprocess.check_output(
-                    [
-                        "weka",
-                        "stats",
-                        "--stat",
-                        "CPU_UTILIZATION",
-                        "--interval",
-                        "21600",
-                        "--resolution-secs",
-                        "21600",
-                        "--no-header",
-                        "-o",
-                        "value",
-                        "--node-ids",
-                        just_node_ids,
-                    ]
-                )
-                .decode("utf-8")
-                .strip()
-            )
+            .decode("utf-8")
+            .strip()
+        )
         percentage = float(percentage_str.replace("%", ""))
         if percentage >= 60:
-            WARN(
-                f"Compute processes CPU utilization too high at {percentage}%, upgrade may cause performance impact"
-            )
+            WARN(f"Compute processes CPU utilization too high at {percentage}%, upgrade may cause performance impact")
         else:
             GOOD("Compute processes CPU utilization ok")
     except subprocess.CalledProcessError as e:
@@ -859,131 +663,22 @@ def weka_cluster_checks(skip_mtu_check, target_version):
 
     spinner.stop()
 
-    host_to_process = {}
 
-    if not skip_mtu_check:
-        INFO("Checking client side MTU mismatch")
-        spinner = Spinner("  Processing Data   ", color=colors.OKCYAN)
-        spinner.start()
-
-        if V(weka_version) >= V("4.0.5.39"):
-            drive_process_ids = json.loads(
-                subprocess.check_output(
-                    ["weka", "cluster", "process", "-b", "-F", "role=DRIVES", "-J"]
-                )
-            )
-        else:
-            drive_process_ids = json.loads(
-                subprocess.check_output(
-                    ["weka", "cluster", "nodes", "-b", "-F", "role=DRIVES", "-J"]
-                )
-            )
-
-        for id in drive_process_ids:
-            process_id = id["node_id"]
-            container_id = id["host_id"]
-            if container_id not in host_to_process:
-                host_to_process[container_id] = process_id
-
-        for host_id, node_id in host_to_process.items():
-            just_node_ids = str(node_id).replace("NodeId<", "").replace(">", "")
-            host_to_process[host_id] = just_node_ids
-
-        def run_command(node_id):
-            try:
-                command = [
-                    "weka",
-                    "debug",
-                    "net",
-                    "peers",
-                    "--no-header",
-                    node_id,
-                    "--output",
-                    "inMTU,outMTU",
-                ]
-                result = (
-                    subprocess.check_output(command, stderr=subprocess.STDOUT)
-                    .decode("utf-8")
-                    .strip()
-                )
-                return f"Node {node_id}: {result}"
-            except subprocess.CalledProcessError as e:
-                return f"Node {node_id}: Error {str(e)}"
-
-        mtu_results = []
-
-        with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
-            futures = [
-                executor.submit(run_command, node_id)
-                for node_id in host_to_process.values()
-            ]
-            for future in concurrent.futures.as_completed(futures):
-                mtu_results.append(future.result())
-
-        mismatched_mtus = []
-
-        for result in mtu_results:
-            if "Node" in result:
-                parts = result.split()
-                node_id = parts[1].replace(":", "")
-                inMTU = parts[2]
-                outMTU = parts[3]
-            else:
-                parts = result.split()
-                inMTU = parts[0]
-                outMTU = parts[1]
-
-            if inMTU != outMTU:
-                mismatched_mtus.append(node_id)
-
-        if mismatched_mtus != []:
-            for node_id in mismatched_mtus:
-                node_idx = f"NodeId<{node_id}>"
-                for process in drive_process_ids:
-                    if process["node_id"] == node_idx:
-                        hostname = process.get("nodeInfo", {}).get(
-                            "hostname", "Unknown Host"
-                        )
-                        WARN(
-                            f"Asymmetric MTU detected for at least one peer of {hostname}, ProcessId: {node_idx}"
-                        )
-        else:
-            GOOD("MTU check completed successfully")
-
-    spinner.stop()
-
-    if V(weka_version) >= V("4.0"):
-        INFO("Validating accepted versions list is empty")
-        accepted_version = json.loads(
-            subprocess.check_output(
-                ["weka", "debug", "upgrade", "accepted-versions", "list"]
-            )
+    INFO("Validating client target version")
+    client_target_verion = (
+        subprocess.check_output(
+            ["weka", "cluster", "client-target-version", "show"] # 4.2+
         )
+        .decode()
+        .strip()
+    )
 
-        if accepted_version and isinstance(accepted_version, list):
-            WARN(
-                "Weka clients may have issues auto upgrading after rebooting current accepted version: "
-                + ", ".join(accepted_version)
-            )
-        else:
-            GOOD("Accepted version list is empty")
-
-    if V(weka_version) >= V("4.2"):
-        INFO("Validating client target version")
-        client_target_verion = (
-            subprocess.check_output(
-                ["weka", "cluster", "client-target-version", "show"]
-            )
-            .decode()
-            .strip()
+    if client_target_verion != "":
+        WARN(
+            f"WEKA clients will remain on version: {client_target_verion} after upgrading, due to client-target-version being set"
         )
-
-        if client_target_verion != "":
-            WARN(
-                f"Weka clients will remain on version: {client_target_verion} after upgrading"
-            )
-        else:
-            GOOD("Client target version is empty")
+    else:
+        GOOD("Client target version is empty")
 
     pre_1eib = (
         (V(weka_version) < V("4.2.16")) or
@@ -997,27 +692,22 @@ def weka_cluster_checks(skip_mtu_check, target_version):
 
     if pre_1eib and post_1eib:
         INFO("Validating if overrides needed for upgrade")
-        WARN("Before upgrading drives and compute containers, run: weka debug override add --key rpc.exception.version --value 1 --force. Remove the override before upgrading frontend containers.")
+        WARN("Before upgrading drives and compute containers, run: weka debug override add --key rpc.exception.version --value 1 --force. Remove the override once the upgrade has completed.")
 
-    if V(weka_version) >= V("4.1"):
-        INFO("Validating memory to SSD capacity ratio for upgrade")
-        total_compute_memory = sum(
-            host.memory
-            for host in backend_hosts
-            if "compute" in host.container and host.is_up
-        )
-        if total_compute_memory == 0:
-            WARN(
-                "No compute containers found or all are down — skipping memory to SSD ratio validation"
-            )
+    INFO("Validating memory to SSD capacity ratio for upgrade")
+    total_compute_memory = sum(
+        host.memory
+        for host in backend_hosts
+        if "compute" in host.container and host.is_up
+    )
+    if total_compute_memory == 0:
+        WARN("No compute containers found or all are down — skipping memory to SSD ratio validation")
+    else:
+        ratio = usable_capacity / total_compute_memory
+        if ratio > 2000:
+            WARN(f"The current ratio of {ratio} is below the recommended value and may cause performance issues during upgrade. It is recommended to increase compute RAM.")
         else:
-            ratio = usable_capacity / total_compute_memory
-            if ratio > 2000:
-                WARN(
-                    f"The current ratio of {ratio} is below the recommended value and may cause performance issues during upgrade. It is recommended to increase compute RAM."
-                )
-            else:
-                GOOD("Memory to SSD ratio validation ok")
+            GOOD("Memory to SSD ratio validation ok")
 
     INFO("CHECKING CLIENT COMPATIBLE VERSIONS")
     try:
@@ -1025,55 +715,24 @@ def weka_cluster_checks(skip_mtu_check, target_version):
         check_version = ".".join(sw_version[:2])
         cl_machine_need_upgrade = []
         cl_host_need_upgrade = []
-        if V("4.0") <= V(weka_version) < V("4.1"):
-            try:
-                for w_cl_machine in weka_cl_machines:
-                    clsw_version = w_cl_machine.versions.split(".")
-                    if ".".join(clsw_version[:2]) != check_version:
-                        cl_machine_need_upgrade += [w_cl_machine.name, w_cl_machine.ip]
-            except NameError as e:
-                WARN("Unable to determine client weka version")
 
-        elif V(weka_version) >= V("4.1"):
-            try:
-                for w_cl_server in weka_cl_servers:
-                    clsw_version = w_cl_server.versions.split(".")
-                    if ".".join(clsw_version[:2]) != check_version:
-                        cl_machine_need_upgrade += [w_cl_server.name, w_cl_server.ip]
-            except NameError as e:
-                WARN("Unable to determine client weka version")
-        else:
-            try:
-                for client in client_hosts:
-                    clsw_version = client.sw_version.split(".")
-                    if ".".join(clsw_version[:2]) != check_version:
-                        cl_host_need_upgrade += [
-                            client.typed_id,
-                            client.hostname,
-                            client.ip[0],
-                            client.is_up,
-                            client.mode,
-                        ]
-            except NameError as e:
-                WARN("Unable to determine client weka version")
+        try:
+            for w_cl_server in weka_cl_servers:
+                clsw_version = w_cl_server.versions.split(".")
+                if ".".join(clsw_version[:2]) != check_version:
+                    cl_machine_need_upgrade += [w_cl_server.name, w_cl_server.ip]
+        except NameError as e:
+            WARN("Unable to determine client WEKA version")
     except NameError as e:
-        WARN("Unable to determine client weka version")
+        WARN("Unable to determine client WEKA version")
 
-    if V(weka_version) >= V("4.0"):
-        if cl_machine_need_upgrade:
-            WARN(
-                f"Following client hosts must be upgraded to {weka_version} prior to weka upgrade\n"
-            )
-            printlist(cl_machine_need_upgrade, 2)
-        else:
-            GOOD("All clients hosts are up to date")
-    elif not cl_host_need_upgrade:
-        GOOD("All clients hosts are up to date")
-    else:
+    if cl_machine_need_upgrade:
         WARN(
-            f"Following client hosts must be upgraded to {weka_version} prior to weka upgrade\n"
+            f"The following client hosts must be upgraded to {weka_version} prior to the WEKA upgrade\n"
         )
-        printlist(cl_host_need_upgrade, 5)
+        printlist(cl_machine_need_upgrade, 2)
+    else:
+        GOOD("All clients hosts are up to date")
 
     INFO("VERIFYING WEKA PROCESS STATUS")
     weka_nodes = json.loads(subprocess.check_output(["weka", "cluster", "nodes", "-J"]))
@@ -1105,29 +764,19 @@ def weka_cluster_checks(skip_mtu_check, target_version):
     )
     snap_upload = []
     for snapshot in weka_snapshot:
-        if V(weka_version) < V("4.0.5"):
-            if snapshot["stowStatus"] == "UPLOADING":
-                snap_upload += [
-                    snapshot["id"],
-                    snapshot["filesystem"],
-                    snapshot["name"],
-                    snapshot["remote_object_status"],
-                    snapshot["remote_object_progress"],
-                ]
-        else:
-            if snapshot["remoteStowInfo"]["stowStatus"] == "UPLOADING":
-                snap_upload += [
-                    snapshot["snap_id"],
-                    snapshot["filesystem"],
-                    snapshot["name"],
-                    snapshot["remoteStowInfo"]["stowStatus"],
-                    snapshot["remoteStowInfo"]["stowProgress"],
-                ]
+        if snapshot["remoteStowInfo"]["stowStatus"] == "UPLOADING":
+            snap_upload += [
+                snapshot["snap_id"],
+                snapshot["filesystem"],
+                snapshot["name"],
+                snapshot["remoteStowInfo"]["stowStatus"],
+                snapshot["remoteStowInfo"]["stowProgress"],
+            ]
 
     if not snap_upload:
-        GOOD("Weka snapshot upload status ok")
+        GOOD("WWEKA snapshot upload status ok")
     else:
-        WARN(f"Following snapshots are uploading\n")
+        WARN(f"The following snapshots are uploading\n")
         printlist(snap_upload, 5)
 
     if V("4.2.12") <= V(target_version) <= V("4.4"):
@@ -1153,6 +802,15 @@ def weka_cluster_checks(skip_mtu_check, target_version):
         else:
             GOOD("Snapshot bucket count complete")
 
+    spinner = Spinner("  Retrieving cluster data...   ", color=colors.OKCYAN)
+    spinner.start()
+    backend_ips = [*{bkhost.ip for bkhost in backend_hosts}]
+    backend_host_names = [*{bkhost.hostname for bkhost in backend_hosts}]
+    cmd = ["weka", "cluster", "container", "info-hw", "-J"]
+    host_hw_info = json.loads(subprocess.check_output(cmd + backend_ips))
+    spinner.stop()
+
+
     INFO("CHECKING FOR SMALL WEKA FILE SYSTEMS")
     wekafs = json.loads(subprocess.check_output(["weka", "fs", "-J"]))
     small_wekafs = []
@@ -1167,385 +825,70 @@ def weka_cluster_checks(skip_mtu_check, target_version):
             ]
 
     if not small_wekafs:
-        GOOD("No small Weka file system found")
+        GOOD("No small WEKA file system found")
     else:
         WARN2(f"Found small file systems\n")
         printlist(small_wekafs, 5)
 
-    supported_ofed = {
-        "3.12": [
-            "4.7-1.0.0.1",
-            "4.6-1.0.1.1",
-            "4.5-1.0.1.0",
-            "4.4-2.0.7.0",
-            "4.4-1.0.0.0",
-            "4.3-1.0.1.0",
-            "4.2-1.2.0.0",
-            "4.2-1.0.0.0",
-            "4.7-3.2.9.0",
-            "4.9-2.2.4.0",
-            "5.0-2.1.8.0",
-            "5.1-2.5.8.0",
-            "5.1-2.6.2.0",
-        ],
-        "3.13": [
-            "4.7-1.0.0.1",
-            "4.6-1.0.1.1",
-            "4.5-1.0.1.0",
-            "4.4-2.0.7.0",
-            "4.4-1.0.0.0",
-            "4.3-1.0.1.0",
-            "4.2-1.2.0.0",
-            "4.2-1.0.0.0",
-            "4.7-3.2.9.0",
-            "4.9-2.2.4.0",
-            "5.0-2.1.8.0",
-            "5.1-2.5.8.0",
-            "5.1-2.6.2.0",
-            "5.6-1.0.3.3",
-            "5.6-2.0.9.0",
-            "5.8-1.1.2.1",
-        ],
-        "3.14": [
-            "5.1-2.5.8.0",
-            "5.1-2.6.2.0",
-            "5.4-3.4.0.0",
-            "5.6-1.0.3.3",
-            "5.6-2.0.9.0",
-            "5.8-1.1.2.1",
-        ],
-        "4.0": [
-            "5.1-2.5.8.0",
-            "5.1-2.6.2.0",
-            "5.4-3.4.0.0",
-            "5.6-1.0.3.3",
-            "5.6-2.0.9.0",
-            "5.8-1.1.2.1",
-        ],
-        "4.1": [
-            "5.1-2.5.8.0",
-            "5.1-2.6.2.0",
-            "5.4-3.4.0.0",
-            "5.4-3.5.8.0",
-            "5.6-1.0.3.3",
-            "5.6-2.0.9.0",
-            "5.7-1.0.2.0",
-            "5.8-1.1.2.1",
-        ],
-        "4.2": [
-            "5.1-2.5.8.0",
-            "5.1-2.6.2.0",
-            "5.4-3.4.0.0",
-            "5.4-3.5.8.0",
-            "5.6-1.0.3.3",
-            "5.6-2.0.9.0",
-            "5.7-1.0.2.0",
-            "5.8-1.1.2.1",
-            "5.9-0.5.6.0",
-            "23.10-0.5.5.0",
-            "23.10-1.1.9.0",
-        ],
-        "4.3": [
-            "5.1-2.5.8.0",
-            "5.1-2.6.2.0",
-            "5.4-3.4.0.0",
-            "5.4-3.5.8.0",
-            "5.6-1.0.3.3",
-            "5.6-2.0.9.0",
-            "5.7-1.0.2.0",
-            "5.8-1.1.2.1",
-            "5.8-3.0.7.0",
-            "5.9-0.5.6.0",
-            "23.10-0.5.5",
-            "23.04-1.1.3.0",
-            "23.10-0.5.5.0",
-        ],
-        "4.4": [
-            "5.1-2.5.8.0",
-            "5.1-2.6.2.0",
-            "5.4-3.4.0.0",
-            "5.4-3.5.8.0",
-            "5.6-1.0.3.3",
-            "5.6-2.0.9.0",
-            "5.7-1.0.2.0",
-            "5.8-1.1.2.1",
-            "5.8-3.0.7.0",
-            "5.9-0.5.6.0",
-            "23.10-0.5.5",
-            "23.04-1.1.3.0",
-            "23.10-0.5.5.0",
-            "24.04-0.7.0.0",
-        ],
-    }
-
-    # to handle non-standard PEP440 standard using parse
-    INFO("VALIDATING BACKEND SUPPORTED NIC DRIVERS INSTALLED")
-    spinner = Spinner("  Processing Data   ", color=colors.OKCYAN)
-    spinner.start()
-
-    backend_ips = [*{bkhost.ip for bkhost in backend_hosts}]
-    backend_host_names = [*{bkhost.hostname for bkhost in backend_hosts}]
-    hostname_from_api = []
-
-    if V(weka_version) >= V("4.1"):
-        cmd = ["weka", "cluster", "container", "info-hw", "-J"]
-    else:
-        cmd = ["weka", "cluster", "host", "info-hw", "-J"]
-
-    host_hw_info = json.loads(subprocess.check_output(cmd + backend_ips))
-
-    ofed_downlevel = []
-    current_version = {}
-
-    def clean_version_string(version_string):
-        """Remove non-numeric suffixes from version string."""
-        return version_string.split("-")[0]
-
-    def safe_parse(version_string):
-        """Try parsing the version using packaging; fallback to LooseVersion."""
-        cleaned_version = clean_version_string(version_string)
-        try:
-            # Try to parse with packaging's version parser (PEP 440 compliant)
-            return parse(cleaned_version)
-        except InvalidVersion:
-            try:
-                # Fallback to LooseVersion
-                cleaned_version = cleaned_version.replace("-", ".")
-                return V(cleaned_version)
-            except Exception as e:
-                print(f"Failed to parse version '{version_string}': {e}")
-                return None
-
-    for key, val in host_hw_info.items():
-        if host_hw_info.get(key) is not None:
-            try:
-                if "Mellanox Technologies" not in (str(val["eths"])):
-                    break
-                key = [
-                    *{bkhost.hostname for bkhost in backend_hosts if key == bkhost.ip}
-                ][0]
-                current_version[key] = []
-                result = val["ofed"]["host"]
-                current_version[key].append(result)
-                hostname_from_api.append(key)
-
-                result_parsed = safe_parse(result)
-                threshold_parsed = safe_parse("5.1-2.5.8.0")
-
-                if result_parsed < threshold_parsed:
-                    ofed_downlevel.append((key, result))
-
-                if result not in supported_ofed[check_version]:
-                    BAD(
-                        f"Host: {key} on weka version {weka_version} does not support OFED version {result}"
-                    )
-                else:
-                    GOOD(
-                        f"Host: {key} on weka version {weka_version} is running supported OFED version {result}"
-                    )
-
-            except Exception as e:
-                print(f"Error processing host {key}: {e}")
-
-    for bkhostnames in hostname_from_api:
-        if bkhostnames in backend_host_names:
-            backend_host_names.remove(bkhostnames)
-
-    if not current_version:
-        GOOD("Mellanox nics not found")
-    elif backend_host_names:
-        for bkhostname in backend_host_names:
-            WARN(f"Unable to determine Host: {bkhostname} OFED version")
-    elif len(set(current_version)) == 1:
-        WARN(f"\nMismatch OFED version found on backend hosts\n")
-        printlist(printlist, 1)
-
-    spinner.stop()
-
-    if V(weka_version) == V("3.12"):
-        INFO("VERIFYING RAID REDUCTION SETTINGS")
-        try:
-            wekacfg = json.loads(
-                subprocess.check_output(
-                    [
-                        "sudo",
-                        "weka",
-                        "local",
-                        "run",
-                        "--container",
-                        running_container[0],
-                        "--",
-                        "/weka/cfgdump",
-                    ]
-                )
-            )
-            raid_reduction = wekacfg["clusterInfo"]["reserved"][1]
-            if raid_reduction == 1:
-                GOOD("Raid Reduction is disabled")
-            else:
-                WARN(
-                    'Raid Reduction is ENABLED issue command "weka debug jrpc config_override_key '
-                    + 'key="clusterInfo.reserved[1]" value=1" to disable'
-                )
-        except (ValueError, RuntimeError, TypeError, NameError):
-            WARN("Unable able to determine Raid Reduction settings")
-
-    if V("3.13") <= V(weka_version) < V("3.14"):
-        INFO("VERIFYING UPGRADE ELIGIBILITY")
-        if link_type != "ETH":
-            WARN(f"Must upgrade to 3.14.3.16")
-        elif ofed_downlevel:
-            WARN(
-                f"Upgrading to 3.14 requires Minimum OFED 5.1-2.5.8.0, following hosts need ofed updating\n"
-            )
-            printlist(ofed_downlevel, 2)
-        else:
-            GOOD(f"Upgrade eligibility to Weka version 3.14+ verified")
-
-    if V("3.14") == V(weka_version) < V("3.14.2"):
-        INFO("VERIFYING UPGRADE ELIGIBILITY")
-        if link_type != "ETH":
-            BAD(
-                "Upgrading to 4.0 NOT supported. Requires Weka to use Ethernet connectivity and minimum "
-                + "Weka version 3.14.1 or greater"
-            )
-        else:
-            GOOD("Cluster is upgrade eligible")
-
-    if V(weka_version) == V("3.14"):
-        weka_drives = json.loads(
-            subprocess.check_output(["weka", "cluster", "drive", "-J"])
-        )
-        if "KIOXIA" in weka_drives:
-            WARN(
-                "Contact Weka Support prior to upgrading to Weka 4.0, System identified with Kioxia drives"
-            )
-        else:
-            GOOD("No problematic drives found")
-
-    if V(weka_version) == V("4.1.0.77"):
-        INFO("VERIFYING SSD SUPPORTED SIZE")
-        unsupported_drive = []
-        weka_drives = json.loads(
-            subprocess.check_output(["weka", "cluster", "drive", "-J"])
-        )
-        for drive in weka_drives:
-            if drive["size_bytes"] >= 30725970923520:
-                unsupported_drive += [
-                    drive["disk_id"],
-                    drive["node_id"],
-                    drive["status"],
-                    drive["size_bytes"],
-                    drive["hostname"],
-                ]
-
-        if not unsupported_drive:
-            GOOD("SSD Drive check complete")
-        else:
-            WARN(
-                "Found unsupport SSD drive size. Please contact WEKA Support prior to upgrading"
-            )
-            printlist(unsupported_drive, 5)
-
-    if V(weka_version) == V("3.14"):
-        INFO("VERIFYING SYSTEM OPTIMAL SETTINGS")
-        WARN(
-            'After upgrading to Weka 4.0.2, issue the following override command. "weka debug config '
-            + 'override clusterInfo.allowDietAggressively false"'
-        )
-
-    if V("4") <= V(weka_version) < V("4.04"):
-        INFO("VERIFYING RAID REDUCTION SETTINGS")
-        try:
-            wekacfg = json.loads(
-                subprocess.check_output(
-                    [
-                        "sudo",
-                        "weka",
-                        "local",
-                        "run",
-                        "--container",
-                        running_container[0],
-                        "--",
-                        "/weka/cfgdump",
-                    ]
-                )
-            )
-            raid_reduction = wekacfg["clusterInfo"]["allowDietAggressively"]
-            if not raid_reduction:
-                GOOD(f"Raid Reduction is disabled")
-            else:
-                WARN(
-                    "Raid Reduction is ENABLED. Please contact Weka support for instructions on how to disable"
-                )
-        except (ValueError, RuntimeError, TypeError, NameError):
-            WARN(f"Unable able to determine Raid Reduction settings")
-
-    if V(weka_version) == V("3.9"):
-        INFO("VERIFYING BUCKET L2BLOCK ENTRIES")
-        compute_node = []
+    ##########################################
+    # OFED CHECK - START                     #
+    ##########################################
+    if V(target_version) < V("4.4"):
+        INFO("VALIDATING BACKEND SUPPORTED NIC DRIVERS INSTALLED")
         spinner = Spinner("  Processing Data   ", color=colors.OKCYAN)
         spinner.start()
-        try:
-            weka_nodes = json.loads(
-                subprocess.check_output(["weka", "cluster", "nodes", "-J"])
-            )
-            for node in weka_nodes:
-                if node["roles"] == ["COMPUTE"] and node["status"] == "UP":
-                    compute_node += re.findall(r"\d+", node["node_id"])
-            buckets = {}
-            for id in compute_node:
-                buckets |= json.loads(
-                    subprocess.check_output(
-                        [
-                            "weka",
-                            "debug",
-                            "manhole",
-                            "--node",
-                            id,
-                            "buckets_get_registry_stats",
-                        ],
-                        stderr=subprocess.PIPE,
-                    )
+
+        supported_ofed = (
+            "5.1", "5.4", "5.6", "5.7",
+            "5.8", "5.9", "23.04", "23.10"
+        )
+
+        hostname_found_ofed = set()
+        ofed_versions = {}
+
+        for hostname, hw_info in host_hw_info.items():
+            # Validate structure
+            if not isinstance(hw_info, dict):
+                WARN(f"Unexpected hw info format for host {hostname}: {type(hw_info)}")
+                continue
+
+            # Check for Mellanox NICs
+            if "Mellanox Technologies" not in str(hw_info.get("eths", "")):
+                continue
+
+            # Extract OFED version
+            ofed_info = hw_info.get("ofed", {})
+            result = ofed_info.get("host")
+
+            if not result:
+                WARN(f"No OFED version found for host {hostname}")
+                continue
+
+            ofed_versions[hostname] = result
+            hostname_found_ofed.add(hostname)
+
+            # Validate OFED version
+            if result.startswith(supported_ofed):
+                GOOD(
+                    f"Host: {hostname} on WEKA version {weka_version} "
+                    f"is running supported OFED version {result}"
                 )
-            bucket_list = [[key, val] for key, val in buckets.items()]
-            error_bucket = []
-            for bucket in bucket_list:
-                if bucket[1]["entriesInL2Block"]["max"] > 477:
-                    error_bucket += bucket
-            if error_bucket:
-                WARN(
-                    "L2BLOCK error entries found, please contact weka support ref WEKAPP-229504\n"
-                )
-                for line in error_bucket:
-                    WARN(str(line))
             else:
-                GOOD("No error L2BLOCK entries found")
-        except Exception as e:
-            WARN("Unable able to determine entriesInL2Block entries {e}")
+                BAD(
+                    f"Host: {hostname} on WEKA version {weka_version} "
+                    f"does not support OFED version {result}"
+                )
+
+        # Post-validation checks
+        if not ofed_versions:
+            GOOD("Mellanox NICs not found")
+        elif len(set(ofed_versions.values())) > 1:
+            WARN("\nMismatch OFED versions found on backend hosts\n")
+            unique_versions = sorted(set(ofed_versions.values()))
+            printlist(unique_versions, 1)
 
         spinner.stop()
 
-    INFO("VERIFYING SSD FIRMWARE")
-    weka_drives = json.loads(
-        subprocess.check_output(["weka", "cluster", "drive", "-J"])
-    )
-    bad_firmware = []
-    for drive in weka_drives:
-        if drive["firmware"] == "EDB5002Q":
-            bad_firmware += [
-                drive["disk_id"],
-                drive["node_id"],
-                drive["status"],
-                drive["firmware"],
-                drive["hostname"],
-            ]
-
-    if not bad_firmware:
-        GOOD("SSD Firmware check completed")
-    else:
-        WARN("The following SSDs might be problematic please contact Weka Support\n")
-        printlist(bad_firmware, 5)
 
     INFO("VERIFYING WEKA CLUSTER DRIVE STATUS")
     weka_drives = json.loads(
@@ -1596,11 +939,9 @@ def weka_cluster_checks(skip_mtu_check, target_version):
                 )
 
         if not fake_drives:
-            GOOD(f"All drives configurations are valid")
+            GOOD(f"All drives' configurations are valid")
         else:
-            WARN(
-                f"The following Drives have an invalid configuration, please contact Weka Support prior to upgrading to V4.2\n"
-            )
+            WARN(f"The following Drives have an invalid configuration, please contact WEKA Customer Success prior to upgrading to V4.2\n")
             for fake_drive in fake_drives:
                 WARN(
                     "{disk_id} {committed_state}=>{target_state} lastPhaseOutSizeB={lastPhaseOutSizeB} sizeB={sizeB}".format(
@@ -1608,157 +949,127 @@ def weka_cluster_checks(skip_mtu_check, target_version):
                     )
                 )
 
-    if V(weka_version) >= V("4.0"):
-        INFO("VERIFYING DUPLICATE BACKEND CONTAINER CORE CPU IDS")
+    INFO("VERIFYING DUPLICATE BACKEND CONTAINER CORE CPU IDS")
 
-        backend_host_names = [*{bkhost.hostname for bkhost in backend_hosts}]
+    backend_host_names = [*{bkhost.hostname for bkhost in backend_hosts}]
 
-        def check_duplicate_core_ids(containers):
-            seen_ids = set()
-            for container in containers:
-                for core_id in container["cores_ids"]:
-                    if core_id in seen_ids:
-                        return True
-                    seen_ids.add(core_id)
-            return False
+    def check_duplicate_core_ids(containers):
+        seen_ids = set()
+        for container in containers:
+            for core_id in container["cores_ids"]:
+                if core_id in seen_ids:
+                    return True
+                seen_ids.add(core_id)
+        return False
 
-        def validate_core_ids(containers):
-            has_error = False
-            host_id = None
+    def validate_core_ids(containers):
+        has_error = False
+        host_id = None
 
-            for container in containers:
-                if 4294967295 in container["cores_ids"]:
-                    if host_id is None:
-                        host_id = container["cores_ids"][0]
-                    elif container["cores_ids"][0] != host_id:
-                        WARN(
-                            f'Container {container["container"]} core ids set to AUTO while other containers manually set to core_id. Containers should have manually assigned core ids'
-                        )
-                        has_error = True
+        for container in containers:
+            if 4294967295 in container["cores_ids"]:
+                if host_id is None:
+                    host_id = container["cores_ids"][0]
+                elif container["cores_ids"][0] != host_id:
+                    WARN(f'Container {container["container"]} core ids set to AUTO while other containers manually set to core_id. Containers should have manually assigned core ids')
+                    has_error = True
 
-            return has_error
+        return has_error
 
-        combined_data = {}
-        container_by_host = []
-        for host in backend_host_names:
-            for bkhost in backend_hosts:
-                if host == bkhost.hostname:
-                    container_by_host.append(
-                        {
-                            "hostname": bkhost.hostname,
-                            "container": bkhost.container,
-                            "cores": bkhost.cores,
-                            "cores_ids": bkhost.cores_ids,
-                        }
-                    )
-
-        for item in container_by_host:
-            hostname = item["hostname"]
-            container_info = {
-                "container": item["container"],
-                "cores": item["cores"],
-                "cores_ids": item["cores_ids"],
-            }
-
-            if hostname in combined_data:
-                combined_data[hostname].append(container_info)
-            else:
-                combined_data[hostname] = [container_info]
-
-        for hostname, containers in combined_data.items():
-            if check_duplicate_core_ids(containers):
-                WARN(
-                    f"Duplicate core ids found in different containers on host {hostname}."
+    combined_data = {}
+    container_by_host = []
+    for host in backend_host_names:
+        for bkhost in backend_hosts:
+            if host == bkhost.hostname:
+                container_by_host.append(
+                    {
+                        "hostname": bkhost.hostname,
+                        "container": bkhost.container,
+                        "cores": bkhost.cores,
+                        "cores_ids": bkhost.cores_ids,
+                    }
                 )
 
-            if validate_core_ids(containers):
-                WARN(
-                    f"Core ids set to AUTO in one container on host {hostname} while other containers have manually assigned core_ids."
-                )
+    for item in container_by_host:
+        hostname = item["hostname"]
+        container_info = {
+            "container": item["container"],
+            "cores": item["cores"],
+            "cores_ids": item["cores_ids"],
+        }
 
-        if not any(
-            check_duplicate_core_ids(containers) or validate_core_ids(containers)
-            for containers in combined_data.values()
-        ):
-            GOOD(f"No misconfigured core ids found.")
+        if hostname in combined_data:
+            combined_data[hostname].append(container_info)
+        else:
+            combined_data[hostname] = [container_info]
+
+    for hostname, containers in combined_data.items():
+        if check_duplicate_core_ids(containers):
+            WARN(f"Duplicate core ids found in different containers on host {hostname}.")
+
+        if validate_core_ids(containers):
+            WARN(f"Core ids set to AUTO in one container on host {hostname} while other containers have manually assigned core_ids.")
+
+    if not any(
+        check_duplicate_core_ids(containers) or validate_core_ids(containers)
+        for containers in combined_data.values()
+    ):
+        GOOD(f"No misconfigured core ids found.")
 
     INFO("VERIFYING WEKA TRACES STATUS")
-    if V(weka_version) >= V("3.10"):
-        weka_traces = json.loads(
-            subprocess.check_output(["weka", "debug", "traces", "status", "-J"])
-        )
-        if weka_traces["enabled"]:
-            GOOD(f"Weka traces are enabled")
-        else:
-            WARN(
-                'Weka traces are NOT enabled, enable Weka traces using "weka debug traces start"'
-            )
+    weka_traces = json.loads(
+        subprocess.check_output(["weka", "debug", "traces", "status", "-J"]) # 3.10+
+    )
+    if weka_traces["enabled"]:
+        GOOD(f"WEKA traces are enabled")
     else:
-        weka_traces = subprocess.check_output(
-            [
-                "sudo",
-                "weka",
-                "local",
-                "exec",
-                "/usr/local/bin/supervisorctl",
-                "status",
-                "weka-trace-dumper",
-            ]
-        ).decode("utf-8")
-        if "RUNNING" in weka_traces:
-            GOOD(f"Weka traces are enabled")
-        else:
-            WARN(
-                'Weka traces are NOT enabled, enable Weka traces using "weka local exec '
-                + '/usr/local/bin/supervisorctl stop weka-trace-dumper"'
-            )
-
-    if V(weka_version) >= V("3.9"):
-        INFO("CHECKING FOR MANUAL WEKA OVERRIDES")
-        override_list = []
-        manual_overrides = json.loads(
-            subprocess.check_output(["weka", "debug", "override", "list", "-J"])
+        WARN(
+            'WEKA traces are NOT enabled, enable Weka traces using "weka debug traces start"'
         )
-        if manual_overrides:
-            WARN("Manual Weka overrides found\n")
-            for override in manual_overrides:
-                override_list += [
-                    override["override_id"],
-                    override["key"],
-                    override["value"],
-                    override["bucket_id"],
-                    override["enabled"],
-                ]
 
-        else:
-            GOOD("No manual Weka overrides found")
+    INFO("CHECKING FOR MANUAL WEKA OVERRIDES")
+    override_list = []
+    manual_overrides = json.loads(
+        subprocess.check_output(["weka", "debug", "override", "list", "-J"]) # 3.9+
+    )
+    if manual_overrides:
+        WARN("Manual WEKA overrides found\n")
+        for override in manual_overrides:
+            override_list += [
+                override["override_id"],
+                override["key"],
+                override["value"],
+                override["bucket_id"],
+                override["enabled"],
+            ]
+
+    else:
+        GOOD("No manual WEKA overrides found")
+
     if override_list:
         printlist(override_list, 5)
 
-    if V(weka_version) >= V("4.0"):
-        INFO("CHECKING FOR WEKA CLUSTER TASKS")
-        bg_task = []
-        cluster_tasks = json.loads(
-            subprocess.check_output(["weka", "cluster", "tasks", "-J"])
-        )
+    INFO("CHECKING FOR WEKA CLUSTER TASKS")
+    bg_task = []
+    cluster_tasks = json.loads(
+        subprocess.check_output(["weka", "cluster", "tasks", "-J"]) # 4.0+
+    )
 
-        for task in cluster_tasks:
-            if task["type"] != "FSCK":
-                WARN(
-                    "There are active cluster tasks that should be considered before running the upgrade."
-                )
-                bg_task += [task["type"], task["description"]]
-                printlist(bg_task, 2)
-                break
-        else:
-            GOOD("No unexpected Weka cluster tasks running")
+    for task in cluster_tasks:
+        if task["type"] != "FSCK":
+            WARN("There are active cluster tasks that should be considered before running the upgrade.")
+            bg_task += [task["type"], task["description"]]
+            printlist(bg_task, 2)
+            break
+    else:
+        GOOD("No unexpected WEKA cluster tasks running")
 
     INFO("CHECKING FOR WEKA BLACKLISTED NODES")
     blacklist = []
     if weka_info["nodes"]["blacklisted"] == 0:
-        GOOD(f"No Weka blacklisted nodes found")
+        GOOD(f"No WEKA blacklisted nodes found")
     else:
-        WARN(f"Weka blacklisted nodes found\n")
+        WARN(f"WEKA blacklisted nodes found\n")
         blacklist_list = json.loads(
             subprocess.check_output(["weka", "debug", "blacklist", "list", "-J"])
         )
@@ -1774,45 +1085,19 @@ def weka_cluster_checks(skip_mtu_check, target_version):
     if blacklist:
         printlist(blacklist, 5)
 
-    if V("3.14") <= V(weka_version) < V("4.2.7"):
+    if V(weka_version) < V("4.2.7"):
         INFO("CHECKING WEKA STATS RETENTION")
         stats_retention = json.loads(
             subprocess.check_output(["weka", "stats", "retention", "status", "-J"])
         )
         if stats_retention["retention_secs"] <= 172800:
-            GOOD("Weka stats retention settings are set correctly")
+            GOOD("WEKA stats retention settings are set correctly")
         else:
             WARN(
                 'Set stats retention to 1 days, execute "weka stats retention set --days 1". Following '
                 + 'the upgrade revert back using "weka stats retention set --days '
                 + '{int(stats_retention["retention_secs"] / 86400)}'
             )
-
-    if V(weka_version) <= V("4.0") and weka_info["hosts"]["total_count"] >= 100:
-        INFO("VERIFYING TLS SETTINGS")
-        try:
-            wekacfg = json.loads(
-                subprocess.check_output(
-                    [
-                        "sudo",
-                        "weka",
-                        "local",
-                        "run",
-                        "--container",
-                        running_container[0],
-                        "--",
-                        "/weka/cfgdump",
-                    ]
-                )
-            )
-            if (wekacfg["serializedTLSData"]["state"]) == "NONE":
-                GOOD("TLS is Disabled")
-            else:
-                WARN(
-                    "TLS is Enabled and should be disabled please contact Weka Support"
-                )
-        except (ValueError, RuntimeError, TypeError, NameError):
-            WARN(f"Unable able to determine TLS state")
 
     INFO("VERIFING HOSTS MACHINE IDENTIFIERS")
     spinner = Spinner("  Retrieving Data  ", color=colors.OKCYAN)
@@ -1855,8 +1140,7 @@ def weka_cluster_checks(skip_mtu_check, target_version):
         subprocess.check_output(["weka", "s3", "cluster", "-J"])
     )
 
-    if V(weka_version) > V("3.13"):
-        s3_status = s3_cluster_status["active"]
+    s3_status = s3_cluster_status["active"] # 3.13+
 
     if s3_status:
         bad_s3_hosts = []
@@ -1892,9 +1176,7 @@ def weka_cluster_checks(skip_mtu_check, target_version):
                         )
 
             for host_info in failed_s3host:
-                WARN(
-                    f'Host: {host_info["id"]} {host_info["hostname"]} {host_info["ip"]} {host_info["version"]} {host_info["mode"]}'
-                )
+                WARN(f'Host: {host_info["id"]} {host_info["hostname"]} {host_info["ip"]} {host_info["version"]} {host_info["mode"]}')
 
     if s3_status:
         INFO("CHECKING WEKA S3 MOUNT OPTIONS")
@@ -1903,17 +1185,11 @@ def weka_cluster_checks(skip_mtu_check, target_version):
         )
         mount_options = s3_mount_options["mount_options"]
         if "writecache" in mount_options:
-            WARN(
-                f'S3 mount options set incorrectly, update mount options using "weka s3 cluster update --mount-options readcache -f"'
-            )
+            WARN(f'S3 mount options set incorrectly, update mount options using "weka s3 cluster update --mount-options readcache -f"')
         else:
             GOOD(f"S3 mount options set correctly")
 
-    smb_cluster_hosts = json.loads(
-        subprocess.check_output(["weka", "smb", "cluster", "status", "-J"])
-    )
 
-    if s3_status:
         if V(target_version) >= V("4.4.9"):
             INFO("CHECKING WEKA S3 BUCKET LIFECYCLE RULES COMPLIANCE")
             try:
@@ -1972,38 +1248,6 @@ def weka_cluster_checks(skip_mtu_check, target_version):
                         WARN(f"Error checking bucket '{bucket_name}': {output}")
 
 
-
-    if V(weka_version) > V("3.10"):
-        if len(smb_cluster_hosts) != 0:
-            INFO("CHECKING WEKA SMB CLUSTER HOST HEALTH")
-            bad_smb_hosts = []
-            failed_smbhosts = []
-            for host, status in smb_cluster_hosts.items():
-                if not status:
-                    bad_smb_hosts += [host]
-
-            if not bad_smb_hosts:
-                GOOD(f"No failed SMB hosts found")
-            else:
-                WARN(f"Found SMB cluster hosts in not ready status:\n")
-                for smbhost in bad_smb_hosts:
-                    for bkhost in backend_hosts:
-                        if smbhost == bkhost.typed_id:
-                            failed_smbhosts.append(
-                                dict(
-                                    id=bkhost.typed_id,
-                                    hostname=bkhost.hostname,
-                                    ip=bkhost.ip,
-                                    version=bkhost.sw_version,
-                                    mode=bkhost.mode,
-                                )
-                            )
-
-                for host_info in failed_smbhosts:
-                    WARN(
-                        f'Host: {host_info["id"]} {host_info["hostname"]} {host_info["ip"]} {host_info["version"]} {host_info["mode"]}'
-                    )
-
     nfs_server_hosts = json.loads(
         subprocess.check_output(["weka", "nfs", "interface-group", "-J"])
     )
@@ -2015,7 +1259,7 @@ def weka_cluster_checks(skip_mtu_check, target_version):
                 subprocess.check_output(["weka", "nfs", "custom-options", "-J"])
             )
             if custom_options["customNfsOptions"]:
-                BAD(f"Custom NFS options specified -- please review with Weka CS")
+                BAD(f"Custom NFS options specified -- please review with WEKA Customer Success")
             else:
                 GOOD(f"No custom NFS options specified")
 
@@ -2089,67 +1333,6 @@ def weka_cluster_checks(skip_mtu_check, target_version):
                         WARN(
                             f'Host: {host_info["id"]} {host_info["hostname"]} {host_info["ip"]} {host_info["version"]} {host_info["mode"]}'
                         )
-
-
-    # need to understand how to handle exception.
-    if s3_status:
-        if V(weka_version) < V("4.1"):
-            INFO("CHECKING ETCD ENDPOINT HEALTH")
-            spinner = Spinner("  Retrieving Data  ", color=colors.OKCYAN)
-            spinner.start()
-
-            if s3_cluster_status["active"]:
-                etcd_status = []
-                output = None
-                retcode = subprocess.call(
-                    [
-                        "sudo",
-                        "weka",
-                        "local",
-                        "exec",
-                        "-C",
-                        "s3",
-                        "etcdctl",
-                        "endpoint",
-                        "health",
-                        "--cluster",
-                        "-w",
-                        "json",
-                    ],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.STDOUT,
-                )
-
-                if retcode == 0:
-                    etcd_status = json.loads(
-                        subprocess.check_output(
-                            [
-                                "sudo",
-                                "weka",
-                                "local",
-                                "exec",
-                                "-C",
-                                "s3",
-                                "etcdctl",
-                                "endpoint",
-                                "health",
-                                "--cluster",
-                                "-w",
-                                "json",
-                            ]
-                        )
-                    )
-                    for status in etcd_status:
-                        if not status["health"]:
-                            WARN(f'ETCD member on {status["endpoint"]} is down')
-                        else:
-                            GOOD(f'ETCD members are healthy {status["endpoint"]}')
-                else:
-                    WARN(
-                        f"ETCD DB is not healthy or not running please contact Weka support"
-                    )
-
-            spinner.stop()
             
     # Added 2025-11-22
     #  There may be CX-4 compatibility issues (see WEKAPP-540128)
@@ -2190,579 +1373,6 @@ def weka_cluster_checks(skip_mtu_check, target_version):
         good_nfs_hosts,
     )
 
-
-supported_os = {
-    "3.12": {
-        "backends_clients": {
-            "centos": [
-                "7.2",
-                "7.3",
-                "7.4",
-                "7.5",
-                "7.6",
-                "7.7",
-                "7.8",
-                "7.9",
-                "8.0",
-                "8.1",
-                "8.2",
-            ],
-            "rhel": [
-                "7.2",
-                "7.3",
-                "7.4",
-                "7.5",
-                "7.6",
-                "7.7",
-                "7.8",
-                "7.9",
-                "8.0",
-                "8.1",
-                "8.2",
-            ],
-            "rocky": [],
-            "sles": [],
-            "ubuntu": [
-                "18.04.0",
-                "18.04.1",
-                "18.04.2",
-                "18.04.3",
-                "18.04.4",
-                "18.04.5",
-                "20.04.0",
-                "20.04.1",
-            ],
-            "amzn": ["17.09", "17.12", "18.03", "2"],
-        },
-        "clients_only": {
-            "sles": ["12.5", "15.2"],
-        },
-    },
-    "3.13": {
-        "backends_clients": {
-            "centos": [
-                "7.2",
-                "7.3",
-                "7.4",
-                "7.5",
-                "7.6",
-                "7.7",
-                "7.8",
-                "7.9",
-                "8.0",
-                "8.1",
-                "8.2",
-                "8.3",
-                "8.4",
-                "8.5",
-            ],
-            "rhel": [
-                "7.2",
-                "7.3",
-                "7.4",
-                "7.5",
-                "7.6",
-                "7.7",
-                "7.8",
-                "7.9",
-                "8.0",
-                "8.1",
-                "8.2",
-                "8.3",
-                "8.4",
-                "8.5",
-                "8.6",
-                "8.7",
-            ],
-            "rocky": ["8.6", "8.7"],
-            "sles": [],
-            "ubuntu": [
-                "18.04.0",
-                "18.04.1",
-                "18.04.2",
-                "18.04.3",
-                "18.04.4",
-                "18.04.5",
-                "18.04.6",
-                "20.04.0",
-                "20.04.1",
-            ],
-            "amzn": ["17.09", "17.12", "18.03", "2"],
-        },
-        "clients_only": {
-            "sles": ["12.5", "15.2"],
-        },
-    },
-    "3.14": {
-        "backends_clients": {
-            "centos": [
-                "7.2",
-                "7.3",
-                "7.4",
-                "7.5",
-                "7.6",
-                "7.7",
-                "7.8",
-                "7.9",
-                "8.0",
-                "8.1",
-                "8.2",
-                "8.3",
-                "8.4",
-                "8.5",
-            ],
-            "rhel": [
-                "7.2",
-                "7.3",
-                "7.4",
-                "7.5",
-                "7.6",
-                "7.7",
-                "7.8",
-                "7.9",
-                "8.0",
-                "8.1",
-                "8.2",
-                "8.3",
-                "8.4",
-                "8.5",
-                "8.6",
-                "8.7",
-            ],
-            "rocky": ["8.6", "8.7"],
-            "sles": [],
-            "ubuntu": [
-                "18.04.0",
-                "18.04.1",
-                "18.04.2",
-                "18.04.3",
-                "18.04.4",
-                "18.04.5",
-                "18.04.6",
-                "20.04.0",
-                "20.04.1",
-            ],
-            "amzn": ["17.09", "17.12", "18.03", "2"],
-        },
-        "clients_only": {
-            "sles": ["12.5", "15.2"],
-        },
-    },
-    "4.0": {
-        "backends_clients": {
-            "centos": [
-                "7.2",
-                "7.3",
-                "7.4",
-                "7.5",
-                "7.6",
-                "7.7",
-                "7.8",
-                "7.9",
-                "8.0",
-                "8.1",
-                "8.2",
-                "8.3",
-                "8.4",
-                "8.5",
-            ],
-            "rhel": [
-                "7.2",
-                "7.3",
-                "7.4",
-                "7.5",
-                "7.6",
-                "7.7",
-                "7.8",
-                "7.9",
-                "8.0",
-                "8.1",
-                "8.2",
-                "8.3",
-                "8.4",
-                "8.5",
-                "8.6",
-                "8.7",
-            ],
-            "rocky": ["8.6", "8.7"],
-            "sles": [],
-            "ubuntu": [
-                "18.04.0",
-                "18.04.1",
-                "18.04.2",
-                "18.04.3",
-                "18.04.4",
-                "18.04.5",
-                "18.04.6",
-                "20.04.0",
-                "20.04.1",
-                "20.04.2",
-                "20.04.3",
-                "20.04.4",
-            ],
-            "amzn": ["17.09", "17.12", "18.03", "2"],
-        },
-        "clients_only": {
-            "sles": ["12.5", "15.2"],
-        },
-    },
-    "4.1": {
-        "backends_clients": {
-            "centos": [
-                "7.2",
-                "7.3",
-                "7.4",
-                "7.5",
-                "7.6",
-                "7.7",
-                "7.8",
-                "7.9",
-                "8.0",
-                "8.1",
-                "8.2",
-                "8.3",
-                "8.4",
-                "8.5",
-            ],
-            "rhel": [
-                "7.2",
-                "7.3",
-                "7.4",
-                "7.5",
-                "7.6",
-                "7.7",
-                "7.8",
-                "7.9",
-                "8.0",
-                "8.1",
-                "8.2",
-                "8.3",
-                "8.4",
-                "8.5",
-                "8.6",
-                "8.7",
-            ],
-            "rocky": ["8.6", "8.7"],
-            "sles": [],
-            "ubuntu": [
-                "18.04.0",
-                "18.04.1",
-                "18.04.2",
-                "18.04.3",
-                "18.04.4",
-                "18.04.5",
-                "18.04.6",
-                "20.04.0",
-                "20.04.1",
-                "20.04.2",
-                "20.04.3",
-                "20.04.4",
-                "20.04.5",
-            ],
-            "amzn": ["17.09", "17.12", "18.03", "2"],
-        },
-        "clients_only": {
-            "sles": ["12.5", "15.2"],
-        },
-    },
-    "4.2": {
-        "backends_clients": {
-            "centos": [
-                "7.2",
-                "7.3",
-                "7.4",
-                "7.5",
-                "7.6",
-                "7.7",
-                "7.8",
-                "7.9",
-                "8.0",
-                "8.1",
-                "8.2",
-                "8.3",
-                "8.4",
-                "8.5",
-            ],
-            "rhel": [
-                "7.2",
-                "7.3",
-                "7.4",
-                "7.5",
-                "7.6",
-                "7.7",
-                "7.8",
-                "7.9",
-                "8.0",
-                "8.1",
-                "8.2",
-                "8.3",
-                "8.4",
-                "8.5",
-                "8.6",
-                "8.7",
-            ],
-            "rocky": [
-                "9.4",
-                "9.3",
-                "9.2",
-                "9.1",
-                "9.0",
-                "8.10",
-                "8.9",
-                "8.8",
-                "8.7",
-                "8.6",
-            ],
-            "sles": [],
-            "ubuntu": [
-                "18.04.0",
-                "18.04.1",
-                "18.04.2",
-                "18.04.3",
-                "18.04.4",
-                "18.04.5",
-                "18.04.6",
-                "20.04.0",
-                "20.04.1",
-                "20.04.2",
-                "20.04.3",
-                "20.04.4",
-                "20.04.5",
-                "22.04.3",
-                "22.04.4",
-            ],
-            "amzn": ["17.09", "17.12", "18.03", "2"],
-        },
-        "clients_only": {
-            "sles": ["12.5", "15.2"],
-        },
-    },
-    "4.3": {
-        "backends_clients": {
-            "centos": [
-                "7.2",
-                "7.3",
-                "7.4",
-                "7.5",
-                "7.6",
-                "7.7",
-                "7.8",
-                "7.9",
-                "8.0",
-                "8.1",
-                "8.2",
-                "8.3",
-                "8.4",
-                "8.5",
-            ],
-            "rhel": [
-                "7.2",
-                "7.3",
-                "7.4",
-                "7.5",
-                "7.6",
-                "7.7",
-                "7.8",
-                "7.9",
-                "8.0",
-                "8.1",
-                "8.2",
-                "8.3",
-                "8.4",
-                "8.5",
-                "8.6",
-                "8.7",
-                "8.8",
-                "9.0",
-                "9.1",
-                "9.2",
-            ],
-            "rocky": [
-                "8.6",
-                "8.7",
-                "8.8",
-                "8.9",
-                "9.0",
-                "9.1",
-                "9.2",
-            ],
-            "sles": [],
-            "ubuntu": [
-                "18.04.0",
-                "18.04.1",
-                "18.04.2",
-                "18.04.3",
-                "18.04.4",
-                "18.04.5",
-                "18.04.6",
-                "20.04.0",
-                "20.04.1",
-                "20.04.2",
-                "20.04.3",
-                "20.04.4",
-                "20.04.5",
-                "22.04.0",
-                "22.04.1",
-                "22.04.2",
-                "22.04.3",
-                "22.04.4",
-                "22.04.6",
-            ],
-            "amzn": ["17.09", "17.12", "18.03", "2"],
-        },
-        "clients_only": {
-            "sles": ["12.5", "15.2"],
-        },
-    },
-    "4.4": {
-        "backends_clients": {
-            "centos": [
-                "8.0",
-                "8.1",
-                "8.2",
-                "8.3",
-                "8.4",
-                "8.5",
-            ],
-            "rhel": [
-                "8.0",
-                "8.1",
-                "8.2",
-                "8.3",
-                "8.4",
-                "8.5",
-                "8.6",
-                "8.7",
-                "8.8",
-                "8.9",
-                "8.10",
-                "9.0",
-                "9.1",
-                "9.2",
-                "9.3",
-                "9.4",
-            ],
-            "rocky": [
-                "8.6",
-                "8.7",
-                "8.8",
-                "8.9",
-                "8.10",
-                "9.0",
-                "9.1",
-                "9.2",
-                "9.3",
-                "9.4",
-            ],
-            "sles": [],
-            "ubuntu": [
-                "18.04.0",
-                "18.04.1",
-                "18.04.2",
-                "18.04.3",
-                "18.04.4",
-                "18.04.5",
-                "18.04.6",
-                "20.04.0",
-                "20.04.1",
-                "20.04.2",
-                "20.04.3",
-                "20.04.4",
-                "20.04.5",
-                "20.04.6",
-                "22.04.0",
-                "22.04.1",
-                "22.04.2",
-                "22.04.3",
-                "22.04.4",
-                "22.04.5",
-                "22.04.6",
-            ],
-            "amzn": ["17.09", "17.12", "18.03", "2"],
-        },
-        "clients_only": {
-            "sles": ["12.5", "15.2", "15.4", "15.5", "15.6"],
-            "ol": ["8.9", "9"],
-            "debian": ["10", "12"],
-            "almalinux": ["8.10", "9.4"],
-        },
-    },
-    "5.0": {
-        "backends_clients": {
-            "centos": [
-                "8.0",
-                "8.1",
-                "8.2",
-                "8.3",
-                "8.4",
-                "8.5",
-            ],
-            "rhel": [
-                "8.0",
-                "8.1",
-                "8.2",
-                "8.3",
-                "8.4",
-                "8.5",
-                "8.6",
-                "8.7",
-                "8.8",
-                "8.9",
-                "8.10",
-                "9.0",
-                "9.1",
-                "9.2",
-                "9.3",
-                "9.4",
-            ],
-            "rocky": [
-                "8.6",
-                "8.7",
-                "8.8",
-                "8.9",
-                "8.10",
-                "9.0",
-                "9.1",
-                "9.2",
-                "9.3",
-                "9.4",
-            ],
-            "sles": [],
-            "ubuntu": [
-                "18.04.0",
-                "18.04.1",
-                "18.04.2",
-                "18.04.3",
-                "18.04.4",
-                "18.04.5",
-                "18.04.6",
-                "20.04.0",
-                "20.04.1",
-                "20.04.2",
-                "20.04.3",
-                "20.04.4",
-                "20.04.5",
-                "20.04.6",
-                "22.04.0",
-                "22.04.1",
-                "22.04.2",
-                "22.04.3",
-                "22.04.4",
-                "22.04.5",
-                "22.04.6",
-            ],
-            "amzn": ["17.09", "17.12", "18.03", "2"],
-        },
-        "clients_only": {
-            "sles": ["12.5", "15.2", "15.4", "15.5", "15.6"],
-            "ol": ["8.9", "9"],
-            "debian": ["10", "12"],
-            "almalinux": ["8.10", "9.4"],
-        },
-    },
-}
-
-
 def ssh_check(host_name, result, ssh_bk_hosts):
     passwordless_ssh = result
     if passwordless_ssh != 0:
@@ -2778,6 +1388,15 @@ def ssh_check(host_name, result, ssh_bk_hosts):
 
 check_rhel_systemd_hosts = []
 
+try:
+    with open("supported_os.json", "r") as file:
+        supported_os = json.load(file)
+    if not isinstance(supported_os, dict):
+        WARN(f"Error: Invalid format in supported_os.json file. Expected a dictionary.")
+except FileNotFoundError:
+    WARN(f"Error: supported_os.json file not found.")
+except json.JSONDecodeError:
+    WARN(f"Error: supported_os.json file contains invalid JSON.")
 
 def check_os_release(
     host_name, result, weka_version, check_version, backend=True, client=False
@@ -2799,12 +1418,12 @@ def check_os_release(
                 if version not in supported_versions:
                     BAD(
                         f"Host {host_name} OS CentOS {version} is not supported with "
-                        f"weka version {weka_version}"
+                        f"WEKA version {weka_version}"
                     )
                 else:
                     GOOD(
                         f"Host {host_name} OS CentOS {version} is supported with "
-                        f"weka version {weka_version}"
+                        f"WEKA version {weka_version}"
                     )
             elif client:
                 try:
@@ -2816,12 +1435,12 @@ def check_os_release(
                 if version not in supported_versions and version not in client_only_versions:
                     BAD(
                         f"Host {host_name} OS CentOS {version} is not supported with "
-                        f"weka version {weka_version}"
+                        f"WEKA version {weka_version}"
                     )
                 else:
                     GOOD(
                         f"Host {host_name} OS CentOS {version} is supported with "
-                        f"weka version {weka_version}"
+                        f"WEKA version {weka_version}"
                     )
 
         else:
@@ -2860,12 +1479,12 @@ def check_os_release(
                 elif version not in supported_os_ids[os_id]:
                     BAD(
                         f"Host {host_name} OS {os_id} {version} is not supported with "
-                        f"weka version {weka_version}"
+                        f"WEKA version {weka_version}"
                     )
                 else:
                     GOOD(
                         f"Host {host_name} OS {os_id} {version} is supported with "
-                        f"weka version {weka_version}"
+                        f"WEKA version {weka_version}"
                     )
 
     except Exception as e:
@@ -2917,7 +1536,7 @@ def evaluate_nfs_failover_risk(connection_counts, rpc_max_connections, good_nfs_
     if len(good_nfs_hosts) == 1:
         host = good_nfs_hosts[0]
         WARN(
-            f"Only one NFS host ({host.get('hostname', host.get('ip', 'unknown'))}) is configured — NFS client connection will be interrupted during an upgrade or failure due to lack of redundancy."
+            f"Only one NFS host ({host.get('hostname', host.get('ip', 'unknown'))}) is configured — NFS client connections will be interrupted during an upgrade or failure due to lack of redundancy."
         )
         return
 
@@ -2945,9 +1564,9 @@ def evaluate_nfs_failover_risk(connection_counts, rpc_max_connections, good_nfs_
 def weka_agent_check(host_name, result):
     weka_agent_status = result
     if weka_agent_status == "not running":
-        BAD(f"Weka Agent Service is NOT running on host: {host_name}")
+        BAD(f"WEKA Agent Service is NOT running on host: {host_name}")
     else:
-        GOOD(f"Weka Agent Service is running on host: {host_name}")
+        GOOD(f"WEKA Agent Service is running on host: {host_name}")
 
 
 def time_check(host_name, result):
@@ -3006,19 +1625,21 @@ def free_space_check_data(results):
 
 
 def free_space_check_logs(results):
-    for result in results:
-        hname = result[0]
-        result = result[1].split(" ")
-        logs_partition_used = int(result[0])
-        free_capacity_needed = logs_partition_used * 1.5
-        logs_partition_available = int(result[1])
-        if (free_capacity_needed) > (logs_partition_available):
+    for hname, output in results:
+        used_str, avail_str = output.split()
+
+        used = int(used_str)
+        avail = int(avail_str)
+
+        percent_free = int((avail / (used + avail)) * 100)
+
+        if percent_free < 20:
             WARN(
-                f"Host: {hname} does not have enough free capacity, need to free up "
-                + f"~{(free_capacity_needed - logs_partition_available) / 1000}G"
+                f"Host: {hname} /opt/weka/logs partition is only {percent_free}% free. "
+                "Consider freeing space."
             )
         else:
-            GOOD(f"Host: {hname} has adequate free space")
+            GOOD(f"Host: {hname} has {percent_free}% free — OK.")
 
 
 def weka_container_status(results, weka_version):
@@ -3037,7 +1658,7 @@ def weka_container_status(results, weka_version):
     for host in containers_by_host.items():
         host_name = host[0]
         containers = host[1]
-        INFO2(f'{" " * 2}Checking weka container status on host {host_name}:')
+        INFO2(f'{" " * 2}Checking WEKA container status on host {host_name}:')
         for container in containers:
             name = container["name"]
             is_running = container["isRunning"]
@@ -3076,12 +1697,12 @@ def weka_mounts(results):
     for item in new_results.items():
         host_name = item[0]
         mounts = item[1].split("\n")
-        INFO2(f'{" " * 2} Checking for mounted Weka filesystems on host {host_name}:')
+        INFO2(f'{" " * 2} Checking for mounted WEKA filesystems on host {host_name}:')
         if mounts == [""]:
-            GOOD(f"No mounted Weka filesystems found")
+            GOOD(f"No mounted WEKA filesystems found")
         else:
             for mount in mounts:
-                WARN(f"Found Weka filesytems mounted {mount}")
+                WARN(f"Found WEKA filesytems mounted {mount}")
 
 
 def get_host_name(host_id, backend_hosts):
@@ -3095,10 +1716,10 @@ def frontend_check(host_name, result):
     frontend_mounts = result
     if frontend_mounts != "0":
         WARN(
-            f"Weka frontend process in use on host: {host_name}, contact Weka Support prior to upgrading"
+            f"WEKA frontend process in use on host: {host_name}, contact Weka Customer Success prior to upgrading"
         )
     else:
-        GOOD(f"Weka frontend process OK on host: {host_name}")
+        GOOD(f"WEKA frontend process OK on host: {host_name}")
 
 
 def protocol_host(backend_hosts, s3_enabled, weka_version):
@@ -3110,10 +1731,7 @@ def protocol_host(backend_hosts, s3_enabled, weka_version):
             subprocess.check_output(["weka", "s3", "cluster", "status", "-J"])
         )
         if weka_s3:
-            if V(weka_version) < V("4.3.5.105"):
-                S3 = list(weka_s3)
-            else:
-                S3 = [f"HostId<{entry['host_id']}>" for entry in weka_s3]
+            S3 = [f"HostId<{entry['host_id']}>" for entry in weka_s3]
 
     weka_smb = json.loads(subprocess.check_output(["weka", "smb", "cluster", "-J"]))
     SMB = list(weka_smb["sambaHosts"]) if weka_smb != [] else []
@@ -3296,7 +1914,7 @@ def data_dir_check(host_name, result):
         directory_by_host[host_name].append(item_list)
 
     for key, value in directory_by_host.items():
-        INFO2(f'{" " * 2}Checking weka container status on host {key}:')
+        INFO2(f'{" " * 2}Checking WEKA container status on host {key}:')
         for sublist in value:
             dir = sublist[0]
             use = sublist[1]
@@ -3311,13 +1929,13 @@ def weka_traces_size(host_name, result):
         subprocess.check_output(["weka", "debug", "traces", "status", "-J"])
     )
     weka_trace_ensure_free = weka_trace_status["servers_ensure_free"]["value"]
-    INFO2(f'{" " * 2}Checking free space for Weka traces on Host: {host_name}:')
+    INFO2(f'{" " * 2}Checking free space for WEKA traces on Host: {host_name}:')
     if weka_trace_ensure_free > int(result) * 1024:
         WARN(
-            f"Weka trace ensure free size of {weka_trace_ensure_free} is greater than Weka trace directory size of {int(result)*1024}"
+            f"WEKA trace ensure free size of {weka_trace_ensure_free} is greater than WEKA trace directory size of {int(result)*1024}"
         )
     else:
-        GOOD(f"Weka trace size OK")
+        GOOD(f"WEKA trace size OK")
 
 
 def cgroup_version(hostname, result):
@@ -3333,9 +1951,9 @@ def cgroup_version(hostname, result):
 def cpu_instruction_set(host_name, result):
     INFO2(f'{" " * 2}Validating cpu instruction set on Host: {host_name}:')
     if result is None or "":
-        BAD(f"Cannot update to Weka version 4.3 cpu instruction set avx2 missing")
+        BAD(f"Cannot update to WEKA version 4.3 CPU instruction set avx2 missing")
     else:
-        GOOD(f"Cpu instruction set validation successful")
+        GOOD(f"CPU instruction set validation successful")
 
 
 def check_os_kernel(host_name, result):
@@ -3348,7 +1966,7 @@ def check_os_kernel(host_name, result):
 
     if P == "true":
         BAD(
-            f"Host {host_name} kernel level not supported, please contact weka support prior to upgrade"
+            f"Host {host_name} kernel level not supported, please contact WEKA Customer Success prior to upgrade"
         )
     elif P == "false" or "not_rocky":
         GOOD(f"Host {host_name}: kernel level supports upgrade")
@@ -3371,28 +1989,40 @@ def check_kernel_arguments(host_name, result, target_weka_version):
     current_kernel_arguments = result.split()
  
     for key, issue in known_issues.items():
-        if not issue.get("version_from"):
-            for vmin, vmax in zip(issue['version_min'], issue['version_max'] + [None]*len(issue['version_min']) ):
-                if major(target_weka_version) == major(vmin): # only compare same major version
+        if issue.get("problematic_kernel_arguments"):
+            problematic_kernel_arguments = issue['problematic_kernel_arguments']
+
+            for vrange in issue.get("affected_versions", []):
+                vmin = vrange.get("min")
+                vmax = vrange.get("max")
+
+                # Determine whether version falls in this affected range
+                if vmax:
+                    # Standard closed-open range: [min, max)
+                    min_ok = (not vmin) or V(target_weka_version) >= V(vmin)
+                    max_ok = V(target_weka_version) < V(vmax)
+                else:
+                    # No max → affected if version <= min
                     min_ok = V(target_weka_version) >= V(vmin)
-                    max_ok = True if not vmax else V(target_weka_version) < V(vmax)
-                    if min_ok and max_ok:
-                        problematic_kernel_arguments = issue['problematic_kernel_arguments']
-                        description = issue['description']
-                        internal_reference = issue['internal_reference']
+                    max_ok = True
 
-                        if not problematic_kernel_arguments:
-                            continue
+                if min_ok and max_ok:
+                    description = issue['description']
+                    internal_reference = issue['internal_reference']
 
-                        for problematic_kernel_argument in problematic_kernel_arguments:
-                            if problematic_kernel_argument in current_kernel_arguments:
-                                BAD(
-                                   f"Host {host_name} kernel has been booted with '{problematic_kernel_argument}', which is affected by: {description}. Contact Customer Success and refer to {internal_reference}."
-                                   )
-                                found_any_problem = True
-                            else:
-                                GOOD(f"Host {host_name} kernel does not feature '{problematic_kernel_argument}'.")
-                    
+                    for problematic_kernel_argument in problematic_kernel_arguments:
+                        if problematic_kernel_argument in current_kernel_arguments:
+                            BAD(
+                                f"Host {host_name} kernel has been booted with "
+                                f"'{problematic_kernel_argument}', which is affected by: {description}. "
+                                f"Contact Customer Success and refer to {internal_reference}."
+                               )
+                            found_any_problem = True
+                        else:
+                            GOOD(
+                                 f"Host {host_name} kernel does not feature "
+                                 f"'{problematic_kernel_argument}'."
+                                )
 
     if not found_any_problem:
         GOOD(f"Host {host_name} kernel arguments do not contain any known problematic values for WEKA version {target_weka_version}.")
@@ -3426,7 +2056,7 @@ def host_port_connectivity(results):
         port_status_by_host[host].append(port_info)
 
     for host, port_list in port_status_by_host.items():
-        INFO2(f"Checking weka port connectivity on host {host}:")
+        INFO2(f"Checking WEKA port connectivity on host {host}:")
         for port_info in port_list:
             status, port = port_info.split()
             if status == "0":
@@ -3438,16 +2068,30 @@ def host_port_connectivity(results):
 
 def parse_available_memory(mem_output):
     for line in mem_output.splitlines():
-        if line.startswith("Mem:"):
+        if line.strip().startswith("Mem:"):
             parts = line.split()
             available = parts[-1]
-            # Convert to GiB float
-            if available.endswith('Gi'):
-                return float(available[:-2])
-            elif available.endswith('Mi'):
-                return float(available[:-2]) / 1024
-            elif available.endswith('Ti'):
-                return float(available[:-2]) * 1024
+
+            m = re.match(r"([\d\.]+)([KMGTP]i?)$", available)
+            if not m:
+                return 0.0
+
+            num, unit = m.groups()
+            num = float(num)
+
+            multipliers = {
+                "K": 1/1024/1024,
+                "Ki": 1/1024/1024,
+                "M": 1/1024,
+                "Mi": 1/1024,
+                "G": 1,
+                "Gi": 1,
+                "T": 1024,
+                "Ti": 1024,
+            }
+
+            return num * multipliers[unit]
+
     return 0.0
 
 def available_memory_check(host_name, result):
@@ -3460,7 +2104,7 @@ def available_memory_check(host_name, result):
         min_required = max(5, num_containers * 1)
 
         if available_gib < min_required:
-            WARN(f"{host_name} has only {available_gib:.2f}GiB available — below {min_required}GiB minimum")
+            WARN(f"{host_name} has only {available_gib:.2f}GiB available for {num_containers} containers — below {min_required}GiB minimum")
         elif available_gib < num_containers:
             WARN(f"{host_name} has only {available_gib:.2f}GiB available for {num_containers} containers")
         else:
@@ -3590,40 +2234,39 @@ def backend_host_checks(
         if result is not None:
             ssh_bk_hosts = ssh_check(host_name, result, ssh_bk_hosts)
         else:
-            WARN(f"Unable to determine weka mounts on Host: {host_name}")
+            WARN(f"Unable to determine SSH connectivity on Host: {host_name}")
 
     if len(ssh_bk_hosts) == 0:
         BAD(f"Unable to proceed, passwordless SSH not configured on any host")
         sys.exit(1)
 
-    if V(weka_version) >= V("3.12"):
-        INFO("CHECKING IF OS IS SUPPORTED ON BACKENDS")
-        command = r"""
-        OS=$(sudo cat /etc/os-release | awk -F= '/^ID=/ {print $2}' > /dev/null);
-        if [[ $OS == "centos" ]]; then
-            sudo cat /etc/centos-release;
-        else
-                sudo cat /etc/os-release;
-        fi
-        """
-        results = parallel_execution(
-            ssh_bk_hosts,
-            [command],
-            use_check_output=True,
-            ssh_identity=ssh_identity,
-        )
-        for host_name, result in results:
-            if result is not None:
-                check_os_release(
-                    host_name, result, weka_version, check_version, backend=True
-                )
-            else:
-                WARN(f"Unable to determine Host: {host_name} OS version")
+    INFO("CHECKING IF OS IS SUPPORTED ON BACKENDS")
+    command = r"""
+    OS=$(sudo cat /etc/os-release | awk -F= '/^ID=/ {print $2}' > /dev/null);
+    if [[ $OS == "centos" ]]; then
+        sudo cat /etc/centos-release;
+    else
+            sudo cat /etc/os-release;
+    fi
+    """
+    results = parallel_execution(
+        ssh_bk_hosts,
+        [command],
+        use_check_output=True,
+        ssh_identity=ssh_identity,
+    )
+    for host_name, result in results:
+        if result is not None:
+            check_os_release(
+                host_name, result, weka_version, check_version, backend=True
+            )
+        else:
+            WARN(f"Unable to determine Host: {host_name} OS version")
 
     relevant_hosts = [host for host in check_rhel_systemd_hosts]
 
     if check_rhel_systemd_hosts:
-        INFO("CHECKING IF WEKA AGENT SERVICE TYPE")
+        INFO("CHECKING WEKA AGENT SERVICE TYPE")
         command = r"""
         if [ -f "/etc/init.d/weka-agent" ]; then
             echo "SRV=init.d";
@@ -3642,7 +2285,7 @@ def backend_host_checks(
                 weka_agent_unit_type(host_name, result)
             else:
                 WARN(
-                    f"Unable to determine Host: {host_name} weka agent service unit type"
+                    f"Unable to determine Host: {host_name} WEKA agent service unit type"
                 )
 
     connection_counts = {}
@@ -3812,7 +2455,7 @@ def backend_host_checks(
     )
     for host_name, result in results:
         if result is None:
-            WARN(f"Unable to determine Host: {host_name} weka container status")
+            WARN(f"Unable to determine Host: {host_name} WEKA container status")
 
     if results != []:
         weka_container_status(results, weka_version)
@@ -3826,23 +2469,9 @@ def backend_host_checks(
     )
     for host_name, result in results:
         if result is None:
-            WARN(f"Unable to determine weka mounts on Host: {host_name}")
+            WARN(f"Unable to determine WEKA mounts on Host: {host_name}")
 
     weka_mounts(results)
-
-    if V(weka_version) < V("4.1"):
-        INFO("CHECKING IF WEKA FRONTEND IN USE")
-        results = parallel_execution(
-            ssh_bk_hosts,
-            ['find /sys/class/bdi -name "wekafs*" | wc -l'],
-            use_check_output=True,
-            ssh_identity=ssh_identity,
-        )
-        for host_name, result in results:
-            if result is not None:
-                frontend_check(host_name, result)
-            else:
-                WARN(f"Unable to determine frontend status on Host: {host_name}")
 
     INFO("CHECKING NUMBER OF RUNNING PROTOCOLS ON BACKENDS")
     protocol_host(backend_hosts, s3_enabled, weka_version)
@@ -3851,20 +2480,20 @@ def backend_host_checks(
     results = parallel_execution(
         ssh_bk_hosts,
         [
-            "container_name=$(weka local ps --no-header -o name| egrep -v 'samba|s3|ganesha|envoy'); for name in $container_name; do echo -en [{container: {$name}, ip: [; sudo weka local resources --stable --container $name -J | grep -w ip | awk '{print $2}' | tr '\n' ' '; echo -e ]}]; done"
+            "container_name=$(weka local ps --no-header -o name| grep -E '(dataserv|drive|compute|frontend)'); for name in $container_name; do echo -en [{container: {$name}, ip: [; sudo weka local resources --stable --container $name -J | grep -w ip | awk '{print $2}' | tr '\n' ' '; echo -e ]}]; done"
         ],
         use_check_output=True,
         ssh_identity=ssh_identity,
     )
     for host_name, result in results:
         if result is None:
-            WARN(f"Unable to determine weka mounts on Host: {host_name}")
+            WARN(f"Unable to check for invalid endpoint IPs on Host: {host_name}")
         else:
             invalid_endpoints(host_name, result, backend_ips)
 
     INFO("CHECKING FOR MISSING / INVALID JOIN-SECRETS ON BACKENDS")
     command = r"""
-    container_name=$(weka local ps --no-header -o name | egrep -v 'samba|s3|ganesha|envoy|smbw');
+    container_name=$(weka local ps --no-header -o name | grep -E '(dataserv|drive|compute|frontend)');
     echo -n "{";
     first=true;
     for cname in $container_name; do
@@ -3896,7 +2525,7 @@ def backend_host_checks(
     )
     for host_name, result in results:
         if result is None:
-            WARN(f"Unable to determine weka mounts on Host: {host_name}")
+            WARN(f"Unable to check for missing / invalid join-secrets on Host: {host_name}")
 
     check_join_secrets(results)
     key_secret = find_key_secret()
@@ -3917,28 +2546,18 @@ def backend_host_checks(
     INFO("CHECKING WEKA DATA DIRECTORY SIZE ON BACKENDS")
     data_dir = "/opt/weka/data/"
 
-    if V(weka_version) >= V("4.2.7"):
-        results = parallel_execution(
-            ssh_bk_hosts,
-            [
-                f'for name in $(weka local ps --no-header -o name | egrep -v "samba|smbw|s3|ganesha|envoy"); do du -sm {data_dir}"$name" 2>&1 | grep -v  "^du:"; done'
-            ],
-            use_check_output=True,
-            ssh_identity=ssh_identity,
-        )
-    else:
-        results = parallel_execution(
-            ssh_bk_hosts,
-            [
-                f'for name in $(weka local ps --no-header -o name,versionName | egrep -v "samba|smbw|s3|ganesha|envoy" | tr -s " " "_"); do du -sm {data_dir}"$name" 2>&1 | grep -v  "^du:"; done'
-            ],
-            use_check_output=True,
-            ssh_identity=ssh_identity,
-        )
+    results = parallel_execution(
+        ssh_bk_hosts,
+        [
+            f"""for name in $(weka local ps --no-header -o name | grep -E '(dataserv|drive|compute|frontend|smbw)'); do du -sm {data_dir}"$name" 2>&1 | grep -v '^du:'; done"""
+        ],
+        use_check_output=True,
+        ssh_identity=ssh_identity,
+    )
 
     for host_name, result in results:
         if result is None:
-            WARN(f"Unable to determine weka mounts on Host: {host_name}")
+            WARN(f"Unable to check WEKA data directory size on Host: {host_name}")
         else:
             data_dir_check(host_name, result)
 
@@ -3955,33 +2574,31 @@ def backend_host_checks(
         else:
             weka_traces_size(host_name, result)
 
-    if V(weka_version) <= V("4.2.1.10"):
-        INFO("VERIFYING CGROUP VERSION")
-        results = parallel_execution(
-            ssh_bk_hosts,
-            ["stat -fc %T /sys/fs/cgroup"],
-            use_check_output=True,
-            ssh_identity=ssh_identity,
-        )
-        for host_name, result in results:
-            if result is None:
-                WARN(f"Unable to determine Host: {host_name} group version")
-            else:
-                cgroup_version(host_name, result)
+    INFO("VERIFYING CGROUP VERSION")
+    results = parallel_execution(
+        ssh_bk_hosts,
+        ["stat -fc %T /sys/fs/cgroup"],
+        use_check_output=True,
+        ssh_identity=ssh_identity,
+    )
+    for host_name, result in results:
+        if result is None:
+            WARN(f"Unable to determine Host: {host_name} group version")
+        else:
+            cgroup_version(host_name, result)
 
-    if V(weka_version) >= V("4.2"):
-        INFO("VALIDATING CPU INSTRUCTION SET")
-        results = parallel_execution(
-            ssh_bk_hosts,
-            ['grep "\<avx2\>" /proc/cpuinfo'],
-            use_check_output=True,
-            ssh_identity=ssh_identity,
-        )
-        for host_name, result in results:
-            if result is None:
-                WARN(f"Unable to determine Host: {host_name} cpu instruction set")
-            else:
-                cpu_instruction_set(host_name, result)
+    INFO("VALIDATING CPU INSTRUCTION SET")
+    results = parallel_execution(
+        ssh_bk_hosts,
+        ['grep "\<avx2\>" /proc/cpuinfo'],
+        use_check_output=True,
+        ssh_identity=ssh_identity,
+    )
+    for host_name, result in results:
+        if result is None:
+            WARN(f"Unable to determine Host: {host_name} cpu instruction set")
+        else:
+            cpu_instruction_set(host_name, result)
 
     if V("4.3.2") <= V(target_version) < V("4.4.6"):
         INFO("VALIDATING IPV6")
@@ -3997,7 +2614,7 @@ def backend_host_checks(
             if result == 0:
                 GOOD(f"IPv6 is enabled")
             else:
-                BAD(f"Cannot update to Weka version 4.3.2.x - ipv6 is disabled")
+                BAD(f"Cannot update WEKA - IPv6 is disabled")
 
     if V("4.2.6") <= V(weka_version) <= V("4.2.10"):
         INFO("VALIDATING OS KERNEL UPGRADE ELIGIBILITY")
@@ -4048,42 +2665,40 @@ def backend_host_checks(
         else:
             endpoint_status(host_name, result)
 
-    if V(weka_version) >= V("4.0"):
-        INFO("VERIFYING BACKEND HOST PORT CONNECTIVITY STATUS")
+    INFO("VERIFYING BACKEND HOST PORT CONNECTIVITY STATUS")
+    api_ports = []
+    ips = []
 
-        api_ports = []
-        ips = []
+    con_status = json.loads(
+        subprocess.check_output(["weka", "local", "status", "-J"])
+    )
 
-        con_status = json.loads(
-            subprocess.check_output(["weka", "local", "status", "-J"])
-        )
+    for container in con_status:
+        if con_status[container]["type"] == "weka":
+            api_ports.append(con_status[container]["status"]["APIPort"])
+            ip = con_status[container]["resources"]["ips"]
+            first_ip = ip[0]
+            if first_ip not in ips:
+                ips.append(first_ip)
 
-        for container in con_status:
-            if con_status[container]["type"] == "weka":
-                api_ports.append(con_status[container]["status"]["APIPort"])
-                ip = con_status[container]["resources"]["ips"]
-                first_ip = ip[0]
-                if first_ip not in ips:
-                    ips.append(first_ip)
+    curl_commands = [
+        f"curl -sL --insecure https://[{ips[0]}]:{port} -o /dev/null; echo $? {port}"
+        if ":" in ips[0]
+        else f"curl -sL --insecure https://{ips[0]}:{port} -o /dev/null; echo $? {port}"
+        for port in api_ports
+    ]
 
-        curl_commands = [
-            f"curl -sL --insecure https://[{ips[0]}]:{port} -o /dev/null; echo $? {port}"
-            if ":" in ips[0]
-            else f"curl -sL --insecure https://{ips[0]}:{port} -o /dev/null; echo $? {port}"
-            for port in api_ports
-        ]
+    results = parallel_execution(
+        ssh_bk_hosts,
+        curl_commands,
+        use_check_output=True,
+        ssh_identity=ssh_identity,
+    )
+    for host_name, result in results:
+        if result is None:
+            WARN(f"Unable to Determine Host: {host_name} port connectivity")
 
-        results = parallel_execution(
-            ssh_bk_hosts,
-            curl_commands,
-            use_check_output=True,
-            ssh_identity=ssh_identity,
-        )
-        for host_name, result in results:
-            if result is None:
-                WARN(f"Unable to Determine Host: {host_name} port connectivity")
-
-        host_port_connectivity(results)
+    host_port_connectivity(results)
 
     INFO("CHECKING FOR KNOWN PROBLEMATIC KERNEL ARGUMENTS")
     command = r"""
@@ -4114,9 +2729,71 @@ def backend_host_checks(
         else:
             WARN(f"Unable to determine available memory on Host: {host_name}")
 
+    #####################
+    #    SMBW Checks    #
+    #####################
+    # Load SMB cluster host statuses
+    output = subprocess.check_output(
+        ["weka", "smb", "cluster", "status", "-J"]
+    )
+    smb_cluster_hosts = json.loads(output)
+
+    if smb_cluster_hosts:
+        INFO("CHECKING WEKA SMB CLUSTER HOST HEALTH AND PATCH STATUS")
+        spinner = Spinner("  Processing Data   ", color=colors.OKCYAN)
+        spinner.start()
+
+        all_smb_hosts = []
+
+        # Build SMB host list by matching backend host typed_id
+        for smbhost, status in smb_cluster_hosts.items():
+            for bkhost in backend_hosts:
+                if smbhost == bkhost.typed_id:
+                    all_smb_hosts.append(
+                        {
+                            "id": bkhost.typed_id,
+                            "hostname": bkhost.hostname,
+                            "ip": bkhost.ip,
+                            "version": bkhost.sw_version,
+                            "mode": bkhost.mode,
+                            "status": status
+                        }
+                    )
+
+        # Run remote command to fetch tsmb-server version
+        results = parallel_execution(
+            all_smb_hosts,
+            [r"weka local exec -C smbw tsmb-server -v | awk 'NR==1 {print $NF}'"],
+            use_check_output=True,
+            ssh_identity=ssh_identity,
+        )
+
+        result_map = dict(results)
+        combined = [{**h, "tsmb_version": result_map.get(h["hostname"])} for h in all_smb_hosts]
+
+        for smb_host in combined:
+            if not smb_host["status"]:
+                WARN(
+                    f"SMBW host not active: "
+                    f"{smb_host['id']} - {smb_host['hostname']} - "
+                    f"{smb_host['ip']} - {smb_host['version']} - {smb_host['mode']} - {smb_host['tsmb_version']}"
+                )
+            else:
+                GOOD(
+                    f"SMBW host is active: "
+                    f"{smb_host['id']} - {smb_host['hostname']} - "
+                    f"{smb_host['ip']} - {smb_host['version']} - {smb_host['mode']} - {smb_host['tsmb_version']}"
+                )
+
+            if smb_host['tsmb_version'] in ("3024.3.22.7", "3024.3.22.9"):
+                BAD(
+                    f"SMBW Host {smb_host['hostname']} is running patched version ({smb_host['tsmb_version']}) "
+                    f"of tsmb-server -- please review with WEKA Customer Success"
+                )
+        spinner.stop()
+
 
 # client checks
-
 def client_hosts_checks(weka_version, ssh_cl_hosts, check_version, ssh_identity):
     INFO("CHECKING PASSWORDLESS SSH CONNECTIVITY ON CLIENTS")
     ssh_cl_hosts_dict = [{"name": host} for host in ssh_cl_hosts]
@@ -4131,36 +2808,35 @@ def client_hosts_checks(weka_version, ssh_cl_hosts, check_version, ssh_identity)
         if result is not None:
             ssh_cl_hosts_dict = ssh_check(host_name, result, ssh_cl_hosts_dict)
         else:
-            WARN(f"Unable to determine weka mounts on Host: {host_name}")
+            WARN(f"Unable to check SSH connectivity on Host: {host_name}")
 
     ssh_cl_hosts = [host_dict["name"] for host_dict in ssh_cl_hosts_dict]
     if len(ssh_cl_hosts) == 0:
         BAD(f"Unable to proceed, passwordless SSH not configured on any host")
         sys.exit(1)
 
-    if V(weka_version) >= V("3.12"):
-        INFO("CHECKING IF OS IS SUPPORTED ON BACKENDS")
-        command = r"""
-        OS=$(sudo cat /etc/os-release | awk -F= '/^ID=/ {print $2}' > /dev/null);
-        if [[ $OS == "centos" ]]; then
-            sudo cat /etc/centos-release;
-        else
-                sudo cat /etc/os-release;
-        fi
-        """
-        results = parallel_execution(
-            ssh_cl_hosts,
-            [command],
-            use_check_output=True,
-            ssh_identity=ssh_identity,
-        )
-        for host_name, result in results:
-            if result is not None:
-                check_os_release(
-                    host_name, result, weka_version, check_version, backend=True
-                )
-            else:
-                WARN(f"Unable to determine Host: {host_name} OS version")
+    INFO("CHECKING IF OS IS SUPPORTED ON CLIENTS")
+    command = r"""
+    OS=$(sudo cat /etc/os-release | awk -F= '/^ID=/ {print $2}' > /dev/null);
+    if [[ $OS == "centos" ]]; then
+        sudo cat /etc/centos-release;
+    else
+            sudo cat /etc/os-release;
+    fi
+    """
+    results = parallel_execution(
+        ssh_cl_hosts,
+        [command],
+        use_check_output=True,
+        ssh_identity=ssh_identity,
+    )
+    for host_name, result in results:
+        if result is not None:
+            check_os_release(
+                host_name, result, weka_version, check_version, backend=True
+            )
+        else:
+            WARN(f"Unable to determine Host: {host_name} OS version")
 
     if V("4.2.6") <= V(weka_version) <= V("4.2.10"):
         INFO("VALIDATING OS KERNEL UPGRADE ELIGIBILITY")
@@ -4199,7 +2875,7 @@ def client_hosts_checks(weka_version, ssh_cl_hosts, check_version, ssh_identity)
         )
         for host_name, result in results:
             if result is None:
-                WARN(f"Unable to determine weka mounts on Host: {host_name}")
+                WARN(f"Unable to perform web connectivity check on Host: {host_name}")
 
         client_web_test(results)
     else:
@@ -4243,7 +2919,7 @@ def client_hosts_checks(weka_version, ssh_cl_hosts, check_version, ssh_identity)
         if result is not None:
             weka_agent_check(host_name, result)
         else:
-            WARN(f"Unable to determine time on Host: {host_name}")
+            WARN(f"Unable to determine WEKA agent status on Host: {host_name}")
 
     INFO("CHECKING WEKA CONTAINER STATUS ON CLIENTS")
     results = parallel_execution(
@@ -4333,43 +3009,53 @@ def check_known_issues(
             enabled_protocols.add("smb")
 
         for index, version in enumerate(upgrade_hops):
-            for key, issue in known_issues.items():
-                description = issue.get("description", "No description available.")
-                if index == 0:
+            if index != 0:
+                for key, issue in known_issues.items():
+                    description = issue.get("description", "No description available.")
                     if issue.get("version_from"):
                         if V(version) <= V(issue['version_from']) and V(upgrade_hops[-1]) > V(issue['version_from']):
                             found_issues += (f"{key}: {description}\n")
+                    else:
+                         affected_ranges = issue.get("affected_versions")
+
+                         for vrange in issue.get("affected_versions", []):
+                             vmin = vrange.get("min")
+                             vmax = vrange.get("max")
+
+                             # min_ok logic
+                             if vmax:
+                                 # Normal range: version >= min AND version < max
+                                 min_ok = (not vmin) or V(version) >= V(vmin)
+                                 max_ok = V(version) < V(vmax)
+                             # No max:                                 
+                             else:
+                                 min_ok = V(version) >= V(vmin)
+                                 max_ok = True
+
+                             if min_ok and max_ok:
+                                related_protocols = set(issue.get("related_protocols", []))
+                                related_link_types = set(issue.get("link_types", []))
+                                requires_obj_store = issue.get("obj_store", False)
+
+                                # Check protocols
+                                if related_protocols and not (related_protocols & enabled_protocols):
+                                    continue
+
+                                # Check link type
+                                if related_link_types and link_type not in related_link_types:
+                                    continue
+
+                                # Check object store
+                                if requires_obj_store and not obj_store_enabled:
+                                    continue
+
+                                found_issues += (f"{key}: {description}\n")
+
+                if found_issues:                       
+                    print(f"\n{colors.WARNING}Known issues for version {version}:{colors.ENDC}")
+                    print(f"{colors.WARNING}{found_issues}{colors.ENDC}")
                 else:
-                    if not issue.get("version_from"):
-                        for vmin, vmax in zip(issue['version_min'], issue['version_max'] + [None]*len(issue['version_min']) ):
-                            if major(version) == major(vmin): # only compare same major version
-                                min_ok = V(version) >= V(vmin)
-                                max_ok = True if not vmax else V(version) < V(vmax)
-                                if min_ok and max_ok:
-                                    related_protocols = set(issue.get("related_protocols", []))
-                                    related_link_types = set(issue.get("link_types", []))
-                                    requires_obj_store = issue.get("obj_store", False)
-
-                                    # Check protocols
-                                    if related_protocols and not (related_protocols & enabled_protocols):
-                                        continue
-
-                                    # Check link type
-                                    if related_link_types and link_type not in related_link_types:
-                                        continue
-
-                                    # Check object store
-                                    if requires_obj_store and not obj_store_enabled:
-                                        continue
-
-                                    found_issues += (f"{key}: {description}\n")
-
-                    
-        if found_issues:                       
-            print(f"\n{colors.WARNING}Known issues for version {version}:{colors.ENDC}")
-            print(f"{colors.WARNING}{found_issues}{colors.ENDC}")
-        else:
-            print(f"{colors.OKCYAN}No known issues for version {version}.{colors.ENDC}")
+                    print(f"{colors.OKCYAN}No known issues for version {version}.{colors.ENDC}")
 
     except FileNotFoundError:
         WARN(f"Error: {known_issues_file} not found.")
@@ -4395,9 +3081,26 @@ def target_version_check(
                 upgrade_map = json.load(f)
 
             # Validate the structure of upgrade_map
-            for ver, min_ver in upgrade_map.items():
-                if not isinstance(min_ver, list) or len(min_ver) == 0:
-                    WARN(f"Invalid entry in upgrade_map for version {ver}: {min_ver}")
+            for ver, rule in upgrade_map.items():
+                if not isinstance(rule, dict):
+                    WARN(f"Invalid entry in upgrade_map for version {ver}: not a dict")
+                    continue
+
+                if "min" not in rule or not rule["min"].strip():
+                    WARN(f"Invalid entry in upgrade_map for version {ver}: missing or empty 'min'")
+                    continue
+
+                # min is REQUIRED
+                min_v = parse_version(rule["min"])
+                if not min_v:
+                    WARN(f"Invalid entry in upgrade_map for version {ver}: cannot parse min '{rule['min']}'")
+                    continue
+
+                # Parse the target version
+                ver_v = parse_version(ver)
+                if not ver_v:
+                    WARN(f"Invalid entry in upgrade_map for version {ver}: cannot parse version key")
+                    continue
 
             return upgrade_map
 
@@ -4419,13 +3122,35 @@ def target_version_check(
         except Exception:
             return None
 
-
     def find_upgrade_path(weka_version, target_version, upgrade_map):
+        """
+        Find a valid upgrade path from weka_version to target_version using upgrade_map.
+        upgrade_map format:
+        {
+            "target_version": {
+                "min": "<min_version>",
+                "max": ["<max_version1>", "<max_version2>", ...]  # optional, may be empty
+            },
+            ...
+        }
+
+        Warnings are only printed if a candidate version would otherwise be valid but violates min/max.
+        """
+
         weka_version = weka_version.strip()
         target_version = target_version.strip()
 
         visited = set()
         queue = deque([[weka_version]])
+
+        # Pre-parse upgrade_map keys for efficiency
+        parsed_versions = {}
+        for ver in upgrade_map:
+            try:
+                parsed_versions[ver] = parse_version(ver)
+            except Exception:
+                WARN(f"Cannot parse version key '{ver}' in upgrade_map")
+                parsed_versions[ver] = None
 
         while queue:
             path = queue.popleft()
@@ -4441,16 +3166,33 @@ def target_version_check(
             current_v = parse_version(current)
 
             next_versions = []
-            for ver, min_vers in upgrade_map.items():
-                if not isinstance(min_vers, list) or not min_vers:
+
+            for ver, rule in upgrade_map.items():
+                ver_v = parsed_versions.get(ver)
+                if ver_v is None:
                     continue
 
-                min_v = parse_version(min_vers[0])
-                target_v = parse_version(ver)
-                if min_v and target_v and min_v <= current_v and target_v > current_v:
-                    next_versions.append(ver)
+                # Only consider upgrades
+                if ver_v <= current_v:
+                    continue
 
-            next_versions = [nv for nv in next_versions if parse_version(nv) is not None]
+                min_str = rule["min"].strip()
+                min_v = parse_version(min_str)
+
+                # Evaluate max list (may be empty)
+                max_list = rule.get("max", [])
+                max_list_parsed = [parse_version(m) for m in max_list if parse_version(m)]
+
+                # --- Skip irrelevant candidates silently ---
+                if current_v < min_v:
+                    continue
+                if max_list_parsed and all(current_v > m for m in max_list_parsed):
+                    continue
+
+                # --- Passed checks, consider as next candidate ---
+                next_versions.append(ver)
+
+            # Sort next versions newest first
             next_versions.sort(key=parse_version, reverse=True)
 
             for nv in next_versions:
@@ -4472,8 +3214,8 @@ def target_version_check(
             total_hops = len(upgrade_hops) - 1
             if total_hops == 1:
                 total_hops = "Direct path upgrade"
-            print(f"{colors.OKCYAN}Total upgrade hops: {total_hops}.{colors.ENDC}")
-            print(f"{colors.OKCYAN}Upgrade path: {' > '.join(upgrade_hops)}{colors.ENDC}")
+            print(f"{colors.OKCYAN}Total upgrade hops: {total_hops}{colors.ENDC}")
+            print(f"{colors.OKCYAN}Upgrade path: {' --> '.join(upgrade_hops)}{colors.ENDC}\n")
 
             # Check for known issues with protocol filtering
             check_known_issues(
@@ -4492,7 +3234,7 @@ def target_version_check(
 def main():
 
     parser = argparse.ArgumentParser(
-        description="Weka Upgrade Checker",
+        description="WEKA Upgrade Checker",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
 
@@ -4502,7 +3244,7 @@ def main():
         dest="check_specific_backend_hosts",
         nargs="+",
         default=False,
-        help="Provide one or more IPs or FQDNs of hosts to check, separated by space.",
+        help="Provide one or more IPs or FQDNs of hosts to check, separated by spaces.",
     )
     parser.add_argument(
         "-d",
@@ -4533,41 +3275,28 @@ def main():
         "-v",
         "--version",
         action="store_true",
-        help="Show Weka Upgrade Checker version info.",
-    )
-    parser.add_argument(
-        "-s",
-        "--skip-mtu-check",
-        action="store_true",
-        help="Skip the MTU mismatch check.",
+        help="Show WEKA Upgrade Checker version info.",
     )
     parser.add_argument(
         "-t",
         "--target-version",
         type=str,
-        required=True,
         help="Specify the target version for upgrade path calculation.",
-    )
-    parser.add_argument(
-        "-p",
-        "--upgrade-path",
-        default="upgrade_path.json",
-        help="Path to the upgrade map JSON file.",
     )
 
     args = parser.parse_args()
+    if args.version:
+        print("WEKA upgrade checker version: %s" % pg_version)
+        sys.exit(0)
+
     if not args.target_version:
         parser.error("--target-version is required.")
 
     ssh_identity = args.ssh_identity or None
 
-    if args.version:
-        print("Weka upgrade checker version: %s" % pg_version)
-        sys.exit(0)
-
     if args.run_all_checks:
         weka_cluster_results = weka_cluster_checks(
-            skip_mtu_check=args.skip_mtu_check, target_version=args.target_version
+            target_version=args.target_version
         )
         backend_hosts = weka_cluster_results[0]
         ssh_bk_hosts = weka_cluster_results[1]
@@ -4598,7 +3327,7 @@ def main():
 
     elif args.cluster_checks_only:
         weka_cluster_checks(
-            skip_mtu_check=args.skip_mtu_check, target_version=args.target_version
+            target_version=args.target_version
         )
         cluster_summary()
         INFO(f"Cluster upgrade checks complete!")
@@ -4606,7 +3335,7 @@ def main():
 
     elif args.check_specific_backend_hosts:
         weka_cluster_results = weka_cluster_checks(
-            skip_mtu_check=args.skip_mtu_check, target_version=args.target_version
+            target_version=args.target_version
         )
         backend_hosts = weka_cluster_results[0]
         ssh_bk_hosts = weka_cluster_results[1]
@@ -4636,7 +3365,7 @@ def main():
 
     elif args.skip_client_checks:
         weka_cluster_results = weka_cluster_checks(
-            skip_mtu_check=args.skip_mtu_check, target_version=args.target_version
+            target_version=args.target_version
         )
         backend_hosts = weka_cluster_results[0]
         ssh_bk_hosts = weka_cluster_results[1]
@@ -4668,7 +3397,7 @@ def main():
             target_version_check(
                 weka_version,
                 args.target_version,
-                args.upgrade_path,
+                "upgrade_path.json",
                 s3_enabled,
                 weka_nfs,
                 weka_smb,
@@ -4680,4 +3409,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

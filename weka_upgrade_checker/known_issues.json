@@ -6,8 +6,12 @@
         "link_types": [ ],
         "problematic_kernel_arguments": [ ],
         "internal_reference": "WEKAPP-562429",
-        "version_min": ["4.4.7.89"],
-        "version_max": ["4.4.10.171"],
+        "affected_versions": [
+            {
+                "min": "4.4.7.89",
+                "max": "4.4.10.171"
+            }
+        ],
         "obj_store": false
     },
     "WEKAPP-558408":
@@ -17,9 +21,13 @@
         "link_types": [ ],
         "problematic_kernel_arguments": [ ],
         "internal_reference": "WEKAPP-558408",
-        "version_min": ["4.3.2"],
-        "version_max": ["4.4.10.150"],
-        "obj_store": false
+        "affected_versions": [
+            {
+                "min": "4.3.2",
+                "max": "4.4.10.150"
+            }
+        ],
+        "obj_store": true
     },
     "WEKAPP-518953":
     {
@@ -28,8 +36,12 @@
         "link_types": [ ],
         "problematic_kernel_arguments": [ ],
         "internal_reference": "WEKAPP-518953",
-        "version_min": ["4.4.0"],
-        "version_max": ["4.4.11"],
+        "affected_versions": [
+            {
+                "min": "4.4.0",
+                "max": "4.4.11"
+            }
+        ],
         "obj_store": false
     },
     "WEKAPP-513906":
@@ -39,8 +51,12 @@
         "link_types": [ ],
         "problematic_kernel_arguments": [ ],
         "internal_reference": "WEKAPP-513906 | https://wekaio.lightning.force.com/lightning/r/Knowledge__kav/ka0Qr0000008V3RIAU/view",
-        "version_min": ["4.4.6", "5.0.0"],
-        "version_max": [],
+        "affected_versions": [
+            {
+                "min": "4.4.6",
+                "max": "4.4.11"
+            }
+        ],
         "obj_store": false
     },
     "WEKAPP-513581":
@@ -50,8 +66,16 @@
         "link_types": [],
         "problematic_kernel_arguments": [ "iommu=pt" ],
         "internal_reference": "WEKAPP-513581",
-        "version_min": ["4.4.7", "5.0.1"],
-        "version_max": ["4.4.9.99", "5.0.1.101"],
+        "affected_versions": [
+            {
+                "min": "4.4.7",
+                "max": "4.4.9.99"
+            },
+            {
+                "min": "5.0.1",
+                "max": "5.0.1.101"
+            }
+        ],
         "obj_store": false
     },
     "WEKAPP-450389":
