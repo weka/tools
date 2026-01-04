@@ -32,6 +32,7 @@ def _print_data_nicely(data: Data, verbose: bool) -> None:
     print(f"Snapshot name: {data.snapshot_name}")
     print(f"Original filesystem id: {data.orig_fq_fs_id}")
     print(f"Number of snap layers: {data.num_layers}")
+    #print(f"Attachment point: {data.attachment_point}, {data.attachment_point_depth}")
 
     if verbose:
         print("\nSnap layers:")

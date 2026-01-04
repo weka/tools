@@ -74,6 +74,8 @@ class SpecFile:
             "customizationKmsType" / _versioned_con(11, self.KmsType),
             "kmsKeyName" / _versioned_con(11, self.FixedString8),
             "kmsNamespace" / _versioned_con(11, self.FixedString16),
+            "attachmentPoint" / _versioned_con(14, self.FQSnapLayerId),
+            "attachmentPointDepth" / _versioned_con(14, self.SnapDepth),
             "snapLayersNum" / c.Int64ul,
             "snapLayers" / c.Array(c.this.snapLayersNum, self.StowedSnapLayer),
             "excessiveBytesIndication" / c.GreedyBytes,

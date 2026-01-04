@@ -15,6 +15,7 @@ class _WekaCompatabilityRange:
 
 
 # needs to be kept up to date with weka/config/stow/defs.d
+# also update qa/tests/obs/old_versions_locators_info.py when adding a new version
 STOW_WEKA_COMP = {
     0:  _WekaCompatabilityRange("v3.1.7.1", deprecation_ver="v3.11.0"),
     1:  _WekaCompatabilityRange("v3.4.2", deprecation_ver="v3.11.0"),
@@ -29,6 +30,8 @@ STOW_WEKA_COMP = {
     10: _WekaCompatabilityRange("v4.3.0"),
     11: _WekaCompatabilityRange("v4.4.0"),
     12: _WekaCompatabilityRange("v4.4.3"),
+    13: _WekaCompatabilityRange("v4.4.9"),
+    14: _WekaCompatabilityRange("v5.1.0"),
 }
 
 
