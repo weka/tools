@@ -51,6 +51,8 @@ class Data:
     fs_name: str
     snapshot_name: str
     access_point: str
+    attachment_point: str
+    attachment_point_depth: int
     fs_ssd_capacity: int
     fs_total_capacity: int
     fs_max_files: int
@@ -96,6 +98,8 @@ def construct_data_from_raw(raw_data: RawDataContainerType) -> Data:
         fs_name=raw_data.fsName,
         snapshot_name=raw_data.snapshotName,
         access_point=raw_data.accessPoint,
+        attachment_point=fq_snap_layer_id_string(raw_data.attachmentPoint),
+        attachment_point_depth=raw_data.attachmentPointDepth,
         fs_ssd_capacity=blocks_to_bytes(raw_data.fsRequestedSSDBudget),
         fs_total_capacity=blocks_to_bytes(raw_data.fsTotalBudget),
         fs_max_files=raw_data.fsMaxFiles,
@@ -111,6 +115,8 @@ def blocks_to_bytes(blocks):
 
 
 def fq_snap_layer_id_string(fq_snap_layer_id):
+    if fq_snap_layer_id is None:
+        return ""
     return f"{fq_snap_layer_id.guid}:{fq_snap_layer_id.snapLayerId}"
 
 
