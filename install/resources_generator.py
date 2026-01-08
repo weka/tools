@@ -1,5 +1,14 @@
 #!/usr/bin/env python3
 
+###############################################################################
+# DEPRECATION NOTICE:
+# -------------------
+# ⚠️  WARNING: OBSOLETE FILE ⚠️
+# This file (install/resources_generator.py) is scheduled for removal.
+# All modifications require a corresponding PR in the wekapp repository
+# (Go implementation).
+###############################################################################
+
 import hashlib
 import logging
 import math
