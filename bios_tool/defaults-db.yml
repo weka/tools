@@ -1,5 +1,9 @@
 # Bios Defaults Database
-# This should contain the default/factory reset values
+# This contains the default/factory reset values
+#
+# THIS FILE IS FOR REFERENCE ONLY.  THESE SETTINGS ARE NOT SET BY BIOS_TOOL.
+# Please see bios_settings.yml for the BIOS settings that are applied by BIOS_TOOL.
+
 Dell Inc.:
   AMD:
     PowerEdge R6615:
