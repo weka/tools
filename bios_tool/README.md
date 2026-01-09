@@ -200,3 +200,22 @@ HPE:
 Using `--bmc_ips` with a space separated list of IP addresses (ie: `--bmc_ips 192.168.1.1 192.168.1.2`) and `--bmc_username` and `--bmc_password` will allow you to easily configure a set of servers that have the same userid/password settings, rather than providing a configuration file.
 ### Version option
 Using `--version` will simply print the bios_tool version number and exit.
+
+## Adding New Server Definitions
+From time to time, we run across new servers - a new model, for example.   When this happens, we need to determine the optimal BIOS settings and add them to `bios_tool` so we can easily set these servers in the field.
+
+The process for doing this is pretty straightforward:
+1. Reset the BIOS to default values (brand-new servers should already have default values set, so this can sometimes be skipped), and reboot the server to have the settings take effect.
+2. Use the `bios_tool --save-defaults` option to copy the default values from the server and save it in the defaults database
+3. Allow bios_tool to try to apply the wildcard values (if the `bios_settings.yml` has a wildcard)
+   3a. If there is an exact match (ie: new server uses the same or very very similar BIOS to another model), try testing with those values
+   3b. If there is a "close" match, use your judgement with the `--force` option to apply the settings
+   3c. If no close match, manually set the BIOS on the server, following the guidelines on get.weka.io
+4. Use `bios_tool --diff-defaults` to generate the YAML definition of the new server and add it to `bios_settings.yml`
+   4a. Use some judgement and edit the YAML; it should be fairly obvious what settings aren't needed or incorrect
+5. Apply the settings to the rest of the servers that are to be clustered
+6. Configure your cluster as normal
+7. TEST the BIOS settings (performance test - might we suggest using `wekatester`?)
+8. Tweak the BIOS settings as needed; try some different settings if this is a really new configuration
+9. Repeat Step 4-8 as needed, until a stable, well-performing configuration is attained.
+10. Submit the new definition to R&D - you can even create a PR with the new files (`bios_settings.yml` and `defaults_db.yml`) in the github repo.
