@@ -38,7 +38,7 @@ from packaging.version import parse as V, InvalidVersion
 
 parse = V 
 
-pg_version = "1.8.0"
+pg_version = "1.8.1"
 known_issues_file = "known_issues.json"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
@@ -88,10 +88,10 @@ num_bad = 0
 num_good = 0
 
 
-def INFO(text):
+def INFO(text, echo = True):
     nl = "\n"
     wrapped_text = textwrap.fill(text, width=150, subsequent_indent="          ")
-    print(f"{colors.OKPURPLE}{nl}{wrapped_text}{nl}{colors.ENDC}")
+    if echo: print(f"{colors.OKPURPLE}{nl}{wrapped_text}{nl}{colors.ENDC}")
     logging.info(wrapped_text)
 
 
@@ -257,34 +257,13 @@ class Spinner:
         )
         sys.stdout.flush()
 
-
 def printlist(lst, num):
     global num_warn
+
     for i in range(0, len(lst), num):
-        if num == 6:
-            WARN("{} {} {} {} {} {}".format(*lst[i : i + num]))
-            logging.warning("{} {} {} {} {} {}".format(*lst[i : i + num]))
-            num_warn += 1
-        elif num == 5:
-            WARN("{} {} {} {} {}".format(*lst[i : i + num]))
-            logging.warning("{} {} {} {} {}".format(*lst[i : i + num]))
-            num_warn += 1
-        elif num == 4:
-            WARN("{} {} {} {}".format(*lst[i : i + num]))
-            logging.warning("{} {} {} {}".format(*lst[i : i + num]))
-            num_warn += 1
-        elif num == 3:
-            WARN("{} {} {}".format(*lst[i : i + num]))
-            logging.warning("{} {} {}".format(*lst[i : i + num]))
-            num_warn += 1
-        elif num == 2:
-            WARN("{} {}".format(*lst[i : i + num]))
-            logging.warning("{} {}".format(*lst[i : i + num]))
-            num_warn += 1
-        elif num == 1:
-            WARN("{}".format(*lst[i : i + num]))
-            logging.warning("{}".format(*lst[i : i + num]))
-            num_warn += 1
+        msg = " ".join(str(x) for x in lst[i : i + num])
+        INFO(msg)
+        num_warn += 1
 
 
 def create_tar_file(source_file, output_path):
@@ -447,6 +426,8 @@ def weka_cluster_checks(target_version):
         )
 
         weka_alerts_data = json.loads(weka_alerts_json_string)
+        alerts = []
+        alerted = False
 
 
         if not weka_alerts_data:
@@ -454,21 +435,23 @@ def weka_cluster_checks(target_version):
         else:
             WARN(f"{len(weka_alerts_data)} WEKA alerts present")
 
-            # Only perform DataIntegrity checks for target_version >= 5.0
-            if V(target_version) >= V("5.0"):
-                data_integrity_alerts = [
-                    alert
-                    for alert in weka_alerts_data
-                    if alert.get("type") == "DataIntegrity"
+            for alert in weka_alerts_data:
+                alerts += [
+                    alert['type'],
+                    alert['title'],
+                    alert['severity'],
+                    alert['count'],
                 ]
-
-                if data_integrity_alerts:
-                    for alert in data_integrity_alerts:
-                        BAD(
-                            f"DataIntegrity alert present: "
-                            f"{alert['title']} - {alert['description']} - "
-                            f"Do not attempt upgrade until DataIntegrity alerts are resolved!"
+                # Only perform DataIntegrity checks for target_version >= 5.0
+                if V(target_version) >= V("5.0") and alert.get("type") == "DataIntegrity" and not alerted:
+                    BAD(
+                        f"DataIntegrity alert present: "
+                        f"{alert['title']} - {alert['description']} - "
+                        f"Do not attempt upgrade until DataIntegrity alerts are resolved!"
                         )
+                    alerted = True
+
+            printlist(alerts, 4)
 
     except subprocess.CalledProcessError as e:
         error_output = e.output.decode("utf-8", errors="replace")
@@ -3054,6 +3037,7 @@ def check_known_issues(
                 if found_issues:                       
                     print(f"\n{colors.WARNING}Known issues for version {version}:{colors.ENDC}")
                     print(f"{colors.WARNING}{found_issues}{colors.ENDC}")
+                    INFO(found_issues, False)
                 else:
                     print(f"{colors.OKCYAN}No known issues for version {version}.{colors.ENDC}")
 
@@ -3216,6 +3200,7 @@ def target_version_check(
                 total_hops = "Direct path upgrade"
             print(f"{colors.OKCYAN}Total upgrade hops: {total_hops}{colors.ENDC}")
             print(f"{colors.OKCYAN}Upgrade path: {' --> '.join(upgrade_hops)}{colors.ENDC}\n")
+            INFO(' --> '.join(upgrade_hops), False)
 
             # Check for known issues with protocol filtering
             check_known_issues(
