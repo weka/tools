@@ -88,10 +88,15 @@ num_bad = 0
 num_good = 0
 
 
-def INFO(text, echo = True):
+def ECHO(text):
+    wrapped_text = textwrap.fill(text, width=150, subsequent_indent="          ")
+    print(f"{colors.OKPURPLE}{' ' * 9}ℹ️ {wrapped_text}{colors.ENDC}")
+    logging.info(wrapped_text)
+
+def INFO(text):
     nl = "\n"
     wrapped_text = textwrap.fill(text, width=150, subsequent_indent="          ")
-    if echo: print(f"{colors.OKPURPLE}{nl}{wrapped_text}{nl}{colors.ENDC}")
+    print(f"{colors.OKPURPLE}{nl}{wrapped_text}{nl}{colors.ENDC}")
     logging.info(wrapped_text)
 
 
@@ -262,7 +267,7 @@ def printlist(lst, num):
 
     for i in range(0, len(lst), num):
         msg = " ".join(str(x) for x in lst[i : i + num])
-        INFO(msg)
+        ECHO(msg)
         num_warn += 1
 
 
@@ -433,7 +438,7 @@ def weka_cluster_checks(target_version):
         if not weka_alerts_data:
             GOOD("No WEKA alerts present")
         else:
-            WARN(f"{len(weka_alerts_data)} WEKA alerts present")
+            WARN(f"{len(weka_alerts_data)} WEKA alerts present:")
 
             for alert in weka_alerts_data:
                 alerts += [
@@ -2980,7 +2985,7 @@ def check_known_issues(
             WARN(f"Error: Invalid format in {known_issues_file}. Expected a dictionary.")
             return
 
-        found_issues = "" 
+        found_issues = [] 
 
         # Determine enabled protocols
         enabled_protocols = set()
@@ -2997,7 +3002,10 @@ def check_known_issues(
                     description = issue.get("description", "No description available.")
                     if issue.get("version_from"):
                         if V(version) <= V(issue['version_from']) and V(upgrade_hops[-1]) > V(issue['version_from']):
-                            found_issues += (f"{key}: {description}\n")
+                            found_issues += [
+                                key, 
+                                description,
+                            ]
                     else:
                          affected_ranges = issue.get("affected_versions")
 
@@ -3032,12 +3040,14 @@ def check_known_issues(
                                 if requires_obj_store and not obj_store_enabled:
                                     continue
 
-                                found_issues += (f"{key}: {description}\n")
+                                found_issues += [
+                                    key, 
+                                    description,
+                                ]
 
                 if found_issues:                       
                     print(f"\n{colors.WARNING}Known issues for version {version}:{colors.ENDC}")
-                    print(f"{colors.WARNING}{found_issues}{colors.ENDC}")
-                    INFO(found_issues, False)
+                    printlist(found_issues, 2)
                 else:
                     print(f"{colors.OKCYAN}No known issues for version {version}.{colors.ENDC}")
 
@@ -3200,7 +3210,7 @@ def target_version_check(
                 total_hops = "Direct path upgrade"
             print(f"{colors.OKCYAN}Total upgrade hops: {total_hops}{colors.ENDC}")
             print(f"{colors.OKCYAN}Upgrade path: {' --> '.join(upgrade_hops)}{colors.ENDC}\n")
-            INFO(' --> '.join(upgrade_hops), False)
+            ECHO(' --> '.join(upgrade_hops))
 
             # Check for known issues with protocol filtering
             check_known_issues(
