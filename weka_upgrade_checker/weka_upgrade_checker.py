@@ -38,7 +38,7 @@ from packaging.version import parse as V, InvalidVersion
 
 parse = V 
 
-pg_version = "1.8.1"
+pg_version = "1.8.2"
 known_issues_file = "known_issues.json"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
@@ -444,7 +444,7 @@ def weka_cluster_checks(target_version):
                 alerts += [
                     alert['type'],
                     alert['title'],
-                    alert['severity'],
+                    alert.get('severity', 'N/A'),
                     alert['count'],
                 ]
                 # Only perform DataIntegrity checks for target_version >= 5.0
