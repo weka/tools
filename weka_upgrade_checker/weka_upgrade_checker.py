@@ -38,7 +38,7 @@ from packaging.version import parse as V, InvalidVersion
 
 parse = V 
 
-pg_version = "1.8.2"
+pg_version = "1.8.3"
 known_issues_file = "known_issues.json"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
@@ -2779,6 +2779,35 @@ def backend_host_checks(
                     f"of tsmb-server -- please review with WEKA Customer Success"
                 )
         spinner.stop()
+
+    # Added 2026-01-21
+    # WEKAPP-538765 (Weka processes in UDP mode in 4.4.9 cannot sync with DPDK processes on a localhost running 4.4.8.76)
+    if V(weka_version) == V("4.4.8.76"):
+        try:
+            data = json.loads(
+                subprocess.check_output(
+                    ["weka", "cluster", "process", "-b", "-J"] 
+                )
+            )
+        except subprocess.CalledProcessError as e:
+            WARN(f"Error executing command: {e.output.decode('utf-8').strip()}")
+        except Exception as ex:
+            WARN(f"Unexpected error: {str(ex)}")
+
+        unique_modes = {
+            node["network_mode"]
+            for node in data
+            if "MANAGEMENT" not in node.get("nodeInfo", {}).get("roles", [])
+        }
+
+        if len(unique_modes) == 2:
+            INFO("CHECKING FOR UDP / DPDK MIXED NETWORKING")
+            BAD("WEKA backend processes are in a mix of UDP and DPDK networking modes. " \
+                "This may cause synchronization issues. It is recommended to set the following " \
+                "override before the upgrade: " \
+                "weka debug override add --key enable_udp_fallback " \
+                "Remove the override after the upgrade has completed."
+                )
 
 
 # client checks
