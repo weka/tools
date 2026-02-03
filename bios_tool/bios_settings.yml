@@ -1,4 +1,4 @@
-# bios_settings.yml
+## bios_settings.yml
 # This file contains BIOS settings for various systems.
 # It is used to configure BIOS settings for optimal performance and functionality.
 # Each section represents a specific system or system type, with nested settings for different components.
@@ -45,7 +45,18 @@ WEKA:
       SerialComm: OnConRedir
       IommuSupport: Enabled
       ProcX2Apic: Disabled
-
+  Intel:
+    WEKApod 2100C:
+      CpuInterconnectBusLinkPower: Disabled
+      EnergyEfficientTurbo: Disabled
+      EnergyPerformanceBias: MaxPower
+      PcieAspmL1: Disabled
+      ProcC1E: Disabled
+      ProcCStates: Disabled
+      ProcPwrPerf: MaxPerf
+      SriovGlobalEnable: Enabled
+      SysProfile: PerfOptimized
+      UncoreFrequency: MaxUFS
 Dell Inc.:
   AMD:
     PowerEdge R6615:
