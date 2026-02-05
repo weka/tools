@@ -1,4 +1,19 @@
 {
+    "WEKAPP-562863":
+    {
+        "description": "S3 protocol inoperable in cluster w/ organizations",
+        "related_protocols": ["s3"],
+        "link_types": [ ],
+        "problematic_kernel_arguments": [ ],
+        "internal_reference": "WEKAPP-562863",
+        "affected_versions": [
+            {
+                "min": "4.4.6",
+                "max": "4.4.20"
+            }
+        ],
+        "obj_store": false
+    },
     "WEKAPP-562429":
     {
         "description": "localstateindex overflow could lead to cluster unavailability",
