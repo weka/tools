@@ -38,7 +38,7 @@ from packaging.version import parse as V, InvalidVersion
 
 parse = V 
 
-pg_version = "1.8.5"
+pg_version = "1.8.6"
 known_issues_file = "known_issues.json"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
@@ -324,6 +324,9 @@ def check_version():
 check_version()
 
 
+####################################################
+# WEKA CLUSTER CHECKS BEGIN
+####################################################
 def weka_cluster_checks(target_version):
     INFO("VERIFYING WEKA AGENT STATUS")
     weka_agent_service = subprocess.call(
@@ -1235,23 +1238,29 @@ def weka_cluster_checks(target_version):
                     if "The lifecycle configuration does not exist" not in output:
                         WARN(f"Error checking bucket '{bucket_name}': {output}")
 
-
+    ##############
+    # NFS CHECKS #
+    ##############
     nfs_server_hosts = json.loads(
         subprocess.check_output(["weka", "nfs", "interface-group", "-J"])
     )
 
-    if V(target_version) < V("4.4.3"):
-        if len(nfs_server_hosts) != 0:
-            INFO("CHECKING WEKA NFS CUSTOM OPTIONS")
-            custom_options = json.loads(
-                subprocess.check_output(["weka", "nfs", "custom-options", "-J"])
-            )
-            if custom_options["customNfsOptions"]:
-                BAD(f"Custom NFS options specified -- please review with WEKA Customer Success")
-            else:
-                GOOD(f"No custom NFS options specified")
+    good_nfs_hosts = []
+    bad_nfs_hosts = []
+    failed_nfshosts = []
 
     if len(nfs_server_hosts) != 0:
+        if V(target_version) < V("4.4.3"):
+            if len(nfs_server_hosts) != 0:
+                INFO("CHECKING WEKA NFS CUSTOM OPTIONS")
+                custom_options = json.loads(
+                    subprocess.check_output(["weka", "nfs", "custom-options", "-J"])
+                )
+                if custom_options["customNfsOptions"]:
+                    BAD(f"Custom NFS options specified -- please review with WEKA Customer Success")
+                else:
+                    GOOD(f"No custom NFS options specified")
+
         INFO("CHECKING WEKA NFS CONFIG FS")
         output = subprocess.check_output(
             ["weka", "nfs", "global-config", "show", "-J"], text=True
@@ -1263,11 +1272,6 @@ def weka_cluster_checks(target_version):
         else:
             GOOD(f"NFS config_fs defined: {config['config_fs']}")
 
-    good_nfs_hosts = []
-    bad_nfs_hosts = []
-    failed_nfshosts = []
-
-    if len(nfs_server_hosts) != 0:
         INFO("CHECKING WEKA NFS SERVER HEALTH")
 
         if len(nfs_server_hosts) != 0:
@@ -1346,6 +1350,11 @@ def weka_cluster_checks(target_version):
         else:
             GOOD(f"No CX-4 NICs located")
 
+    orgs = json.loads(
+        subprocess.check_output(["weka", "org", "-J"])
+    )
+    multi_org = len(orgs) > 1
+
     return (
         backend_hosts,
         ssh_bk_hosts,
@@ -1359,7 +1368,11 @@ def weka_cluster_checks(target_version):
         link_type,
         obj_store_enabled,
         good_nfs_hosts,
+        multi_org
     )
+####################################################
+# WEKA CLUSTER CHECKS END
+####################################################
 
 def ssh_check(host_name, result, ssh_bk_hosts):
     passwordless_ssh = result
@@ -2209,6 +2222,7 @@ def backend_host_checks(
     target_version,
     check_rhel_systemd_hosts,
     good_nfs_hosts,
+    multi_org
 ):
     INFO("CHECKING PASSWORDLESS SSH CONNECTIVITY")
     results = parallel_execution(
@@ -2999,6 +3013,7 @@ def check_known_issues(
     weka_smb,
     link_type,
     obj_store_enabled,
+    multi_org,
 ):
     """
     Checks each version in the upgrade hops list against known issues,
@@ -3056,6 +3071,7 @@ def check_known_issues(
                                 related_protocols = set(issue.get("related_protocols", []))
                                 related_link_types = set(issue.get("link_types", []))
                                 requires_obj_store = issue.get("obj_store", False)
+                                requires_multi_org = issue.get("multi_org", False)
 
                                 # Check protocols
                                 if related_protocols and not (related_protocols & enabled_protocols):
@@ -3067,6 +3083,10 @@ def check_known_issues(
 
                                 # Check object store
                                 if requires_obj_store and not obj_store_enabled:
+                                    continue
+
+                                # Check if multiple organizations
+                                if requires_multi_org and not multi_org:
                                     continue
 
                                 found_issues += [
@@ -3095,6 +3115,7 @@ def target_version_check(
     weka_smb,
     link_type,
     obj_store_enabled,
+    multi_org,
 ):
     INFO("VALIDATING UPGRADE PATH AND KNOWN ISSUES")
 
@@ -3249,6 +3270,7 @@ def target_version_check(
                 weka_smb,
                 link_type,
                 obj_store_enabled,
+                multi_org,
             )
 
     except (FileNotFoundError, ValueError) as e:
@@ -3332,6 +3354,7 @@ def main():
         backend_ips = weka_cluster_results[6]
         s3_enabled = weka_cluster_results[7]
         good_nfs_hosts = weka_cluster_results[11]
+        multi_org = weka_cluster_results[12]
         backend_host_checks(
             backend_hosts,
             ssh_bk_hosts,
@@ -3343,6 +3366,7 @@ def main():
             args.target_version,
             check_rhel_systemd_hosts,
             good_nfs_hosts,
+            multi_org,
         )
         client_hosts_checks(weka_version, ssh_cl_hosts, check_version, ssh_identity)
         cluster_summary()
@@ -3371,6 +3395,7 @@ def main():
         backend_ips = weka_cluster_results[6]
         s3_enabled = weka_cluster_results[7]
         good_nfs_hosts = weka_cluster_results[11]
+        multi_org = weka_cluster_results[12]
         backend_host_checks(
             backend_hosts,
             args.check_specific_backend_hosts,
@@ -3382,6 +3407,7 @@ def main():
             args.target_version,
             check_rhel_systemd_hosts,
             good_nfs_hosts,
+            multi_org,
         )
         cluster_summary()
         INFO(f"Cluster upgrade checks complete!")
@@ -3403,6 +3429,7 @@ def main():
         link_type = weka_cluster_results[9]
         obj_store_enabled = weka_cluster_results[10]
         good_nfs_hosts = weka_cluster_results[11]
+        multi_org = weka_cluster_results[12]
         backend_host_checks(
             backend_hosts,
             ssh_bk_hosts,
@@ -3414,6 +3441,7 @@ def main():
             args.target_version,
             check_rhel_systemd_hosts,
             good_nfs_hosts,
+            multi_org,
         )
         cluster_summary()
         INFO(f"Cluster upgrade checks complete!")
@@ -3427,6 +3455,7 @@ def main():
                 weka_smb,
                 link_type,
                 obj_store_enabled,
+                multi_org
             )
         sys.exit(0)
 

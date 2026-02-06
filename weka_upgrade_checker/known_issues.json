@@ -12,6 +12,7 @@
                 "max": "4.4.20"
             }
         ],
+        "multi_org": true,
         "obj_store": false
     },
     "WEKAPP-562429":
@@ -54,7 +55,7 @@
         "affected_versions": [
             {
                 "min": "4.4.0",
-                "max": "4.4.11"
+                "max": "4.4.20"
             }
         ],
         "obj_store": false
@@ -69,7 +70,7 @@
         "affected_versions": [
             {
                 "min": "4.4.6",
-                "max": "4.4.11"
+                "max": "4.4.20"
             }
         ],
         "obj_store": false
