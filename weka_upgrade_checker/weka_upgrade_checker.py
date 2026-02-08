@@ -38,7 +38,7 @@ from packaging.version import parse as V, InvalidVersion
 
 parse = V 
 
-pg_version = "1.8.6"
+pg_version = "1.8.7"
 known_issues_file = "known_issues.json"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
@@ -1334,13 +1334,19 @@ def weka_cluster_checks(target_version):
         cx4_found = False
 
         for key, val in host_hw_info.items():
-            if host_hw_info.get(key) is not None:
-                try:
-                    if "connectx-4" in (str(val["eths"]).lower()):
+            if not val or "eths" not in val:
+                continue
+            try:
+                for eth in val["eths"]:
+                    device = eth.get("device", "")
+                    if "connectx-4" in device.lower():
                         cx4_found = True
                         break
-                except Exception as e:
-                    print(f"Error processing host {key}: {e}")
+
+                    if cx4_found:
+                        break
+            except Exception as e:
+                print(f"Error processing host for CX-4 {key}: {e}")
 
         if cx4_found:
             BAD("CX4 detected. (The ConnectX-4 Lx ethernet NICs from NVIDIA Mellanox were officially announced " \
@@ -1729,10 +1735,10 @@ def protocol_host(backend_hosts, s3_enabled, weka_version):
     s3_enabled = json.loads(subprocess.check_output(["weka", "s3", "cluster", "-J"]))
     if s3_enabled:
         weka_s3 = json.loads(
-            subprocess.check_output(["weka", "s3", "cluster", "status", "-J"])
+            subprocess.check_output(["weka", "s3", "cluster", "-J"])
         )
         if weka_s3:
-            S3 = [f"HostId<{entry['host_id']}>" for entry in weka_s3]
+            S3 = list(weka_s3["s3_hosts"]) if weka_s3 != [] else []
 
     weka_smb = json.loads(subprocess.check_output(["weka", "smb", "cluster", "-J"]))
     SMB = list(weka_smb["sambaHosts"]) if weka_smb != [] else []
