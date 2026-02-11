@@ -38,7 +38,7 @@ from packaging.version import parse as V, InvalidVersion
 
 parse = V 
 
-pg_version = "1.8.7"
+pg_version = "1.8.8"
 known_issues_file = "known_issues.json"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
@@ -2119,6 +2119,57 @@ def available_memory_check(host_name, result):
     except Exception as e:
         WARN(f"Failed to parse memory info on {host_name}: {e}")
 
+def check_cpu_frequency(host_name, cpu_info_output, core_ids):
+    """
+    Parses cpuinfo to find the MHz of specific core IDs.
+    Reports BAD if < 1500, GOOD if all assigned cores are healthy.
+    """
+    lines = cpu_info_output.splitlines()
+    cpu_mhz_map = {}
+    current_processor = None
+
+    # Robust parsing for processor ID and MHz
+    for line in lines:
+        line = line.strip()
+        # Handle "processor : 0"
+        if "processor" in line and ":" in line:
+            parts = line.split(":")
+            # Ensure the left side is actually the "processor" label
+            if parts[0].strip() == "processor":
+                try:
+                    current_processor = int(parts[1].strip())
+                except ValueError:
+                    continue
+        
+        # Handle "cpu MHz : 2500.000"
+        elif "cpu MHz" in line and ":" in line and current_processor is not None:
+            try:
+                mhz = float(line.split(":")[1].strip())
+                cpu_mhz_map[current_processor] = mhz
+            except ValueError:
+                continue
+
+    issues_found = False
+    checked_count = 0
+
+    # Validate only the cores assigned to WEKA
+    for core_id in core_ids:
+        # Skip 'AUTO' (4294967295) or cores not found in map
+        if core_id == 4294967295 or core_id not in cpu_mhz_map:
+            continue
+            
+        mhz = cpu_mhz_map[core_id]
+        checked_count += 1
+        
+        if mhz < 1500:
+            BAD(f"CPU Frequency Low - Host: {host_name}, CPU: {core_id}, Current: {mhz} MHz (Minimum: 1500 MHz)")
+            issues_found = True
+
+    if checked_count > 0 and not issues_found:
+        GOOD(f"Host: {host_name} CPU frequency check passed ({checked_count} cores checked)")
+    elif checked_count == 0:
+        # This helps debug if parsing failed entirely for a host
+        WARN(f"Host: {host_name} - Could not verify frequency for assigned cores: {core_ids}")
 
 def parallel_execution(
     hosts,
@@ -2736,6 +2787,38 @@ def backend_host_checks(
             available_memory_check(host_name, result)
         else:
             WARN(f"Unable to determine available memory on Host: {host_name}")
+
+    INFO("VERIFYING CPU FREQUENCY FOR ASSIGNED WEKA CORES")
+    
+    # Map hostnames to their assigned core IDs from the existing backend_hosts list
+    host_to_cores = defaultdict(set)
+    for bk in backend_hosts:
+        if bk.cores_ids:
+            host_to_cores[bk.hostname].update(bk.cores_ids)
+
+    # Execute remote command to pull CPU data via parallel_execution
+    cpu_results = parallel_execution(
+        ssh_bk_hosts,
+        ["grep -E 'processor|cpu MHz' /proc/cpuinfo"],
+        use_check_output=True,
+        ssh_identity=ssh_identity,
+    )
+
+    if not cpu_results:
+        WARN("No CPU frequency data could be retrieved from backend hosts.")
+    else:
+        for host_name, result in cpu_results:
+            if result:
+                # Look up the cores for this specific host
+                assigned_cores = host_to_cores.get(host_name)
+                
+                if assigned_cores:
+                    check_cpu_frequency(host_name, result, assigned_cores)
+                else:
+                    # DEBUG: This prints if the hostname from SSH doesn't match the WEKA hostname
+                    WARN(f"Host: {host_name} found in SSH results but not in WEKA container map. Keys available: {list(host_to_cores.keys())[:3]}...")
+            else:
+                WARN(f"Unable to retrieve CPU frequency for host: {host_name}")
 
     #####################
     #    SMBW Checks    #
