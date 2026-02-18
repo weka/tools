@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+import base64
 import concurrent.futures
 import datetime
 import itertools
@@ -38,7 +39,7 @@ from packaging.version import parse as V, InvalidVersion
 
 parse = V 
 
-pg_version = "1.8.9"
+pg_version = "1.9.0"
 known_issues_file = "known_issues.json"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
@@ -263,12 +264,12 @@ class Spinner:
         sys.stdout.flush()
 
 def printlist(lst, num):
-    global num_warn
+    #global num_warn
 
     for i in range(0, len(lst), num):
         msg = " ".join(str(x) for x in lst[i : i + num])
         ECHO(msg)
-        num_warn += 1
+        #num_warn += 1
 
 
 def create_tar_file(source_file, output_path):
@@ -1241,15 +1242,21 @@ def weka_cluster_checks(target_version):
     ##############
     # NFS CHECKS #
     ##############
-    nfs_server_hosts = json.loads(
-        subprocess.check_output(["weka", "nfs", "interface-group", "-J"])
-    )
+    try:
+        nfs_server_hosts = json.loads(
+            subprocess.check_output(
+                ["weka", "nfs", "interface-group", "-J"],
+                stderr=subprocess.DEVNULL
+            )
+        )
+    except (subprocess.CalledProcessError, json.JSONDecodeError):
+        nfs_server_hosts = []
 
     good_nfs_hosts = []
     bad_nfs_hosts = []
     failed_nfshosts = []
 
-    if len(nfs_server_hosts) != 0:
+    if nfs_server_hosts:
         if V(target_version) < V("4.4.3"):
             if len(nfs_server_hosts) != 0:
                 INFO("CHECKING WEKA NFS CUSTOM OPTIONS")
@@ -1913,22 +1920,22 @@ def compare_global_secrets(hosts_data, key_secret):
 
 
 def data_dir_check(host_name, result):
-    directory_by_host = {host_name: []}
+    container_by_host = {host_name: []}
     for line in result.splitlines():
-        usage = int(line.split("\t")[0])
-        directory = line.split("\t")[1].split("/")[4]
-        item_list = [directory, usage]
-        directory_by_host[host_name].append(item_list)
+        container = line.split()[0]
+        usage = int(line.split()[1])
+        item_list = [container, usage]
+        container_by_host[host_name].append(item_list)
 
-    for key, value in directory_by_host.items():
-        INFO2(f'{" " * 2}Checking WEKA container status on host {key}:')
+    for key, value in container_by_host.items():
+        INFO2(f'{" " * 2}Checking WEKA container reserved loop space on host {key}:')
         for sublist in value:
-            dir = sublist[0]
+            container = sublist[0]
             use = sublist[1]
-            if use < 10000:
-                GOOD(f"Data directory {dir} acceptable size {use} MB")
+            if use > 100:
+                GOOD(f"Reserved loop on container {container} acceptable size: {use} MiB")
             else:
-                WARN(f"Data directory {dir} larger than acceptable size {use} MB")
+                WARN(f"Reserved loop on container {container} larger than acceptable size: {use} MiB")
 
 
 def weka_traces_size(host_name, result):
@@ -1943,16 +1950,6 @@ def weka_traces_size(host_name, result):
         )
     else:
         GOOD(f"WEKA trace size OK")
-
-
-def cgroup_version(hostname, result):
-    INFO2(f'{" " * 2}Checking Cgroup version on host {hostname}:')
-    if result == "tmpfs":
-        GOOD(f"Correct cgroup v1 set")
-    elif result == "cgroup2fs":
-        BAD(f"Incorrect cgroup v2 set")
-    else:
-        WARN(f"Unable to determine cgroup version")
 
 
 def cpu_instruction_set(host_name, result):
@@ -2602,14 +2599,23 @@ def backend_host_checks(
         else:
             GOOD(f"All containers on all hosts have matching secrets")
 
-    INFO("CHECKING WEKA DATA DIRECTORY SIZE ON BACKENDS")
-    data_dir = "/opt/weka/data/"
+    INFO("CHECKING WEKA DATA RESERVED LOOP SIZE ON BACKENDS")
+
+    loop_dir = "/data/reserved_space"
+    script = f"""
+    weka local ps --no-header -o name -F state=Running |
+    grep -E "(dataserv|drive|compute|frontend)" |
+    while read -r name; do
+        echo "$name"
+        weka local exec -C "$name" -- df --block-size=1M --output=avail {loop_dir} | tail -1
+    done | paste - -
+    """.strip()
+    script_encoded = base64.b64encode(script.encode()).decode()
+    remote_cmd = f"echo {script_encoded} | base64 -d | bash -l"
 
     results = parallel_execution(
         ssh_bk_hosts,
-        [
-            f"""for name in $(weka local ps --no-header -o name | grep -E '(dataserv|drive|compute|frontend|smbw)'); do du -sm {data_dir}"$name" 2>&1 | grep -v '^du:'; done"""
-        ],
+        [remote_cmd],
         use_check_output=True,
         ssh_identity=ssh_identity,
     )
@@ -2632,19 +2638,6 @@ def backend_host_checks(
             WARN(f"Unable to determine Host: {host_name} available trace space")
         else:
             weka_traces_size(host_name, result)
-
-    INFO("VERIFYING CGROUP VERSION")
-    results = parallel_execution(
-        ssh_bk_hosts,
-        ["stat -fc %T /sys/fs/cgroup"],
-        use_check_output=True,
-        ssh_identity=ssh_identity,
-    )
-    for host_name, result in results:
-        if result is None:
-            WARN(f"Unable to determine Host: {host_name} group version")
-        else:
-            cgroup_version(host_name, result)
 
     INFO("VALIDATING CPU INSTRUCTION SET")
     results = parallel_execution(
