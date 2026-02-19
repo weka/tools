@@ -39,7 +39,7 @@ from packaging.version import parse as V, InvalidVersion
 
 parse = V 
 
-pg_version = "1.9.1"
+pg_version = "1.9.2"
 known_issues_file = "known_issues.json"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
@@ -1359,6 +1359,19 @@ def weka_cluster_checks(target_version):
                 "Using UDP mode is a viable workaround.")
         else:
             GOOD(f"No CX-4 NICs located")
+
+    # Added 2026-02-19
+    #  Known issue if taskmon.home.weka.io endpoint is offline (WEKAPP-594061)
+    if V(weka_version) >= V("5.0.1") and V(weka_version) < ("5.1.2"):
+        output = subprocess.check_output(
+            ["weka", "debug", "traces", "remote-endpoint", "status", "-J"], text=True
+        )
+        config = json.loads(output)
+        if config.get("enabled"):
+            INFO("CHECKING IF REMOTE TRACES ARE ENABLED")
+            BAD("Remote traces are enabled. It is recommended that they be disabled by running: " \
+                "weka debug traces remote-endpoint disable")
+
 
     orgs = json.loads(
         subprocess.check_output(["weka", "org", "-J"])
