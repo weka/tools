@@ -39,7 +39,7 @@ from packaging.version import parse as V, InvalidVersion
 
 parse = V 
 
-pg_version = "1.9.0"
+pg_version = "1.9.1"
 known_issues_file = "known_issues.json"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
@@ -3527,3 +3527,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
