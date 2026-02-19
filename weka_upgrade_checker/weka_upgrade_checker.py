@@ -63,10 +63,10 @@ except UnicodeEncodeError:
 
 
 if not unicode_test:
-    [FAIL] = "\u274C"
-    [PASS] = "\u2705"
-    [WARN] = "\u26A0"
-    [BAD] = "\u274C"
+    FAIL = "\u274C"
+    PASS = "\u2705"
+    WARN_SYM = "\u26A0"
+    BAD_SYM = "\u274C"
 
 logger = logging.getLogger(__name__)
 
@@ -307,7 +307,7 @@ def get_online_version():
         return None
 
 
-def check_version():
+def check_pg_version():
     INFO("VERIFYING IF RUNNING LATEST VERSION OF WEKA UPGRADE CHECKER")
     online_version = get_online_version()
 
@@ -320,9 +320,6 @@ def check_version():
         WARN(f"Unable to verify if this is the latest version of the WEKA upgrade checker - currentlly running {pg_version}\n" \
               "Check https://github.com/weka/tools/blob/master/weka_upgrade_checker/version.txt to validate."
             )
-
-
-check_version()
 
 
 ####################################################
@@ -1235,7 +1232,7 @@ def weka_cluster_checks(target_version):
                         GOOD(f"Bucket '{bucket_name}' is OK: {rule_count} rule(s), {tag_total} tag(s), all prefixes valid.")
 
                 except subprocess.CalledProcessError as e:
-                    output = e.output.strip()
+                    output = e.output.decode("utf-8", errors="replace").strip() if isinstance(e.output, bytes) else (e.output or "").strip()
                     if "The lifecycle configuration does not exist" not in output:
                         WARN(f"Error checking bucket '{bucket_name}': {output}")
 
@@ -1781,7 +1778,7 @@ def protocol_host(backend_hosts, s3_enabled, weka_version):
     protocol_host_names = [
         bkhost.hostname
         for bkhost in backend_hosts
-        if bkhost.hostname not in total_protocols
+        if bkhost.typed_id not in total_protocols
     ]
 
     protocol_host_names = list(dict.fromkeys(protocol_host_names))
@@ -1813,20 +1810,8 @@ def client_web_test(results):
             WARN(f"Client web connectivity check failed on host: {client_name}")
 
 
-backend_containers = json.loads(
-    subprocess.check_output(["weka", "cluster", "container", "-b", "-J"])
-)
-
-backend_ips_set = [
-    ip
-    for entry in backend_containers
-    if isinstance(entry, dict)
-    for ip in entry.get("ips", [])
-]
-
-
 def invalid_endpoints(host_name, result, backend_ips_set):
-    backend_ips_set = set([ip for entry in backend_containers for ip in entry["ips"]])
+    backend_ips_set = set(backend_ips_set) if not isinstance(backend_ips_set, set) else backend_ips_set
 
     result = (
         result.replace(", ]}]", "]}]")
@@ -1848,7 +1833,8 @@ def ip_by_containers(host_name, result_lines, backend_ips_set):
             endpoint_data = json.loads(line)
             for entry in endpoint_data:
                 container = entry["container"]
-                ips = set(entry["ip"])
+                ip_val = entry["ip"]
+                ips = set(ip_val) if isinstance(ip_val, list) else {ip_val}
 
                 bad_backend_ip = [
                     ip for ip in ips if ip not in backend_ips_set or ip == "0.0.0.0"
@@ -1866,21 +1852,17 @@ def ip_by_containers(host_name, result_lines, backend_ips_set):
             WARN(f"  Failed to decode JSON line: {line}")
 
 
-all_secrets = []
-container_data = {}
-
-
 def check_join_secrets(results):
-    global container_data
+    """Parse join secrets from SSH results. Returns (container_data, all_secrets)."""
+    container_data = {}
+    all_secrets = []
 
-    # Convert the list of tuples into a dictionary
     for host, json_str in results:
         try:
             cleaned_json_str = json_str.strip()
             parsed_data = json.loads(cleaned_json_str)
             container_data[host] = parsed_data
 
-            # Collect all secrets globally
             for container, secrets in parsed_data.items():
                 secret_set = set(secrets)
                 if secret_set:
@@ -1890,11 +1872,11 @@ def check_join_secrets(results):
             print(f"Error decoding JSON for host {host}: {e}")
             continue
 
+    return container_data, all_secrets
 
-def find_key_secret():
-    """
-    Identify the most common secret globally.
-    """
+
+def find_key_secret(all_secrets):
+    """Identify the most common secret globally."""
     secret_counter = Counter(all_secrets)
     if secret_counter:
         key_secret, _ = secret_counter.most_common(1)[0]
@@ -1954,7 +1936,7 @@ def weka_traces_size(host_name, result):
 
 def cpu_instruction_set(host_name, result):
     INFO2(f'{" " * 2}Validating cpu instruction set on Host: {host_name}:')
-    if result is None or "":
+    if result is None or result == "":
         BAD(f"Cannot update to WEKA version 4.3 CPU instruction set avx2 missing")
     else:
         GOOD(f"CPU instruction set validation successful")
@@ -2084,14 +2066,14 @@ def parse_available_memory(mem_output):
             num = float(num)
 
             multipliers = {
-                "K": 1/1024/1024,
-                "Ki": 1/1024/1024,
-                "M": 1/1024,
-                "Mi": 1/1024,
-                "G": 1,
-                "Gi": 1,
-                "T": 1024,
-                "Ti": 1024,
+                "K": 1 / 1024 / 1024,
+                "Ki": 1 / 1024 / 1024,
+                "M": 1 / 1024,
+                "Mi": 1 / 1024,
+                "G": 1.0,
+                "Gi": 1.073741824,
+                "T": 1024.0,
+                "Ti": 1099.511627776,
             }
 
             return num * multipliers[unit]
@@ -2196,7 +2178,7 @@ def parallel_execution(
     def run_command(host, command, use_check_output, use_json, use_call, ssh_opts):
         if isinstance(host, dict):
             host_ip = host["ip"]
-            host_name = host_name = (
+            host_name = (
                 host.get("hostname") or host.get("name") or host.get("ip", "unknown")
             )
         else:
@@ -2402,8 +2384,7 @@ def backend_host_checks(
     results = parallel_execution(
         ssh_bk_hosts,
         [command],
-        use_check_output=False,
-        use_call=True,
+        use_check_output=True,
         ssh_identity=ssh_identity,
     )
     for host_name, result in results:
@@ -2583,8 +2564,8 @@ def backend_host_checks(
         if result is None:
             WARN(f"Unable to check for missing / invalid join-secrets on Host: {host_name}")
 
-    check_join_secrets(results)
-    key_secret = find_key_secret()
+    container_data, all_secrets = check_join_secrets(results)
+    key_secret = find_key_secret(all_secrets)
     if not key_secret:
         GOOD(f"No secret found across all hosts")
     else:
@@ -2642,7 +2623,7 @@ def backend_host_checks(
     INFO("VALIDATING CPU INSTRUCTION SET")
     results = parallel_execution(
         ssh_bk_hosts,
-        ['grep "\<avx2\>" /proc/cpuinfo'],
+        [r'grep "\<avx2\>" /proc/cpuinfo'],
         use_check_output=True,
         ssh_identity=ssh_identity,
     )
@@ -2946,7 +2927,7 @@ def client_hosts_checks(weka_version, ssh_cl_hosts, check_version, ssh_identity)
     for host_name, result in results:
         if result is not None:
             check_os_release(
-                host_name, result, weka_version, check_version, backend=True
+                host_name, result, weka_version, check_version, backend=False, client=True
             )
         else:
             WARN(f"Unable to determine Host: {host_name} OS version")
@@ -2956,7 +2937,7 @@ def client_hosts_checks(weka_version, ssh_cl_hosts, check_version, ssh_identity)
         command = r"""
         OS=$(sudo awk -F= '/^ID=/ {gsub(/"/, "", $2); print $2}' /etc/os-release);
         if [[ $OS == rocky ]]; then
-            KV=$(sudo uname -r');
+            KV=$(sudo uname -r);
             if [[ ! -z $(sudo grep "launder_folio" /usr/src/kernels/"${KV}"/include/linux/fs.h) ]]; then
                 echo "P=true";
             else
@@ -2974,7 +2955,7 @@ def client_hosts_checks(weka_version, ssh_cl_hosts, check_version, ssh_identity)
         )
         for host_name, result in results:
             if result is None:
-                GOOD(f"Host: {host_name} kernel validation successfull")
+                WARN(f"Unable to validate Host: {host_name} kernel version")
             else:
                 check_os_kernel(host_name, result)
 
@@ -3023,9 +3004,14 @@ def client_hosts_checks(weka_version, ssh_cl_hosts, check_version, ssh_identity)
     INFO("CHECKING WEKA AGENT STATUS ON CLIENTS")
     results = parallel_execution(
         ssh_cl_hosts,
-        ["sudo service weka-agent status"],
-        use_check_output=False,
-        use_call=True,
+        [r"""
+        if sudo service weka-agent status > /dev/null 2>&1; then
+            echo "running"
+        else
+            echo "not running"
+        fi
+        """],
+        use_check_output=True,
         ssh_identity=ssh_identity,
     )
     for host_name, result in results:
@@ -3076,14 +3062,12 @@ def client_hosts_checks(weka_version, ssh_cl_hosts, check_version, ssh_identity)
             WARN(f"IOMMU is enabled on host: {host_name}")
 
 
-create_tar_file(log_file_path, "./weka_upgrade_checker.tar.gz")
-
-
 def cluster_summary():
     INFO("CLUSTER SUMMARY:")
     GOOD(f"Total Checks Passed: {num_good}")
     WARN(f"Total Warnings: {num_warn}")
     BAD(f"Total Checks Failed: {num_bad}")
+    create_tar_file(log_file_path, "./weka_upgrade_checker.tar.gz")
 
 def major(v):
     return v.split('.')[0]
@@ -3133,8 +3117,6 @@ def check_known_issues(
                                 description,
                             ]
                     else:
-                         affected_ranges = issue.get("affected_versions")
-
                          for vrange in issue.get("affected_versions", []):
                              vmin = vrange.get("min")
                              vmax = vrange.get("max")
@@ -3360,6 +3342,7 @@ def target_version_check(
 
 
 def main():
+    check_pg_version()
 
     parser = argparse.ArgumentParser(
         description="WEKA Upgrade Checker",
@@ -3387,7 +3370,7 @@ def main():
         dest="skip_client_checks",
         action="store_true",
         default=True,
-        help="Skip all client checks.",
+        help="Skip all client checks (default behavior). Use -a to include client checks.",
     )
     parser.add_argument(
         "-a",
