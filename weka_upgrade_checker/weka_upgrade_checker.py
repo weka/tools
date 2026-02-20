@@ -39,7 +39,7 @@ from packaging.version import parse as V, InvalidVersion
 
 parse = V 
 
-pg_version = "1.9.2"
+pg_version = "1.9.3"
 known_issues_file = "known_issues.json"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
@@ -1824,7 +1824,6 @@ def client_web_test(results):
 
 
 def invalid_endpoints(host_name, result, backend_ips_set):
-    backend_ips_set = set(backend_ips_set) if not isinstance(backend_ips_set, set) else backend_ips_set
 
     result = (
         result.replace(", ]}]", "]}]")
@@ -2526,6 +2525,11 @@ def backend_host_checks(
     INFO("CHECKING NUMBER OF RUNNING PROTOCOLS ON BACKENDS")
     protocol_host(backend_hosts, s3_enabled, weka_version)
 
+    backend_containers = json.loads(
+        subprocess.check_output(["weka", "cluster", "container", "-b", "-J"])
+    )
+    backend_ips_set = set([ip for entry in backend_containers for ip in entry["ips"]])
+
     INFO("CHECKING FOR INVALID ENDPOINT IPS ON BACKENDS")
     results = parallel_execution(
         ssh_bk_hosts,
@@ -2539,7 +2543,7 @@ def backend_host_checks(
         if result is None:
             WARN(f"Unable to check for invalid endpoint IPs on Host: {host_name}")
         else:
-            invalid_endpoints(host_name, result, backend_ips)
+            invalid_endpoints(host_name, result, backend_ips_set)
 
     INFO("CHECKING FOR MISSING / INVALID JOIN-SECRETS ON BACKENDS")
     command = r"""
@@ -2592,33 +2596,6 @@ def backend_host_checks(
                 WARN(f'"Host: {host_name}, Container: {container}, Issue: {issue}')
         else:
             GOOD(f"All containers on all hosts have matching secrets")
-
-    INFO("CHECKING WEKA DATA RESERVED LOOP SIZE ON BACKENDS")
-
-    loop_dir = "/data/reserved_space"
-    script = f"""
-    weka local ps --no-header -o name -F state=Running |
-    grep -E "(dataserv|drive|compute|frontend)" |
-    while read -r name; do
-        echo "$name"
-        weka local exec -C "$name" -- df --block-size=1M --output=avail {loop_dir} | tail -1
-    done | paste - -
-    """.strip()
-    script_encoded = base64.b64encode(script.encode()).decode()
-    remote_cmd = f"echo {script_encoded} | base64 -d | bash -l"
-
-    results = parallel_execution(
-        ssh_bk_hosts,
-        [remote_cmd],
-        use_check_output=True,
-        ssh_identity=ssh_identity,
-    )
-
-    for host_name, result in results:
-        if result is None:
-            WARN(f"Unable to check WEKA data directory size on Host: {host_name}")
-        else:
-            data_dir_check(host_name, result)
 
     INFO("VERIFYING FREE SPACE FOR WEKA TRACES")
     results = parallel_execution(
