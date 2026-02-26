@@ -1,4 +1,4 @@
-## bios_settings.yml
+# bios_settings.yml
 # This file contains BIOS settings for various systems.
 # It is used to configure BIOS settings for optimal performance and functionality.
 # Each section represents a specific system or system type, with nested settings for different components.
