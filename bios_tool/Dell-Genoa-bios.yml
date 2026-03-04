@@ -1,0 +1,18 @@
+Dell:
+  AMD:
+    LogicalProc: Disabled
+    NumaNodesPerSocket: "1"
+    PcieAspmL1: Disabled
+    ProcCStates: Disabled
+    ProcPwrPerf: MaxPerf
+    ProcVirtualization: Disabled
+    PxeDev1Interface: NIC.Embedded.1-1-1
+    SysProfile: Custom
+    WorkloadProfile: NotConfigured
+    DeterminismSlider: PerfDeterminism
+    DfCState: Disabled
+    DfPstateFreqOptimizer: Disabled
+    DfPstateLatencyOptimizer: Disabled
+    PowerProfileSelect: MaxIOPerformanceMode
+    BootMode: Uefi
+    SecureBoot: Disabled
