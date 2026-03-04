@@ -1,6 +1,5 @@
 #!/bin/bash
 
-#set -ueo pipefail # Fail with an error code if there's any sub-command/variable error
 set -eo pipefail # Fail with an error code if there's any sub-command/variable error
 
 DESCRIPTION="Verify if source-based IP routing is required (and set up)"
@@ -10,212 +9,255 @@ WTA_REFERENCE=""
 KB_REFERENCE=""
 RETURN_CODE=0
 
-declare -A WEKA_INTERFACES
-declare -A WEKA_INTERFACES_OVERLAP
+declare -A WEKA_NICS
+declare -A ALL_NICS
+declare -A NETWORK_PREFIX_NICS
+declare -A VALIDATED_NICS
 
-# Last modified: 2025-08-21
+declare -A SYSCTL_KEYS=(
+    ["arp_announce"]="2"
+    ["arp_filter"]="1"
+    ["arp_ignore"]="1"
+    ["ignore_routes_with_linkdown"]="1"
+)
 
-# arp_announce -- Weka recommends a value of 2
-#  Ref: https://sysctl-explorer.net/net/ipv4/arp_announce/
-#   Define different restriction levels for announcing the local source IP address from IP packets in ARP requests sent on interface:
-#   0 - (default) Use any local address, configured on any interface
-#   1 - Try to avoid local addresses that are not in the target’s subnet for this interface.
-#       This mode is useful when target hosts reachable via this interface require the source IP address in ARP requests to be part of their logical network configured on the receiving interface.
-#       When we generate the request we will check all our subnets that include the target IP and will preserve the source address if it is from such subnet.
-#       If there is no such subnet we select source address according to the rules for level 2.
-#   2 - Always use the best local address for this target. In this mode we ignore the source address in the IP packet and try to select local address that we prefer for talks with the target host.
-#       Such local address is selected by looking for primary IP addresses on all our subnets on the outgoing interface that include the target IP address.
-#       If no suitable local address is found we select the first local address we have on the outgoing interface or on all other interfaces, with the hope we will receive reply for our request and even sometimes no matter the source IPaddress we announce.
-#
-#       The max value from conf/{all,interface}/arp_announce is used.
-
-# arp_filter -- Weka recommends a value of 1
-#  Ref: https://sysctl-explorer.net/net/ipv4/arp_filter/
-#   1 - Allows you to have multiple network interfaces on the same subnet, and have the ARPs for each interface be answered based on whether or not the kernel would route a packet from the ARP’d IP out that interface (therefore you must use source based routing for this to work).
-#       In other words it allows control of which cards (usually 1) will respond to an arp request.
-#   0 - (default) The kernel can respond to arp requests with addresses from other interfaces.
-#       This may seem wrong but it usually makes sense, because it increases the chance of successful communication.
-#       IP addresses are owned by the complete host on Linux, not by particular interfaces.
-#       Only for more complex setups like load- balancing, does this behaviour cause problems.
-#
-#       arp_filter for the interface will be enabled if at least one of conf/{all,interface}/arp_filter is set to TRUE, it will be disabled otherwise
-# arp_ignore -- Weka recommends a value of 1
-#  Ref: https://sysctl-explorer.net/net/ipv4/arp_ignore/
-#   Define different modes for sending replies in response to received ARP requests that resolve local target IP addresses:
-#   0 - (default): reply for any local target IP address, configured on any interface
-#   1 - reply only if the target IP address is local address configured on the incoming interface
-#   2 - reply only if the target IP address is local address configured on the incoming interface and both with the sender’s IP address are part from same subnet on this interface
-#   3 - do not reply for local addresses configured with scope host, only resolutions for global and link addresses are replied
-#   4-7 - reserved
-#   8 - do not reply for all local addresses
-#
-#   The max value from conf/{all,interface}/arp_ignore is used when ARP request is received on the {interface
+# Last modified: 2026-01-15
 
 get_network_prefix() {
     local cidr="$1"
 
-    if [[ "$cidr" == *:* ]]; then
-        # IPv6 Handling (manual, Bash-only)
-        local ip="${cidr%/*}"
-        local prefix_len="${cidr#*/}"
-        local -a blocks
+    # IPv4 Handling
+    local ip subnet mask IFS=.
+    ip="${cidr%/*}"
+    subnet="${cidr#*/}"
+    mask=$(( (1 << subnet) - 1 << (32 - subnet) ))
+    set -- $ip
+    local -a octets=($1 $2 $3 $4)
+    local ip_int=$(( (${octets[0]} << 24) | (${octets[1]} << 16) | (${octets[2]} << 8) | ${octets[3]} ))
+    local net_int=$(( ip_int & mask ))
+    local net_addr=$(( (net_int >> 24) & 255 )).$(( (net_int >> 16) & 255 )).$(( (net_int >> 8) & 255 )).$(( net_int & 255 ))
+    echo "$net_addr"
+}
 
-        # Expand abbreviated IPv6 address (::, etc.)
-        IFS=':' read -ra parts <<< "$ip"
-        local num_parts=${#parts[@]}
+check_sysctl() {
+    local key="$1"
+    local expected="$2"
+    local interface="$3"
 
-        local fill=$(( 8 - num_parts + 1 ))
-        for ((i=0; i<num_parts; i++)); do
-            if [[ -z "${parts[i]}" ]]; then
-                # "::" detected — expand zeros
-                for ((j=0; j<fill; j++)); do
-                    blocks+=("0000")
-                done
-            else
-                blocks+=("$(printf '%04x' 0x${parts[i]})")
-            fi
-        done
+    local all_val iface_val
 
-        # Fill to 8 hextets if needed
-        while [ "${#blocks[@]}" -lt 8 ]; do
-            blocks+=("0000")
-        done
+    all_val=$(sysctl -n "net.ipv4.conf.all.$key" 2>/dev/null)
+    iface_val=$(sysctl -n "net.ipv4.conf.$interface.$key" 2>/dev/null)
 
-        # Determine how many full hextets belong to the network prefix
-        local full_blocks=$(( prefix_len / 16 ))
-        local partial_bits=$(( prefix_len % 16 ))
-
-        for ((i=0; i<8; i++)); do
-            if (( i < full_blocks )); then
-                continue
-            elif (( i == full_blocks && partial_bits > 0 )); then
-                local val=$(( 0x${blocks[i]} ))
-                local mask=$(( 0xFFFF << (16 - partial_bits) & 0xFFFF ))
-                blocks[i]=$(printf '%04x' $(( val & mask )))
-            else
-                blocks[i]="0000"
-            fi
-        done
-
-        # Reconstruct IPv6 prefix (remove leading zeros and compress if needed)
-        local prefix=$(IFS=:; echo "${blocks[*]}")
-        echo "$prefix"
+    if [[ "$all_val" == "$expected" ]]; then
+        echo "$all_val"
+    elif [[ "$iface_val" == "$expected" ]]; then
+        echo "$iface_val"
     else
-        # IPv4 Handling
-        local ip subnet mask IFS=.
-        ip="${cidr%/*}"
-        subnet="${cidr#*/}"
-        mask=$(( (1 << subnet) - 1 << (32 - subnet) ))
-        set -- $ip
-        local -a octets=($1 $2 $3 $4)
-        local ip_int=$(( (${octets[0]} << 24) | (${octets[1]} << 16) | (${octets[2]} << 8) | ${octets[3]} ))
-        local net_int=$(( ip_int & mask ))
-        local net_addr=$(( (net_int >> 24) & 255 )).$(( (net_int >> 16) & 255 )).$(( (net_int >> 8) & 255 )).$(( net_int & 255 ))
-        echo "$net_addr"
+        echo ""
     fi
 }
 
-# Checks:
-#  IP rule exists for each mgmt ip
-#  IP route table exists for each IP rule above
+# Convert an IP address to a 32-bit integer
+ip_to_int() {
+    local IFS='.'
+    read -r a b c d <<< "$1"
+    echo $(( (a << 24) + (b << 16) + (c << 8) + d ))
+}
 
-#  Verify arp_announce
-#  Verify arp_filter
-#  Verify arp_ignore
+# Check if a given IP falls within a CIDR range
+ip_in_cidr() {
+    local ip_int cidr_ip cidr_bits cidr_ip_int mask
+    ip_int=$(ip_to_int "$1")
+    cidr_ip="${2%%/*}"
+    cidr_bits="${2##*/}"
+    cidr_ip_int=$(ip_to_int "${cidr_ip}")
+    mask=$(( 0xFFFFFFFF << (32 - cidr_bits) & 0xFFFFFFFF ))
+    (( (ip_int & mask) == (cidr_ip_int & mask) ))
+}
 
 # Determine what NICs are being used as dataplane NICs
-for WEKA_CONTAINER in $(weka local ps --output name --no-header | grep -e compute -e drive -e frontend); do
+while read -r WEKA_CONTAINER; do
     while read NET_ENTRY; do
         if [[ ${NET_ENTRY} =~ "name:"(.*) ]]; then
             NET_NAME=${BASH_REMATCH[1]}
-            # Example output:
-            #  [{addr_info:[{index:8,dev:ens1f1np1,family:inet,local:10.0.94.110,prefixlen:16,broadcast:10.0.255.255,scope:global,noprefixroute:true,label:ens1f1np1,valid_life_time:4294967295,preferred_life_time:4294967295}]}]
             if [[ $(ip -4 -j -o addr show dev ${NET_NAME} 2>/dev/null | tr -d \"\[:blank:]) =~ "local:"([0-9\.]+)",prefixlen:"([0-9]+) ]]; then
                 NET_IP=${BASH_REMATCH[1]}
                 NETMASK=${BASH_REMATCH[2]}
-                WEKA_INTERFACES[${NET_NAME}]="${NET_IP}/${NETMASK}"
+                WEKA_NICS["${NET_NAME}"]="${NET_IP}/${NETMASK}"
             fi
         fi
-    done < <(weka local resources -C ${WEKA_CONTAINER} net --stable -J | grep -w -e name | tr -d \"\,[:blank:])
+    done < <(weka local resources -C "${WEKA_CONTAINER}" net --stable -J | grep -w -e name | tr -d \"\,[:blank:])
+done < <(weka local ps --output name --no-header | grep -e compute -e drive -e frontend)
+
+# Enumerate all (IPv4) NICs on the system
+while read -r NIC_NAME NIC_VALUE; do
+    ALL_NICS["${NIC_NAME}"]="${NIC_VALUE}"
+done < <(ip -o -f inet addr show scope global primary | awk '{print $2, $4}')
+
+# Determine network prefix for all NICs
+for NIC in "${!ALL_NICS[@]}"; do
+    network_prefix=$(get_network_prefix "${ALL_NICS[$NIC]}")
+    NETWORK_PREFIX_NICS["$network_prefix"]+="$NIC "
 done
 
-# Determine the network prefix associated with each dataplane NIC
-if [[ ${#WEKA_INTERFACES[@]} -gt 1 ]]; then
-    declare -A network_prefixes
+# Determine if any NICs' network prefix overlaps with WEKA dataplane NICs
+for WEKA_NIC in "${!WEKA_NICS[@]}"; do
+    network_prefix=$(get_network_prefix "${WEKA_NICS[$WEKA_NIC]}")
 
-    # Do the dataplane NICs have addresses in overlapping networks?
-    for NET in "${!WEKA_INTERFACES[@]}"; do
-        network_prefix=$(get_network_prefix "${WEKA_INTERFACES[$NET]}")
-        WEKA_INTERFACES_OVERLAP[${network_prefix}]+="${NET} "
-    done
-fi
+    NIC_LIST="${NETWORK_PREFIX_NICS[$network_prefix]}"
+    read -r -a overlapping_nics <<< "$NIC_LIST"
 
-# If we have multiple, overlapping, dataplane NICs, perform validation
-for PREFIX in ${!WEKA_INTERFACES_OVERLAP[@]}; do
-    readarray -d ' ' overlapping_nics  <<< "${WEKA_INTERFACES_OVERLAP[${PREFIX}]}"
-    if [[ ${#overlapping_nics[@]} -gt 1 ]]; then
-        for NIC in ${overlapping_nics[@]}; do
+    if (( ${#overlapping_nics[@]} > 1 )); then
+        for OVERLAP_NIC in "${overlapping_nics[@]}"; do
+            if [[ ! -v VALIDATED_NICS["$OVERLAP_NIC"] ]]; then
+                VALIDATED_NICS["$OVERLAP_NIC"]=1
 
-            # Validate arp_announce (should be equal to 2)
-            ARP_ANNOUNCE_ALL=$(sysctl -n net.ipv4.conf.all.arp_announce)
-            if [[ ${ARP_ANNOUNCE_ALL} != "2" ]]; then
-                if [[ $(sysctl -n net.ipv4.conf.${NIC}.arp_announce) != "2" ]]; then
+                # Validate all sysctl keys
+                for key in "${!SYSCTL_KEYS[@]}"; do
+                    SYSCTL_VALUE=$(check_sysctl "$key" "${SYSCTL_KEYS[$key]}" "$OVERLAP_NIC")
+                    if [[ "$SYSCTL_VALUE" != "${SYSCTL_KEYS[$key]}" ]]; then
+                        RETURN_CODE=254
+                        echo "WARNING: $key is not set to ${SYSCTL_KEYS[$key]} on interface $OVERLAP_NIC"
+                    fi
+                done
+
+                LOCAL_ROUTE_ENTRY_FOUND=0
+                DEFAULT_ROUTE_ENTRY_FOUND=0
+
+                IFS=/ read -r NIC_IP NIC_MASK <<< "${ALL_NICS[$OVERLAP_NIC]}"
+
+                if ! ip rule | grep -w -q -m 1 -F "$NIC_IP" && \
+                   ! ip rule | grep -w -q -m 1 -F "$NIC_IP/32"; then
                     RETURN_CODE=254
-                    echo "WARNING: arp_announce is not set to 2 on interface ${NIC}".
+                    echo "WARNING: No ip rule found for IP $NIC_IP"
+                else
+                    ROUTE_TABLE=$(ip rule | grep -w -m 1 -F "$NIC_IP" | sed -r 's/.*lookup *(\w+).*/\1/')
+                    if [[ -z "$ROUTE_TABLE" ]]; then
+                        ROUTE_TABLE=$(ip rule | grep -w -m 1 -F "$NIC_IP/32" | sed -r 's/.*lookup *(\w+).*/\1/')
+                    fi
+
+                    if [[ -z "$ROUTE_TABLE" ]]; then
+                        RETURN_CODE=254
+                        echo "Route table $ROUTE_TABLE not found."
+                    else
+                        while read -r ROUTE_ENTRY; do
+                            re="^${network_prefix}/${NIC_MASK}[[:space:]]+dev[[:space:]]+${OVERLAP_NIC}.*[[:space:]]src[[:space:]]${NIC_IP}"
+                            if [[ $ROUTE_ENTRY =~ $re ]]; then
+                                LOCAL_ROUTE_ENTRY_FOUND=1
+                            elif [[ $ROUTE_ENTRY =~ ^default ]]; then
+                                DEFAULT_ROUTE_ENTRY_FOUND=1
+                            fi
+                        done < <(ip route show table "$ROUTE_TABLE" 2>/dev/null)
+
+                        if [[ $LOCAL_ROUTE_ENTRY_FOUND == 0 ]]; then
+                            RETURN_CODE=254
+                            echo "WARNING: Local route entry not found in table $ROUTE_TABLE"
+                        fi
+
+                        if [[ $DEFAULT_ROUTE_ENTRY_FOUND == 0 ]]; then
+                            RETURN_CODE=254
+                            echo "WARNING: default route entry not found in table $ROUTE_TABLE"
+                        fi
+                    fi
                 fi
-            fi
-
-            # Validate arp_filter (should be equal to 1)
-            ARP_FILTER_ALL=$(sysctl -n net.ipv4.conf.all.arp_filter)
-            if [[ ${ARP_FILTER_ALL} != "1" ]]; then
-                if [[ $(sysctl -n net.ipv4.conf.${NIC}.arp_filter) != "1" ]]; then
-                    RETURN_CODE=254
-                    echo "WARNING: arp_filter is not set to 1 on interface ${NIC}".
-               fi
-            fi
-
-            # Validate arp_ignore (should be 1)
-            #  If all set to 1, that's good enough
-            if [[ $(sysctl -n net.ipv4.conf.all.arp_ignore) != "1" ]]; then
-                if [[ $(sysctl -n net.ipv4.conf.${NIC}.arp_ignore) != "1" ]]; then
-                    RETURN_CODE=254
-                    echo "WARNING: arp_ignore is not set to 1 on interface ${NIC}".
-                elif [[ $(sysctl -n net.ipv4.conf.all.arp_ignore) -gt "1" ]]; then
-                    RETURN_CODE=254
-                    echo "WARNING: net.ipv4.conf.all.arp_ignore is set to $(sysctl -n net.ipv4.conf.all.arp_ignore), which overrides"
-                    echo "the arp_ignore value on specific network interfaces."
-                fi
-            fi
-
-            ###################################
-            # Check ip rules / routing tables #
-            ###################################
-            readarray -d "/" -t netinfo  <<< "${WEKA_INTERFACES[${NIC}]}"
-
-            # Does this interface's IP appear in the rule table?
-            if ! ip rule | grep -q -m 1 -F "${netinfo[0]}"; then
-                RETURN_CODE=254
-                echo "WARNING: No ip rule found for IP ${netinfo[0]}".
-            else
-                ROUTE_TABLE=$(ip rule | grep -m 1 -F "${netinfo[0]}" | sed -r 's/.*lookup *(\w+).*/\1/')
-                ROUTE_ENTRY=$(ip route show table ${ROUTE_TABLE} 2>/dev/null)
-                if [[ -z "$ROUTE_ENTRY" ]]; then
-                   RETURN_CODE=254
-                   echo "WARNING: route table ${ROUTE_TABLE} not found."
-               elif ! echo "$ROUTE_ENTRY" | grep -e ^default ; then
-                   RETURN_CODE=254
-                   echo "WARNING: No default route entry in table ${ROUTE_TABLE} was found."
-                   echo "This may or may not be an issue, but should be confirmed."
-               fi
             fi
         done
     fi
 done
 
-if [[ ${RETURN_CODE} -eq 0 ]]; then
+
+IP_ROUTE_GET_ERRORS=0
+
+if [[ ${#WEKA_NICS[@]} -eq 0 ]]; then
+    echo "ERROR: WEKA_NICS is empty, nothing to check." >&2
+    exit 254 # exit early... not much else we can do
+fi
+
+# Get destination IPs from weka command
+DESTINATIONS=$(weka cluster container --backends --output ips --no-header | sed 's/,//g' | sort -u | paste -s)
+
+if [[ -z "${DESTINATIONS}" ]]; then
+    echo "ERROR: No destination IPs retrieved from weka command." >&2
+    exit 254 # exit early... not much else we can do
+fi
+
+
+# Build a set of local IPs for local-destination detection
+declare -A LOCAL_IPS
+for IFACE in "${!WEKA_NICS[@]}"; do
+    LOCAL_IPS["${WEKA_NICS[${IFACE}]%%/*}"]=1
+done
+
+
+for IFACE in "${!WEKA_NICS[@]}"; do
+    CIDR="${WEKA_NICS[${IFACE}]}"
+    LOCAL_IP="${CIDR%%/*}"
+
+    # Skip interfaces that aren't UP
+    if ! ip link show dev "${IFACE}" 2>/dev/null | grep -q 'state UP'; then
+        echo "SKIP: ${IFACE} (${LOCAL_IP}) is not UP, skipping."
+        continue
+    fi
+
+    for DEST in ${DESTINATIONS}; do
+        # Skip destinations outside this interface's subnet
+        if ! ip_in_cidr "${DEST}" "${CIDR}"; then
+            continue
+        fi
+
+        ROUTE_OUTPUT=$(ip route get "${DEST}" from "${LOCAL_IP}" 2>&1) || {
+            echo "WARN: 'ip route get ${DEST} from ${LOCAL_IP}' failed: ${ROUTE_OUTPUT}" >&2
+            continue
+        }
+
+        ACTUAL_IFACE=$(awk '{for(i=1;i<=NF;i++) if($i=="dev") print $(i+1)}' <<< "${ROUTE_OUTPUT}" | head -1)
+
+        if [[ -z "${ACTUAL_IFACE}" ]]; then
+            echo "WARN: Could not parse dev from route output for ${LOCAL_IP} -> ${DEST}" >&2
+            echo "      Output was: ${ROUTE_OUTPUT}" >&2
+            ((IP_ROUTE_GET_ERRORS++))
+            continue
+        fi
+
+        # If the destination is one of our local IPs, kernel routes via lo — that's expected
+        if [[ -n "${LOCAL_IPS[${DEST}]+_}" ]]; then
+            if [[ "${ACTUAL_IFACE}" == "lo" ]]; then
+                # echo "OK: ${LOCAL_IP} (${IFACE}) -> ${DEST} via lo (destination is local)"
+                :
+            else
+                echo "MISMATCH: ${LOCAL_IP} -> ${DEST} is local but routed via '${ACTUAL_IFACE}' instead of lo"
+                echo "          Full output: ${ROUTE_OUTPUT}"
+                ((IP_ROUTE_GET_ERRORS++))
+            fi
+            continue
+        fi
+
+        if [[ "${ACTUAL_IFACE}" != "${IFACE}" ]]; then
+            echo "MISMATCH: ${LOCAL_IP} belongs to '${IFACE}' but route to ${DEST} uses '${ACTUAL_IFACE}'"
+            echo "          Full output: ${ROUTE_OUTPUT}"
+            ((IP_ROUTE_GET_ERRORS++))
+        else
+            # echo "OK: ${LOCAL_IP} (${IFACE}) -> ${DEST} via ${ACTUAL_IFACE}"
+            :
+        fi
+    done
+done
+
+if [[ ${IP_ROUTE_GET_ERRORS} -gt 0 ]]; then
+    echo ""
+    echo "Failure evaluating the output of ip route get - RESULT: ${ERRORS} issue(s) detected."
+    RETURN_CODE=254
+else
+    echo ""
+    echo "RESULT: All routes use the expected outgoing interface."
+fi
+
+if [[ $RETURN_CODE -eq 0 ]]; then
     echo "Source-based routing is not required or is correct."
 else
     echo "Recommended Resolution: review the required network settings from the WEKA docs:"
-    echo "https://docs.weka.io/planning-and-installation/bare-metal/setting-up-the-hosts#general-settings-in-etc-sysctl.conf"
+    echo "https://docs.weka.io/planning-and-installation/bare-metal/setting-up-the-hosts#configure-the-networking"
 fi
-exit ${RETURN_CODE}
+
+exit "$RETURN_CODE"

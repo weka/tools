@@ -68,6 +68,32 @@ if [[ ${#PCI_BUSES[@]} -gt 0 ]]; then
     done
 fi
 
+# Check that all Infiniband devices have a mode=datagram
+for NET_DEVICES in /sys/class/net/* ; do
+    # If we can't see what kind of link it is, skip
+    if [[ ! -e ${NET_DEVICES}/type ]] ; then
+        continue
+    fi
+    NET_DEVICE_TYPE=$(cat ${NET_DEVICES}/type)
+    # if it's an IB device
+    if [[ "x${NET_DEVICE_TYPE}" = "x32" ]] ; then
+        if [[ ! -e ${NET_DEVICES}/mode ]] ; then
+            RETURN_CODE=254
+            echo "No mode file exists for Infiniband device ${NET_DEVICE}: ${NET_DEVICES}/mode does not exist, so cannot determine if it's datagram or connected"
+            echo "Recommended resolution: upgrade the Infiniband device driver"
+            continue
+        fi
+        NET_DEVICE_IB_MODE=$(cat ${NET_DEVICES}/mode)
+        if [[ "x${NET_DEVICE_IB_MODE}" != "xdatagram" ]] ; then
+            RETURN_CODE=254
+            echo "The connection mode for Infiniband device ${NET_DEVICE} according to ${NET_DEVICES}/mode is not datagram"
+            echo "Recommended resolution: ensure the Infiniband device is in datagram mode"
+            continue
+        fi
+    fi
+done
+
+
 if [[ $RETURN_CODE -eq 0 ]]; then
     echo "Mellanox NIC settings correctly set."
 else
