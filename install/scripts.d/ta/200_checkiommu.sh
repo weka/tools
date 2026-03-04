@@ -24,18 +24,21 @@ IOMMUGROUPS=$(ls /sys/kernel/iommu_groups | wc -l)
 
 if [ $IOMMUCLASS -eq "0" ] && [ $IOMMUGROUPS -eq "0" ]; then    # check for iommu devices
     echo "IOMMU not configured on $(hostname)"
-    ret="0"
+    RETURN_CODE=0
 else
     if verlte ${MIN_VERSION} ${WEKA_VERSION} && verlte ${WEKA_VERSION} ${MAX_VERSION} ; then
         echo "This version is classified as a susceptible version, and"
-    fi
-    echo "IOMMU is configured on $(hostname) - this should be disabled - refer"
-    if [[ ! -z "${WTA_REFERENCE}" ]]; then
-        echo "to ${JIRA_REFERENCE}, discussed in ${WTA_REFERENCE}, SFDC ${KB_REFERENCE}"
+        echo "IOMMU is configured on $(hostname) - this should be disabled - refer"
+        if [[ ! -z "${WTA_REFERENCE}" ]]; then
+            echo "to ${JIRA_REFERENCE}, discussed in ${WTA_REFERENCE}, SFDC ${KB_REFERENCE}"
+        else
+            echo "to ${JIRA_REFERENCE}, SFDC ${KB_REFERENCE}"
+        fi
+        RETURN_CODE=1
     else
-        echo "to ${JIRA_REFERENCE}, SFDC ${KB_REFERENCE}"                                                                                                   
+        echo "This version isn't susceptible"
+        RETURN_CODE=0
     fi
-    RETURN_CODE=1
 fi
 
 exit ${RETURN_CODE}

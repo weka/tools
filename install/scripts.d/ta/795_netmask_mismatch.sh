@@ -34,8 +34,7 @@ while read WEKA_CONTAINER WEKA_CONTAINER_PORT; do
     SINGLE_IP=""
 
     while read PORTS; do
-        if [[ $PORTS =~ ip:([^n]+)netdevName:([^n]+)netmaskBits:([^s]+)singleIP:([^ ]+) ]]; then
-        #if [[ ${PORTS} =~ "ip:"(.*)"netdevName:"(.*)"netmaskBits:"(.*)"singleIP:"(.*) ]]; then
+        if [[ ${PORTS} =~ "ip:"(.*)"netdevName:"(.*)"netmaskBits:"(.*)"singleIP:"(.*) ]]; then
             NET_IP=${BASH_REMATCH[1]}
             NET_NAME=${BASH_REMATCH[2]}
             NET_MASK=${BASH_REMATCH[3]}
