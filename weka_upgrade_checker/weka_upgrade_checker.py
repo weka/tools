@@ -39,7 +39,7 @@ from packaging.version import parse as V, InvalidVersion
 
 parse = V 
 
-pg_version = "1.9.1"
+pg_version = "1.9.2"
 known_issues_file = "known_issues.json"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
@@ -892,6 +892,7 @@ def weka_cluster_checks(target_version):
                 drive["status"],
                 drive["firmware"],
                 drive["hostname"],
+                drive["writable"]
             ]
 
     if not bad_drive:
@@ -899,6 +900,24 @@ def weka_cluster_checks(target_version):
     else:
         WARN2(f"The following drives are not active\n")
         printlist(bad_drive, 5)
+
+    INFO("CHECKING FOR ACTIVE UNWRITABLE DRIVES")
+    active_unwritable_drives = []
+    for drive in weka_drives:
+        if drive["status"] == "ACTIVE" and drive["writable"] == "Unwritable":
+            active_unwritable_drives += [
+                drive["disk_id"],
+                drive["node_id"],
+                drive["status"],
+                drive["hostname"],
+                drive["writable"]
+            ]
+    if not active_unwritable_drives:
+        GOOD(f"All drives are in active and writable status")
+    else:
+        WARN(f"The following drives are active but not writable\n")
+        printlist(active_unwritable_drives, 5)
+
 
     if V("4.0") <= V(weka_version) < V("4.2.1"):
         INFO("VERIFYING DRIVES CONFIGURATION")
