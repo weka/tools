@@ -700,7 +700,7 @@ def weka_cluster_checks(target_version):
 
     INFO("CHECKING CLIENT COMPATIBLE VERSIONS")
     try:
-        sw_version = weka_version.split(".")
+        sw_version = target_version.split(".")
         check_version = ".".join(sw_version[:2])
         cl_machine_need_upgrade = []
         cl_host_need_upgrade = []
@@ -1460,12 +1460,12 @@ def check_os_release(
                 if version not in supported_versions:
                     BAD(
                         f"Host {host_name} OS CentOS {version} is not supported with "
-                        f"WEKA version {weka_version}"
+                        f"target WEKA version {check_version}"
                     )
                 else:
                     GOOD(
                         f"Host {host_name} OS CentOS {version} is supported with "
-                        f"WEKA version {weka_version}"
+                        f"target WEKA version {check_version}"
                     )
             elif client:
                 try:
@@ -1477,12 +1477,12 @@ def check_os_release(
                 if version not in supported_versions and version not in client_only_versions:
                     BAD(
                         f"Host {host_name} OS CentOS {version} is not supported with "
-                        f"WEKA version {weka_version}"
+                        f"target WEKA version {check_version}"
                     )
                 else:
                     GOOD(
                         f"Host {host_name} OS CentOS {version} is supported with "
-                        f"WEKA version {weka_version}"
+                        f"target WEKA version {check_version}"
                     )
 
         else:
@@ -1521,12 +1521,12 @@ def check_os_release(
                 elif version not in supported_os_ids[os_id]:
                     BAD(
                         f"Host {host_name} OS {os_id} {version} is not supported with "
-                        f"WEKA version {weka_version}"
+                        f"target WEKA version {check_version}"
                     )
                 else:
                     GOOD(
                         f"Host {host_name} OS {os_id} {version} is supported with "
-                        f"WEKA version {weka_version}"
+                        f"target WEKA version {check_version}"
                     )
 
     except Exception as e:
@@ -3412,6 +3412,17 @@ def main():
         parser.error("--target-version is required.")
 
     ssh_identity = args.ssh_identity or None
+
+    try:
+        with open("upgrade_path.json", "r") as f:
+            upgrade_map = json.load(f)
+        if args.target_version not in upgrade_map:
+            BAD(f"Target version {args.target_version} is not a valid upgrade target. Check upgrade_path.json for valid versions.")
+            sys.exit(1)
+    except FileNotFoundError:
+        WARN("upgrade_path.json not found; skipping pre-flight version validation.")
+    except json.JSONDecodeError:
+        WARN("Failed to parse upgrade_path.json; skipping pre-flight version validation.")
 
     if args.run_all_checks:
         weka_cluster_results = weka_cluster_checks(
