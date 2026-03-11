@@ -3413,6 +3413,17 @@ def main():
 
     ssh_identity = args.ssh_identity or None
 
+    try:
+        with open("upgrade_path.json", "r") as f:
+            upgrade_map = json.load(f)
+        if args.target_version not in upgrade_map:
+            BAD(f"Target version {args.target_version} is not a valid upgrade target. Check upgrade_path.json for valid versions.")
+            sys.exit(1)
+    except FileNotFoundError:
+        WARN("upgrade_path.json not found; skipping pre-flight version validation.")
+    except json.JSONDecodeError:
+        WARN("Failed to parse upgrade_path.json; skipping pre-flight version validation.")
+
     if args.run_all_checks:
         weka_cluster_results = weka_cluster_checks(
             target_version=args.target_version
