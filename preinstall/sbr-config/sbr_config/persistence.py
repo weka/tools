@@ -39,11 +39,6 @@ def write_persistence(
     """
     files_written = []
 
-    # Write sysctl persistence (common to all backends)
-    sysctl_path = write_sysctl_persistence(changes)
-    if sysctl_path:
-        files_written.append(sysctl_path)
-
     # Build table list (include both existing and newly added)
     tables = list(state.routing_tables)
     for change in changes:
@@ -75,6 +70,12 @@ def write_persistence(
     if not sbr_interfaces:
         logger.info("No interface-level persistence needed")
         return files_written
+
+    # Write sysctl persistence (derived from desired state, not changes)
+    iface_names = [iface.name for iface in sbr_interfaces]
+    sysctl_path = write_sysctl_persistence(iface_names)
+    if sysctl_path:
+        files_written.append(sysctl_path)
 
     # Select backend
     backend = _select_backend(state.network_manager)

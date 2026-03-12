@@ -257,6 +257,11 @@ def _do_configure(args: argparse.Namespace, out: Output) -> int:
         if failed == 0:
             out.nl()
             out.info("System is correctly configured for source-based routing.")
+            # Even though runtime is correct, persistence files may be
+            # missing or stale (e.g. user deleted them).  Regenerate them
+            # so the configuration survives reboot.
+            if not args.no_persist:
+                _write_persistence(state, [], out)
             return 0
 
         # Plan changes
