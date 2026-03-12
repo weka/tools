@@ -4,8 +4,15 @@ import logging
 import os
 from typing import List
 
-from ..constants import MANAGED_COMMENT, SYSTEMD_NETWORK_DIR, TABLE_NAME_PREFIX
-from ..models import InterfaceInfo, PlannedChange, RoutingTable
+from ..constants import (
+    MANAGED_COMMENT,
+    RULE_PRIORITY_INCREMENT,
+    RULE_PRIORITY_START,
+    SYSTEMD_NETWORK_DIR,
+    TABLE_NAME_PREFIX,
+    TABLE_NUMBER_START,
+)
+from ..models import InterfaceInfo, RoutingTable
 from ..utils import read_file, run_command, write_file_atomic
 from .base import PersistenceBackend
 
@@ -23,7 +30,6 @@ class SystemdNetworkdBackend(PersistenceBackend):
         self,
         interfaces: List[InterfaceInfo],
         tables: List[RoutingTable],
-        changes: List[PlannedChange],
     ) -> List[str]:
         if not os.path.isdir(SYSTEMD_NETWORK_DIR):
             os.makedirs(SYSTEMD_NETWORK_DIR, exist_ok=True)
@@ -77,8 +83,8 @@ class SystemdNetworkdBackend(PersistenceBackend):
 
     def _generate_network_file(self, iface: InterfaceInfo, table_number: int) -> str:
         """Generate a .network file for a single interface."""
-        # Determine priority (use same logic as planner)
-        priority = 100 + (table_number - 100) * 10
+        # Deterministic priority from table number (mirrors planner allocation)
+        priority = RULE_PRIORITY_START + (table_number - TABLE_NUMBER_START) * RULE_PRIORITY_INCREMENT
 
         lines = [
             MANAGED_COMMENT,

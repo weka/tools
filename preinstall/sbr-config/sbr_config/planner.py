@@ -76,6 +76,7 @@ def plan_changes(
             table_assignments[iface_name] = rt.number
 
     next_number = TABLE_NUMBER_START
+    used_priorities = {r.priority for r in state.rules}
 
     for iface in state.interfaces:
         if iface.is_loopback or iface.is_default_route_interface or not iface.is_up:
@@ -177,7 +178,6 @@ def plan_changes(
         # Phase 4: IP rule
         if "ip_rule_exists" in iface_fails:
             # Determine priority: find unused priority slot
-            used_priorities = {r.priority for r in state.rules}
             priority = RULE_PRIORITY_START
             while priority in used_priorities:
                 priority += RULE_PRIORITY_INCREMENT

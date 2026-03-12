@@ -10,7 +10,7 @@ from ..constants import (
     NM_DISPATCHER_SCRIPT,
     TABLE_NAME_PREFIX,
 )
-from ..models import InterfaceInfo, PlannedChange, RoutingTable
+from ..models import InterfaceInfo, RoutingTable
 from ..utils import read_file, write_file_atomic
 from .base import PersistenceBackend
 
@@ -28,7 +28,6 @@ class NetworkManagerBackend(PersistenceBackend):
         self,
         interfaces: List[InterfaceInfo],
         tables: List[RoutingTable],
-        changes: List[PlannedChange],
     ) -> List[str]:
         script_path = os.path.join(NM_DISPATCHER_DIR, NM_DISPATCHER_SCRIPT)
 
@@ -36,7 +35,7 @@ class NetworkManagerBackend(PersistenceBackend):
             os.makedirs(NM_DISPATCHER_DIR, exist_ok=True)
 
         # Build the dispatcher script
-        script = self._generate_script(interfaces, tables, changes)
+        script = self._generate_script(interfaces, tables)
         write_file_atomic(script_path, script, mode=0o755)
 
         logger.info("Wrote NM dispatcher script: %s", script_path)
@@ -64,7 +63,6 @@ class NetworkManagerBackend(PersistenceBackend):
         self,
         interfaces: List[InterfaceInfo],
         tables: List[RoutingTable],
-        changes: List[PlannedChange],
     ) -> str:
         """Generate the bash dispatcher script content.
 

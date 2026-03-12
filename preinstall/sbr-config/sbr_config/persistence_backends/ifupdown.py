@@ -11,7 +11,7 @@ from ..constants import (
     MANAGED_COMMENT,
     TABLE_NAME_PREFIX,
 )
-from ..models import InterfaceInfo, PlannedChange, RoutingTable
+from ..models import InterfaceInfo, RoutingTable
 from ..utils import read_file, write_file_atomic
 from .base import PersistenceBackend
 
@@ -30,7 +30,6 @@ class IfupdownBackend(PersistenceBackend):
         self,
         interfaces: List[InterfaceInfo],
         tables: List[RoutingTable],
-        changes: List[PlannedChange],
     ) -> List[str]:
         table_num = {t.name: t.number for t in tables}
         written = []
@@ -112,19 +111,25 @@ class IfupdownBackend(PersistenceBackend):
     ) -> bool:
         """Try to add post-up/pre-down lines to an existing stanza.
 
+        If managed lines from a previous run already exist, they are removed
+        first to avoid accumulating duplicate entries.
+
         Returns True if successful, False if the stanza wasn't found.
         """
         content = read_file(INTERFACES_FILE)
         if not content:
             return False
 
+        # Remove any existing managed lines first to prevent duplicates
+        if MANAGED_COMMENT in content:
+            content = self._remove_managed_lines(content)
+
         # Find the stanza for this interface
-        pattern = rf'^(iface\s+{re.escape(iface_name)}\s+.*?)(?=\niface\s|\nauto\s|\nallow-|\n\Z|\Z)'
+        pattern = rf'^(iface\s+{re.escape(iface_name)}\s+.*?)(?=\niface\s|\nauto\s|\nallow-|\nsource\s|\nmapping\s|\n\Z|\Z)'
         match = re.search(pattern, content, re.MULTILINE | re.DOTALL)
         if not match:
             return False
 
-        stanza = match.group(0)
         stanza_end = match.end()
 
         # Build lines to insert
@@ -162,17 +167,18 @@ class IfupdownBackend(PersistenceBackend):
 
         fpath = os.path.join(INTERFACES_D_DIR, f"sbr-{iface.name}")
 
+        # Do NOT redefine the interface (e.g. inet manual) -- that would
+        # conflict with the main stanza (which may be DHCP).  Just add
+        # hook commands that ifupdown executes for this interface.
         lines = [
             MANAGED_COMMENT,
-            f"# Source-based routing for {iface.name} ({iface.ip_address})",
+            f"# Source-based routing hooks for {iface.name} ({iface.ip_address})",
             "",
-            f"auto {iface.name}",
-            f"iface {iface.name} inet manual",
         ]
         for cmd in up_cmds:
-            lines.append(f"    post-up {cmd}")
+            lines.append(f"post-up {cmd}")
         for cmd in reversed(down_cmds):
-            lines.append(f"    pre-down {cmd} 2>/dev/null || true")
+            lines.append(f"pre-down {cmd} 2>/dev/null || true")
         lines.append("")
 
         write_file_atomic(fpath, "\n".join(lines))
@@ -197,4 +203,7 @@ class IfupdownBackend(PersistenceBackend):
                     in_managed_block = False
             new_lines.append(line)
 
-        return "\n".join(new_lines)
+        result = "\n".join(new_lines)
+        if content.endswith("\n") and not result.endswith("\n"):
+            result += "\n"
+        return result
