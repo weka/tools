@@ -1,6 +1,7 @@
 """Persistence dispatch: select and invoke the correct backend."""
 
 import logging
+import re
 from typing import List
 
 from .constants import TABLE_NAME_PREFIX
@@ -44,7 +45,6 @@ def write_persistence(
     for change in changes:
         if change.change_type == ChangeType.ADD_RT_TABLE:
             # Parse "echo 'NUM NAME' >> ..."
-            import re
             m = re.search(r"echo\s+'(\d+)\s+(\S+)'", change.command)
             if m:
                 tables.append(RoutingTable(number=int(m.group(1)), name=m.group(2)))
@@ -89,7 +89,7 @@ def write_persistence(
         )
 
     logger.info("Using persistence backend: %s", backend.describe())
-    backend_files = backend.write_config(sbr_interfaces, tables, changes)
+    backend_files = backend.write_config(sbr_interfaces, tables)
     files_written.extend(backend_files)
 
     return files_written

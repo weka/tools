@@ -206,6 +206,9 @@ def write_sysctl_persistence(interface_names: List[str]) -> str:
         lines.append("")
 
     content = "\n".join(lines) + "\n"
+    sysctl_dir = os.path.dirname(SYSCTL_CONF_PATH)
+    if sysctl_dir and not os.path.isdir(sysctl_dir):
+        os.makedirs(sysctl_dir, exist_ok=True)
     write_file_atomic(SYSCTL_CONF_PATH, content)
     logger.info("Wrote sysctl persistence config to %s", SYSCTL_CONF_PATH)
     return SYSCTL_CONF_PATH
