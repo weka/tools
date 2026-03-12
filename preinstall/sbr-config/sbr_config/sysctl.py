@@ -11,7 +11,7 @@ from .constants import (
     SYSCTL_SETTINGS,
 )
 from .exceptions import ConfigurationError
-from .models import ChangeType, PlannedChange, SysctlSetting, ValidationResult
+from .models import ChangeType, PlannedChange, ValidationResult
 from .utils import read_file, run_command, write_file_atomic
 
 logger = logging.getLogger(__name__)
@@ -166,19 +166,21 @@ def apply_sysctl(key: str, value: str) -> None:
     logger.info("Set sysctl %s = %s", key, value)
 
 
-def write_sysctl_persistence(
-    changes: List[PlannedChange],
-) -> str:
+def write_sysctl_persistence(interface_names: List[str]) -> str:
     """Write /etc/sysctl.d/90-sbr-config.conf for persistence.
 
+    The file is always generated from the COMPLETE set of desired sysctl
+    settings (not from this run's delta) so it is correct even when all
+    values were already set by a previous run.
+
     Args:
-        changes: List of sysctl PlannedChange entries.
+        interface_names: Non-default interface names that need per-iface
+            rp_filter settings.
 
     Returns:
-        Path to the written config file.
+        Path to the written config file, or "" if there are no interfaces.
     """
-    sysctl_changes = [c for c in changes if c.change_type == ChangeType.SET_SYSCTL]
-    if not sysctl_changes:
+    if not interface_names:
         return ""
 
     lines = [
@@ -190,11 +192,17 @@ def write_sysctl_persistence(
         "",
     ]
 
-    for change in sysctl_changes:
-        # Extract key=value from the command "sysctl -w key=value"
-        kv = change.command.replace("sysctl -w ", "")
-        lines.append(f"# {change.description}")
-        lines.append(kv)
+    # Global settings
+    for key, spec in SYSCTL_SETTINGS.items():
+        lines.append(f"# {spec['description']}")
+        lines.append(f"{key} = {spec['required']}")
+        lines.append("")
+
+    # Per-interface rp_filter
+    for iface in sorted(interface_names):
+        key = SYSCTL_PER_IFACE_TEMPLATE.format(iface=iface)
+        lines.append(f"# Loose mode rp_filter for {iface}")
+        lines.append(f"{key} = 2")
         lines.append("")
 
     content = "\n".join(lines) + "\n"
