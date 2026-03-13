@@ -13,3 +13,6 @@ build/
 .venv/
 venv/
 .env
+
+# Go build output (binary at repo root, not cmd/sbr-config/ directory)
+/sbr-config
