@@ -9,7 +9,7 @@
         "affected_versions": [
             {
                 "min": "4.4.6",
-                "max": "4.4.20"
+                "max": "4.4.20.116"
             },
             {
                 "min": "5.0.4",
@@ -59,7 +59,7 @@
         "affected_versions": [
             {
                 "min": "4.4.0",
-                "max": "4.4.20"
+                "max": "4.4.20.116"
             }
         ],
         "obj_store": false
@@ -74,7 +74,7 @@
         "affected_versions": [
             {
                 "min": "4.4.6",
-                "max": "4.4.20"
+                "max": "4.4.20.116"
             }
         ],
         "obj_store": false
