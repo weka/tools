@@ -39,7 +39,7 @@ from packaging.version import parse as V, InvalidVersion
 
 parse = V 
 
-pg_version = "1.9.7"
+pg_version = "1.9.8"
 known_issues_file = "known_issues.json"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
@@ -2858,7 +2858,13 @@ def backend_host_checks(
                     f"{smb_host['ip']} - {smb_host['version']} - {smb_host['mode']} - {smb_host['tsmb_version']}"
                 )
 
-            if smb_host['tsmb_version'] in ("3024.3.22.7", "3024.3.22.9", "3024.3.22.10"):
+            if (
+                smb_host['tsmb_version'] == "3024.3.22.10"
+                or (
+                    V(weka_version) < V("4.4.20.116")
+                    and smb_host['tsmb_version'] in ("3024.3.22.7", "3024.3.22.9")
+                )
+            ):
                 BAD(
                     f"SMBW Host {smb_host['hostname']} is running patched version ({smb_host['tsmb_version']}) "
                     f"of tsmb-server -- please review with WEKA Customer Success"
