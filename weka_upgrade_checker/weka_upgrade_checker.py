@@ -2861,7 +2861,7 @@ def backend_host_checks(
             if (
                 smb_host['tsmb_version'] == "3024.3.22.10"
                 or (
-                    V(weka_version) < V("4.4.20.116")
+                    V(target_version) < V("4.4.20.116")
                     and smb_host['tsmb_version'] in ("3024.3.22.7", "3024.3.22.9")
                 )
             ):
