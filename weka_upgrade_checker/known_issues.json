@@ -1,4 +1,20 @@
 {
+    "WEKAPP-606367":
+    {
+        "description": "LDAP auth fails if entryUUID is missing",
+        "related_protocols": [],
+        "link_types": [ ],
+        "problematic_kernel_arguments": [ ],
+        "internal_reference": "WEKAPP-606367",
+        "affected_versions": [
+            {
+                "min": "5.1.0",
+                "max": ""
+            }
+        ],
+        "multi_org": false,
+        "obj_store": false
+    },
     "WEKAPP-604059":
     {
         "description": "4.2.x clients cannot join 4.4.20.116 clusters",
