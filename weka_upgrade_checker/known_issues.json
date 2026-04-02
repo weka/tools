@@ -1,4 +1,20 @@
 {
+    "WEKAPP-604059":
+    {
+        "description": "4.2.x clients cannot join 4.4.20.116 clusters",
+        "related_protocols": [],
+        "link_types": [ ],
+        "problematic_kernel_arguments": [ ],
+        "internal_reference": "WEKAPP-604059",
+        "affected_versions": [
+            {
+                "min": "4.4.20.116",
+                "max": "4.4.21.2"
+            }
+        ],
+        "multi_org": false,
+        "obj_store": false
+    },
     "WEKAPP-562863":
     {
         "description": "S3 protocol inoperable in cluster w/ organizations",
