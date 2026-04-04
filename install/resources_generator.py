@@ -570,6 +570,10 @@ class ResourcesGenerator:
             return current_port
 
     def _set_containers(self, role):
+        num_containers = self.num_containers_by_role[role]
+        if num_containers == 0:
+            return
+
         if role == FRONTEND_ROLE:
             nodes = self.frontend_nodes[:]
         elif role == DRIVE_ROLE:
@@ -579,7 +583,6 @@ class ResourcesGenerator:
         failure_domain = "" if self.args.use_auto_failure_domain else get_failure_domain_based_on_nodename()
 
         num_nodes = len(nodes)
-        num_containers = self.num_containers_by_role[role]
         average_nodes_per_container = int(num_nodes / num_containers)
         logger.debug(f"average nodes per container for {role}: {average_nodes_per_container}")
         num_nodes_by_container = dict()     # key is container number
