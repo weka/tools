@@ -39,7 +39,7 @@ from packaging.version import parse as V, InvalidVersion
 
 parse = V 
 
-pg_version = "1.9.11"
+pg_version = "1.10.0"
 known_issues_file = "known_issues.json"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
@@ -540,11 +540,12 @@ def weka_cluster_checks(target_version):
             subprocess.check_output(["weka", "cluster", "container", "-b", "-J"])
         )
     ]
-    ssh_bk_hosts = [
-        {"name": w_bk_server.name, "ip": w_bk_server.ip}
-        for w_bk_server in weka_bk_servers
-        if w_bk_server.is_up != "DOWN"
-    ]
+    _seen_bk = set()
+    ssh_bk_hosts = []
+    for w_bk_server in weka_bk_servers:
+        if w_bk_server.is_up != "DOWN" and w_bk_server.name not in _seen_bk:
+            _seen_bk.add(w_bk_server.name)
+            ssh_bk_hosts.append({"name": w_bk_server.name, "ip": w_bk_server.ip})
     down_bk_servers = []
     for w_bk_server in weka_bk_servers:
         if w_bk_server.is_up != "UP":
@@ -572,11 +573,12 @@ def weka_cluster_checks(target_version):
             subprocess.check_output(["weka", "cluster", "container", "-c", "-J"])
         )
     ]
-    ssh_cl_hosts = [
-        {"name": w_cl_server.name, "ip": w_cl_server.ip}
-        for w_cl_server in weka_cl_servers
-        if w_cl_server.is_up
-    ]
+    _seen_cl = set()
+    ssh_cl_hosts = []
+    for w_cl_server in weka_cl_servers:
+        if w_cl_server.is_up and w_cl_server.name not in _seen_cl:
+            _seen_cl.add(w_cl_server.name)
+            ssh_cl_hosts.append({"name": w_cl_server.name, "ip": w_cl_server.ip})
     down_cl_servers = []
     for w_cl_server in weka_cl_servers:
         if not w_cl_server.is_up:
@@ -1430,8 +1432,16 @@ def ssh_check(host_name, result, ssh_bk_hosts):
 
 check_rhel_systemd_hosts = []
 
+# ---------------------------------------------------------------------------
+# OS compatibility helpers (far.weka.io data format)
+# ---------------------------------------------------------------------------
+
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+SUPPORTED_OS_FILE = os.path.join(_SCRIPT_DIR, "supported_os.json")
+_UPGRADE_PATH_FILE = os.path.join(_SCRIPT_DIR, "upgrade_path.json")
+
 try:
-    with open("supported_os.json", "r") as file:
+    with open(SUPPORTED_OS_FILE, "r") as file:
         supported_os = json.load(file)
     if not isinstance(supported_os, dict):
         WARN(f"Error: Invalid format in supported_os.json file. Expected a dictionary.")
@@ -1440,97 +1450,192 @@ except FileNotFoundError:
 except json.JSONDecodeError:
     WARN(f"Error: supported_os.json file contains invalid JSON.")
 
+# Maps /etc/os-release ID values to the distro-name prefix used by far.weka.io
+_OS_ID_TO_DISTRO_PREFIX = {
+    "rhel":       "rhel",
+    "rocky":      "rocky",
+    "ubuntu":     "ubuntu",
+    "centos":     "centos",
+    "almalinux":  "alma",
+    "ol":         "oracle",
+    "sles":       "sles",
+    "debian":     "debian",
+    "amzn":       "amzn",
+}
+
+
+def _get_api_distro_name(os_id: str, version_id: str):
+    """Map an /etc/os-release ID + VERSION_ID to the API distro name (e.g. 'rhel8')."""
+    prefix = _OS_ID_TO_DISTRO_PREFIX.get(os_id)
+    if prefix is None:
+        return None
+    major = version_id.split(".")[0]
+    return f"{prefix}{major}"
+
+
+def _normalize_api_distro_version(distro_version: str) -> str:
+    """Extract the bare numeric version from a far.weka.io distroVersion string.
+
+    Examples:
+        "redhat8.10"  -> "8.10"
+        "ubuntu22.04" -> "22.04"
+        "rocky9.4"    -> "9.4"
+        "oracle8.10"  -> "8.10"
+        "amzn2"       -> "2"
+        "amzn2023"    -> "2023"
+    """
+    m = re.search(r"(\d+(?:\.\d+)+)$", distro_version)
+    if m:
+        return m.group(1)
+    m = re.search(r"(\d+)$", distro_version)
+    return m.group(1) if m else distro_version
+
+
+
+
+
 def check_os_release(
     host_name, result, weka_version, check_version, backend=True, client=False
 ):
+    """Check whether the OS on *host_name* is supported for the target *weka_version*.
+
+    The *result* string is the output of the remote command which prepends two
+    lines before the os-release content::
+
+        WEKA_KERNEL=<uname -r>
+        WEKA_ARCH=<uname -m>
+        <rest of /etc/os-release or /etc/centos-release>
+
+    Three-tier result:
+        GOOD – distro+version is listed for the target WEKA version
+        WARN – distro family is supported but this exact minor version is not listed
+        BAD  – distro family is not supported at all for the target WEKA version
+    """
     global check_rhel_systemd_hosts
-    try:
-        if "CentOS" in result:
-            result = result.split()
-            version = result[3].split(".")
-            version = ".".join(version[:2])
 
-            try:
-                supported_versions = supported_os[check_version]["backends_clients"]["centos"]
-            except KeyError as e:
-                BAD(f"Host {host_name} - unsupported check_version or missing centos entry: {e}")
-                return
-
-            if backend:
-                if version not in supported_versions:
-                    BAD(
-                        f"Host {host_name} OS CentOS {version} is not supported with "
-                        f"target WEKA version {check_version}"
-                    )
-                else:
-                    GOOD(
-                        f"Host {host_name} OS CentOS {version} is supported with "
-                        f"target WEKA version {check_version}"
-                    )
-            elif client:
-                try:
-                    client_only_versions = supported_os[check_version]["clients_only"]["centos"]
-                except KeyError as e:
-                    BAD(f"Host {host_name} - missing clients_only entry for centos: {e}")
-                    return
-
-                if version not in supported_versions and version not in client_only_versions:
-                    BAD(
-                        f"Host {host_name} OS CentOS {version} is not supported with "
-                        f"target WEKA version {check_version}"
-                    )
-                else:
-                    GOOD(
-                        f"Host {host_name} OS CentOS {version} is supported with "
-                        f"target WEKA version {check_version}"
-                    )
-
+    # ------------------------------------------------------------------
+    # Strip WEKA_KERNEL / WEKA_ARCH header lines added by the SSH command
+    # ------------------------------------------------------------------
+    kernel = None
+    remaining_lines = []
+    for line in result.splitlines():
+        if line.startswith("WEKA_KERNEL="):
+            kernel = line.split("=", 1)[1].strip()
+        elif line.startswith("WEKA_ARCH="):
+            pass  # arch no longer used
         else:
-            info_str = result.replace("=", ":")
-            info_list = [item for item in info_str.split("\n") if item]
+            remaining_lines.append(line)
+    os_result = "\n".join(remaining_lines)
 
+    # ------------------------------------------------------------------
+    # Parse distro identity from the OS-release content
+    # ------------------------------------------------------------------
+    try:
+        if "CentOS" in os_result:
+            parts = os_result.split()
+            version_id = ".".join(parts[3].split(".")[:2]) if len(parts) > 3 else "Unknown"
+            os_id = "centos"
+        else:
+            info_str = os_result.replace("=", ":")
             dict_info = {}
-            for item in info_list:
-                key, value = item.split(":", 1)
-                dict_info[key] = value.strip('"')
+            for item in (ln for ln in info_str.splitlines() if ln):
+                if ":" in item:
+                    key, value = item.split(":", 1)
+                    dict_info[key.strip()] = value.strip().strip('"')
 
-            os_id = dict_info["ID"]
-            version = dict_info.get("VERSION_ID", "Unknown")
+            os_id = dict_info.get("ID", "unknown")
+            version_id = dict_info.get("VERSION_ID", "Unknown")
 
             if os_id == "ubuntu":
-                version_match = re.search(r"\b\d+(\.\d+){0,2}\b", dict_info.get("VERSION", ""))
-                version = version_match.group() if version_match else "Unknown"
-
-            elif os_id in ["rocky", "rhel"]:
+                m = re.search(r"\b\d+(\.\d+){0,2}\b", dict_info.get("VERSION", ""))
+                version_id = m.group() if m else "Unknown"
+            elif os_id in ("rocky", "rhel"):
                 try:
-                    if float(version) >= 9.0:
+                    if float(version_id) >= 9.0:
                         check_rhel_systemd_hosts.append(host_name)
                 except ValueError:
-                    BAD(f"Host {host_name} - could not parse version for RHEL/Rocky: {version}")
-                    return
+                    pass
+    except Exception as exc:
+        BAD(f"Host {host_name} - could not parse OS information: {exc}")
+        return
 
-            try:
-                supported_os_ids = supported_os[check_version]["backends_clients"]
-            except KeyError as e:
-                BAD(f"Host {host_name} - unsupported check_version or malformed supported_os structure: {e}")
-                return
+    compat_data = supported_os.get(weka_version)
+    if not isinstance(compat_data, list):
+        compat_data = None
 
-            if backend:
-                if os_id not in supported_os_ids:
-                    BAD(f"Host {host_name} OS {os_id} is not recognized in supported_os")
-                elif version not in supported_os_ids[os_id]:
-                    BAD(
-                        f"Host {host_name} OS {os_id} {version} is not supported with "
-                        f"target WEKA version {check_version}"
-                    )
-                else:
-                    GOOD(
-                        f"Host {host_name} OS {os_id} {version} is supported with "
-                        f"target WEKA version {check_version}"
-                    )
+    _check_os_distro(host_name, os_id, version_id, kernel, weka_version, compat_data, backend=backend)
 
-    except Exception as e:
-        BAD(f"Host {host_name} - Unexpected error during OS check: {str(e)}")
+
+def _ver_tuple(v: str):
+    """Convert a version string like '9.7' or '22.04' to a comparable int tuple."""
+    try:
+        return tuple(int(x) for x in v.split("."))
+    except (ValueError, AttributeError):
+        return (0,)
+
+
+def _max_version(versions):
+    """Return the highest version string from an iterable."""
+    return max(versions, key=_ver_tuple)
+
+
+def _is_newer_than_max(version_id: str, supported: set) -> bool:
+    """Return True if *version_id* is strictly newer than all versions in *supported*."""
+    return _ver_tuple(version_id) > _ver_tuple(_max_version(supported))
+
+
+def _check_os_distro(host_name, os_id, version_id, kernel, weka_version, compat_data, backend=True):
+    """Two-tier OS check: GOOD if distro+version is listed for the target WEKA version
+    (filtered by backend/client role), BAD otherwise.
+    The current kernel is printed in parentheses for reference only.
+    """
+    api_distro = _get_api_distro_name(os_id, version_id)
+    if api_distro is None:
+        WARN(
+            f"Host {host_name}: OS '{os_id}' is not in the known distro mapping; "
+            f"cannot perform compatibility check"
+        )
+        return
+
+    kernel_str = f" (kernel {kernel})" if kernel else ""
+
+    if compat_data is None:
+        BAD(
+            f"Host {host_name}: OS {os_id} {version_id}{kernel_str} — "
+            f"no OS compatibility data for WEKA version {weka_version}"
+        )
+        return
+
+    role_key = "backend" if backend else "client"
+    supported = {
+        _normalize_api_distro_version(e["distroVersion"])
+        for e in compat_data
+        if e["distro"] == api_distro and e.get(role_key, True)
+    }
+
+    if version_id in supported:
+        GOOD(
+            f"Host {host_name}: OS {os_id} {version_id}{kernel_str} "
+            f"is supported with target WEKA version {weka_version}"
+        )
+    elif supported and _is_newer_than_max(version_id, supported):
+        # Distro family is supported and this version is newer than any listed —
+        # likely a new release not yet in the compatibility data.
+        global num_warn
+        max_ver = _max_version(supported)
+        green_part = (f"Host {host_name}: OS {os_id} is a supported distribution "
+                      f"for WEKA version {weka_version}")
+        yellow_part = (f", but version {version_id}{kernel_str} is newer than the latest "
+                       f"listed version ({max_ver}). Verify compatibility before upgrading.")
+        print(f"{' ' * 5}⚠️  {colors.OKGREEN}{green_part}{colors.WARNING}{yellow_part}{colors.ENDC}")
+        logging.warning(green_part + yellow_part)
+        num_warn += 1
+    else:
+        BAD(
+            f"Host {host_name}: OS {os_id} {version_id}{kernel_str} "
+            f"is not supported with target WEKA version {weka_version}"
+        )
+
 
 
 def weka_agent_unit_type(host_name, result):
@@ -2310,11 +2415,13 @@ def backend_host_checks(
 
     INFO("CHECKING IF OS IS SUPPORTED ON BACKENDS")
     command = r"""
-    OS=$(sudo cat /etc/os-release | awk -F= '/^ID=/ {print $2}' > /dev/null);
-    if [[ $OS == "centos" ]]; then
+    echo "WEKA_KERNEL=$(uname -r)";
+    echo "WEKA_ARCH=$(uname -m)";
+    OS=$(sudo awk -F= '/^ID=/ {gsub(/"/, "", $2); print $2}' /etc/os-release);
+    if [[ "$OS" == "centos" ]]; then
         sudo cat /etc/centos-release;
     else
-            sudo cat /etc/os-release;
+        sudo cat /etc/os-release;
     fi
     """
     results = parallel_execution(
@@ -2326,7 +2433,7 @@ def backend_host_checks(
     for host_name, result in results:
         if result is not None:
             check_os_release(
-                host_name, result, weka_version, check_version, backend=True
+                host_name, result, target_version, check_version, backend=True
             )
         else:
             WARN(f"Unable to determine Host: {host_name} OS version")
@@ -2902,7 +3009,7 @@ def backend_host_checks(
 
 
 # client checks
-def client_hosts_checks(weka_version, ssh_cl_hosts, check_version, ssh_identity):
+def client_hosts_checks(weka_version, ssh_cl_hosts, check_version, ssh_identity, target_version=None):
     INFO("CHECKING PASSWORDLESS SSH CONNECTIVITY ON CLIENTS")
     ssh_cl_hosts_dict = [{"name": host} for host in ssh_cl_hosts]
     results = parallel_execution(
@@ -2925,11 +3032,13 @@ def client_hosts_checks(weka_version, ssh_cl_hosts, check_version, ssh_identity)
 
     INFO("CHECKING IF OS IS SUPPORTED ON CLIENTS")
     command = r"""
-    OS=$(sudo cat /etc/os-release | awk -F= '/^ID=/ {print $2}' > /dev/null);
-    if [[ $OS == "centos" ]]; then
+    echo "WEKA_KERNEL=$(uname -r)";
+    echo "WEKA_ARCH=$(uname -m)";
+    OS=$(sudo awk -F= '/^ID=/ {gsub(/"/, "", $2); print $2}' /etc/os-release);
+    if [[ "$OS" == "centos" ]]; then
         sudo cat /etc/centos-release;
     else
-            sudo cat /etc/os-release;
+        sudo cat /etc/os-release;
     fi
     """
     results = parallel_execution(
@@ -2941,7 +3050,7 @@ def client_hosts_checks(weka_version, ssh_cl_hosts, check_version, ssh_identity)
     for host_name, result in results:
         if result is not None:
             check_os_release(
-                host_name, result, weka_version, check_version, backend=False, client=True
+                host_name, result, target_version or weka_version, check_version, backend=False, client=True
             )
         else:
             WARN(f"Unable to determine Host: {host_name} OS version")
@@ -3408,7 +3517,6 @@ def main():
         type=str,
         help="Specify the target version for upgrade path calculation.",
     )
-
     args = parser.parse_args()
     if args.version:
         print("WEKA upgrade checker version: %s" % pg_version)
@@ -3420,7 +3528,7 @@ def main():
     ssh_identity = args.ssh_identity or None
 
     try:
-        with open("upgrade_path.json", "r") as f:
+        with open(_UPGRADE_PATH_FILE, "r") as f:
             upgrade_map = json.load(f)
         if args.target_version not in upgrade_map:
             BAD(f"Target version {args.target_version} is not a valid upgrade target. Check upgrade_path.json for valid versions.")
@@ -3458,7 +3566,7 @@ def main():
             good_nfs_hosts,
             multi_org,
         )
-        client_hosts_checks(weka_version, ssh_cl_hosts, check_version, ssh_identity)
+        client_hosts_checks(weka_version, ssh_cl_hosts, check_version, ssh_identity, target_version=args.target_version)
         cluster_summary()
         INFO(f"Cluster upgrade checks complete!")
         sys.exit(0)
@@ -3539,7 +3647,7 @@ def main():
             target_version_check(
                 weka_version,
                 args.target_version,
-                "upgrade_path.json",
+                _UPGRADE_PATH_FILE,
                 s3_enabled,
                 weka_nfs,
                 weka_smb,
