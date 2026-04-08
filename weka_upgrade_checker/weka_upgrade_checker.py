@@ -1436,7 +1436,10 @@ check_rhel_systemd_hosts = []
 # OS compatibility helpers (far.weka.io data format)
 # ---------------------------------------------------------------------------
 
-_SCRIPT_DIR = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+if getattr(sys, "frozen", False):
+    _SCRIPT_DIR = os.path.dirname(sys.executable)
+else:
+    _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 SUPPORTED_OS_FILE = os.path.join(_SCRIPT_DIR, "supported_os.json")
 _UPGRADE_PATH_FILE = os.path.join(_SCRIPT_DIR, "upgrade_path.json")
 
