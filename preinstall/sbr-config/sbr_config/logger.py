@@ -33,9 +33,7 @@ def setup_logging(
     if log_file is not None:
         path = log_file if log_file else LOG_FILE_DEFAULT
         try:
-            log_dir = os.path.dirname(path)
-            if log_dir:
-                os.makedirs(log_dir, exist_ok=True)
+            os.makedirs(os.path.dirname(path), exist_ok=True)
             fh = logging.FileHandler(path)
             fh.setLevel(logging.DEBUG)
             fh.setFormatter(logging.Formatter(

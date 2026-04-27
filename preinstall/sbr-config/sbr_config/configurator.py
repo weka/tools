@@ -1,7 +1,6 @@
 """Execute planned changes with atomic rollback on failure."""
 
 import logging
-import re
 from typing import List
 
 from .constants import MANAGED_COMMENT, RT_TABLES_PATH
@@ -84,6 +83,7 @@ def _add_rt_table_entry(change: PlannedChange) -> None:
 
     # Extract "NUMBER NAME" from the echo command
     # Command format: echo 'NUMBER NAME' >> /etc/iproute2/rt_tables
+    import re
     m = re.search(r"echo\s+'(\d+\s+\S+)'", change.command)
     if not m:
         raise ConfigurationError(
@@ -142,6 +142,7 @@ def _rollback_applied(applied: List[PlannedChange]) -> None:
 
 def _remove_rt_table_entry(change: PlannedChange) -> None:
     """Remove a routing table entry that was just added."""
+    import re
     m = re.search(r"echo\s+'(\d+\s+\S+)'", change.command)
     if not m:
         return

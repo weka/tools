@@ -220,44 +220,132 @@ class Output:
         print()
 
         deadline = time.time() + timeout
-        confirmed = False
 
-        while True:
+        # If stdin isn't a TTY (e.g. piped input in validation harness), fall
+        # back to line-buffered input with a static prompt -- we can't do the
+        # cbreak-mode live redraw without a terminal.
+        if not sys.stdin.isatty():
+            return self._prompt_timed_confirm_nontty(deadline, timeout)
+
+        return self._prompt_timed_confirm_tty(deadline, timeout)
+
+    def _prompt_timed_confirm_nontty(self, deadline: float, timeout: int) -> bool:
+        """Fallback for non-TTY stdin: static prompt, single readline."""
+        sys.stdout.write(
+            self._c(Colors.YELLOW + Colors.BOLD, "  [%ds]" % timeout)
+            + " Type 'yes' to confirm (then press Enter): "
+        )
+        sys.stdout.flush()
+        try:
             remaining = deadline - time.time()
             if remaining <= 0:
-                break
+                return False
+            ready, _, _ = select.select([sys.stdin], [], [], remaining)
+        except (OSError, ValueError):
+            return False
+        if not ready:
+            return False
+        try:
+            answer = sys.stdin.readline().strip().lower()
+        except (EOFError, IOError):
+            return False
+        sys.stdout.write("\n")
+        sys.stdout.flush()
+        return answer == "yes"
 
-            # Show countdown
+    def _prompt_timed_confirm_tty(self, deadline: float, timeout: int) -> bool:
+        """TTY path: put terminal in cbreak mode so we own the echo, then
+        redraw the prompt line every second with the live countdown and
+        whatever the user has typed so far.  Because we're the one echoing
+        keystrokes, we can safely clear and rewrite the line without losing
+        the user's in-progress input.
+        """
+        import termios
+        import tty
+
+        fd = sys.stdin.fileno()
+        old_settings = termios.tcgetattr(fd)
+
+        typed = ""
+        confirmed = False
+
+        def _draw(secs_left):
+            # \r -> col 0, \033[K -> erase to end of line
             sys.stdout.write(
-                "\r" + self._c(Colors.YELLOW + Colors.BOLD,
-                               "  [%2ds] " % int(remaining + 0.5))
-                + "Type 'yes' to confirm: "
+                "\r\033[K"
+                + self._c(Colors.YELLOW + Colors.BOLD, "  [%2ds]" % int(secs_left + 0.5))
+                + " Type 'yes' to confirm: "
+                + typed
             )
             sys.stdout.flush()
 
-            try:
-                ready, _, _ = select.select([sys.stdin], [], [], 1.0)
-            except (OSError, ValueError):
-                # stdin closed or not selectable
-                break
+        try:
+            tty.setcbreak(fd)
+            _draw(timeout)
+            last_secs = int(timeout + 0.5)
 
-            if ready:
+            while True:
+                remaining = deadline - time.time()
+                if remaining <= 0:
+                    break
+
+                # Tick the countdown if the displayed second changed.
+                cur_secs = int(remaining + 0.5)
+                if cur_secs != last_secs:
+                    _draw(remaining)
+                    last_secs = cur_secs
+
+                # Wake ~10x/sec to keep the countdown smooth and responsive.
                 try:
-                    answer = sys.stdin.readline().strip().lower()
-                except (EOFError, IOError):
-                    break
-                if answer == "yes":
-                    confirmed = True
-                    break
-                elif answer:
-                    # Wrong answer -- remind them
-                    sys.stdout.write(
-                        "  " + self._c(Colors.RED, "Please type exactly 'yes' to confirm.") + "\n"
+                    ready, _, _ = select.select(
+                        [sys.stdin], [], [], min(0.1, remaining)
                     )
+                except (OSError, ValueError):
+                    break
+                if not ready:
+                    continue
 
-        # Clear the countdown line
-        sys.stdout.write("\r" + " " * 60 + "\r")
-        sys.stdout.flush()
+                try:
+                    ch = sys.stdin.read(1)
+                except (OSError, IOError):
+                    break
+                if not ch:
+                    break  # EOF
+
+                if ch in ("\n", "\r"):
+                    # Enter -- finalize this line
+                    sys.stdout.write("\n")
+                    sys.stdout.flush()
+                    answer = typed.strip().lower()
+                    if answer == "yes":
+                        confirmed = True
+                        break
+                    if answer:
+                        sys.stdout.write(
+                            "  "
+                            + self._c(Colors.RED, "Please type exactly 'yes' to confirm.")
+                            + "\n"
+                        )
+                    typed = ""
+                    _draw(deadline - time.time())
+                    last_secs = int(deadline - time.time() + 0.5)
+                elif ch in ("\x7f", "\b"):
+                    if typed:
+                        typed = typed[:-1]
+                        _draw(deadline - time.time())
+                elif ch == "\x03":
+                    # Ctrl-C -- bail out, let caller roll back
+                    break
+                elif ch.isprintable():
+                    typed += ch
+                    # Echo without the full redraw -- cheaper and avoids flicker.
+                    sys.stdout.write(ch)
+                    sys.stdout.flush()
+                # Ignore other control chars / escape sequences
+        finally:
+            termios.tcsetattr(fd, termios.TCSANOW, old_settings)
+            sys.stdout.write("\n")
+            sys.stdout.flush()
 
         return confirmed
 

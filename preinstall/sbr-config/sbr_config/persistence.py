@@ -1,7 +1,6 @@
 """Persistence dispatch: select and invoke the correct backend."""
 
 import logging
-import re
 from typing import List
 
 from .constants import TABLE_NAME_PREFIX
@@ -40,11 +39,17 @@ def write_persistence(
     """
     files_written = []
 
+    # Write sysctl persistence (common to all backends)
+    sysctl_path = write_sysctl_persistence(changes)
+    if sysctl_path:
+        files_written.append(sysctl_path)
+
     # Build table list (include both existing and newly added)
     tables = list(state.routing_tables)
     for change in changes:
         if change.change_type == ChangeType.ADD_RT_TABLE:
             # Parse "echo 'NUM NAME' >> ..."
+            import re
             m = re.search(r"echo\s+'(\d+)\s+(\S+)'", change.command)
             if m:
                 tables.append(RoutingTable(number=int(m.group(1)), name=m.group(2)))
@@ -71,12 +76,6 @@ def write_persistence(
         logger.info("No interface-level persistence needed")
         return files_written
 
-    # Write sysctl persistence (derived from desired state, not changes)
-    iface_names = [iface.name for iface in sbr_interfaces]
-    sysctl_path = write_sysctl_persistence(iface_names)
-    if sysctl_path:
-        files_written.append(sysctl_path)
-
     # Select backend
     backend = _select_backend(state.network_manager)
 
@@ -89,7 +88,7 @@ def write_persistence(
         )
 
     logger.info("Using persistence backend: %s", backend.describe())
-    backend_files = backend.write_config(sbr_interfaces, tables)
+    backend_files = backend.write_config(sbr_interfaces, tables, changes)
     files_written.extend(backend_files)
 
     return files_written

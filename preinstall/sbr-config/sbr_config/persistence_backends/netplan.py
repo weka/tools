@@ -8,12 +8,9 @@ from ..constants import (
     MANAGED_COMMENT,
     NETPLAN_CONFIG_FILE,
     NETPLAN_DIR,
-    RULE_PRIORITY_INCREMENT,
-    RULE_PRIORITY_START,
     TABLE_NAME_PREFIX,
-    TABLE_NUMBER_START,
 )
-from ..models import InterfaceInfo, RoutingTable
+from ..models import InterfaceInfo, PlannedChange, RoutingTable
 from ..utils import read_file, run_command, write_file_atomic
 from .base import PersistenceBackend
 
@@ -31,6 +28,7 @@ class NetplanBackend(PersistenceBackend):
         self,
         interfaces: List[InterfaceInfo],
         tables: List[RoutingTable],
+        changes: List[PlannedChange],
     ) -> List[str]:
         if not os.path.isdir(NETPLAN_DIR):
             os.makedirs(NETPLAN_DIR, exist_ok=True)
@@ -93,7 +91,7 @@ class NetplanBackend(PersistenceBackend):
             if tnum is None:
                 continue
 
-            priority = RULE_PRIORITY_START + (tnum - TABLE_NUMBER_START) * RULE_PRIORITY_INCREMENT
+            priority = 100 + (tnum - 100) * 10
 
             route_lines = [
                 f"    {iface.name}:",
