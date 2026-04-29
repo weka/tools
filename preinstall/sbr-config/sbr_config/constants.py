@@ -79,6 +79,15 @@ SYSCTL_SETTINGS = {
             "systems where multiple interfaces could respond to the same ARP query."
         ),
     },
+    "net.ipv4.conf.default.arp_filter": {
+        "required": "1",
+        "description": "ARP filtering for new interfaces (enabled)",
+        "reason": (
+            "Sets the default arp_filter for newly created interfaces so that any "
+            "NIC brought up after sbr-config runs inherits the same per-interface "
+            "ARP behavior."
+        ),
+    },
     "net.ipv4.conf.all.arp_announce": {
         "required": "2",
         "description": "ARP announcement (use best local address)",
@@ -86,6 +95,35 @@ SYSCTL_SETTINGS = {
             "Value 2 tells the kernel to always use the best local address for the "
             "target subnet when sending ARP requests. This prevents ARP confusion "
             "when multiple interfaces are present."
+        ),
+    },
+    "net.ipv4.conf.default.arp_announce": {
+        "required": "2",
+        "description": "ARP announcement for new interfaces (use best local address)",
+        "reason": (
+            "Sets the default arp_announce for newly created interfaces so that any "
+            "NIC brought up after sbr-config runs inherits the same outgoing ARP "
+            "source-selection behavior."
+        ),
+    },
+    "net.ipv4.conf.all.arp_ignore": {
+        "required": "1",
+        "description": "ARP ignore (reply only on matching interface)",
+        "reason": (
+            "Value 1 tells the kernel to reply to an ARP request only if the target "
+            "IP is configured on the receiving interface. Required when multiple "
+            "NICs share a broadcast domain (common for WEKA frontends with several "
+            "NICs on the same subnet) to prevent ARP flux, where one NIC answers "
+            "for an IP that lives on another."
+        ),
+    },
+    "net.ipv4.conf.default.arp_ignore": {
+        "required": "1",
+        "description": "ARP ignore for new interfaces (reply only on matching interface)",
+        "reason": (
+            "Sets the default arp_ignore for newly created interfaces so that any "
+            "NIC brought up after sbr-config runs inherits the same anti-ARP-flux "
+            "behavior."
         ),
     },
 }
