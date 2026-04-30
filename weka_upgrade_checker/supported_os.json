@@ -6169,6 +6169,278 @@
       "client": true
     }
   ],
+  "4.4.24": [
+    {
+      "distro": "alma9",
+      "distroVersion": "almalinux9.5",
+      "backend": false,
+      "client": true
+    },
+    {
+      "distro": "alma9",
+      "distroVersion": "almalinux9.6",
+      "backend": false,
+      "client": true
+    },
+    {
+      "distro": "amzn2",
+      "distroVersion": "amzn2",
+      "backend": true,
+      "client": true
+    },
+    {
+      "distro": "amzn2023",
+      "distroVersion": "amzn2023",
+      "backend": true,
+      "client": true
+    },
+    {
+      "distro": "centos8",
+      "distroVersion": "centos8.0",
+      "backend": false,
+      "client": true
+    },
+    {
+      "distro": "centos9",
+      "distroVersion": "centos9",
+      "backend": true,
+      "client": true
+    },
+    {
+      "distro": "debian12",
+      "distroVersion": "debian12",
+      "backend": false,
+      "client": true
+    },
+    {
+      "distro": "oracle8",
+      "distroVersion": "oracle8",
+      "backend": true,
+      "client": true
+    },
+    {
+      "distro": "oracle8",
+      "distroVersion": "oracle8.2",
+      "backend": true,
+      "client": true
+    },
+    {
+      "distro": "oracle8",
+      "distroVersion": "oracle8.9",
+      "backend": true,
+      "client": true
+    },
+    {
+      "distro": "oracle9",
+      "distroVersion": "oracle9.6",
+      "backend": true,
+      "client": true
+    },
+    {
+      "distro": "rhel8",
+      "distroVersion": "redhat8.10",
+      "backend": true,
+      "client": true
+    },
+    {
+      "distro": "rhel9",
+      "distroVersion": "redhat9.0",
+      "backend": true,
+      "client": true
+    },
+    {
+      "distro": "rhel9",
+      "distroVersion": "redhat9.2",
+      "backend": true,
+      "client": true
+    },
+    {
+      "distro": "rhel9",
+      "distroVersion": "redhat9.3",
+      "backend": false,
+      "client": true
+    },
+    {
+      "distro": "rhel9",
+      "distroVersion": "redhat9.5",
+      "backend": true,
+      "client": true
+    },
+    {
+      "distro": "rhel9",
+      "distroVersion": "redhat9.6",
+      "backend": true,
+      "client": true
+    },
+    {
+      "distro": "rocky8",
+      "distroVersion": "rocky8.10",
+      "backend": true,
+      "client": true
+    },
+    {
+      "distro": "rocky9",
+      "distroVersion": "rocky9",
+      "backend": true,
+      "client": true
+    },
+    {
+      "distro": "rocky9",
+      "distroVersion": "rocky9.3",
+      "backend": false,
+      "client": true
+    },
+    {
+      "distro": "rocky9",
+      "distroVersion": "rocky9.5",
+      "backend": false,
+      "client": true
+    },
+    {
+      "distro": "rocky9",
+      "distroVersion": "rocky9.6",
+      "backend": true,
+      "client": true
+    },
+    {
+      "distro": "sles15",
+      "distroVersion": "suse15sp6",
+      "backend": false,
+      "client": true
+    },
+    {
+      "distro": "sles15",
+      "distroVersion": "suse15sp7",
+      "backend": false,
+      "client": true
+    },
+    {
+      "distro": "ubuntu22",
+      "distroVersion": "ubuntu22.04",
+      "backend": true,
+      "client": true
+    },
+    {
+      "distro": "ubuntu24",
+      "distroVersion": "ubuntu24.04",
+      "backend": true,
+      "client": true
+    },
+    {
+      "distro": "rhel8",
+      "distroVersion": "redhat8.1",
+      "backend": true,
+      "client": true
+    },
+    {
+      "distro": "rhel8",
+      "distroVersion": "redhat8.7",
+      "backend": true,
+      "client": true
+    },
+    {
+      "distro": "rhel9",
+      "distroVersion": "redhat9.4",
+      "backend": true,
+      "client": true
+    },
+    {
+      "distro": "rocky8",
+      "distroVersion": "rocky8.1",
+      "backend": true,
+      "client": true
+    },
+    {
+      "distro": "rocky8",
+      "distroVersion": "rocky8.8",
+      "backend": true,
+      "client": true
+    },
+    {
+      "distro": "rocky9",
+      "distroVersion": "rocky9.1",
+      "backend": true,
+      "client": true
+    },
+    {
+      "distro": "ubuntu20",
+      "distroVersion": "ubuntu20.04",
+      "backend": true,
+      "client": true
+    },
+    {
+      "distro": "alma9",
+      "distroVersion": "almalinux9.4",
+      "backend": true,
+      "client": true
+    },
+    {
+      "distro": "centos8",
+      "distroVersion": "centos8.5",
+      "backend": true,
+      "client": true
+    },
+    {
+      "distro": "oracle9",
+      "distroVersion": "oracle9.4",
+      "backend": true,
+      "client": true
+    },
+    {
+      "distro": "oracle9",
+      "distroVersion": "oracle9.7",
+      "backend": true,
+      "client": true
+    },
+    {
+      "distro": "rhel8",
+      "distroVersion": "redhat8.6",
+      "backend": true,
+      "client": true
+    },
+    {
+      "distro": "rocky8",
+      "distroVersion": "rocky8.6",
+      "backend": true,
+      "client": true
+    },
+    {
+      "distro": "rocky8",
+      "distroVersion": "rocky8.9",
+      "backend": true,
+      "client": true
+    },
+    {
+      "distro": "rocky9",
+      "distroVersion": "rocky9.4",
+      "backend": true,
+      "client": true
+    },
+    {
+      "distro": "oracle8",
+      "distroVersion": "oracle8.8",
+      "backend": true,
+      "client": true
+    },
+    {
+      "distro": "rocky8",
+      "distroVersion": "rocky8.7",
+      "backend": true,
+      "client": true
+    },
+    {
+      "distro": "rhel9",
+      "distroVersion": "redhat9.7",
+      "backend": true,
+      "client": true
+    },
+    {
+      "distro": "rocky9",
+      "distroVersion": "rocky9.7",
+      "backend": true,
+      "client": true
+    }
+  ],
   "5.0.3.19": [
     {
       "distro": "alma8",
