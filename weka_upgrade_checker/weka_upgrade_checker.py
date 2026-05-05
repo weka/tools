@@ -40,7 +40,7 @@ from packaging.version import parse as V, InvalidVersion
 
 parse = V 
 
-pg_version = "1.10.5"
+pg_version = "1.10.6"
 known_issues_file = "known_issues.json"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
@@ -3363,6 +3363,7 @@ def target_version_check(
           - Same-major hops cost 1, cross-major hops cost 2.
           - Within equal cost, more same-major hops are preferred.
           - Within equal cost and same-major hops, higher same-major intermediates are preferred.
+        Min/max rules are filtered to only compare versions matching the current version's major.
         """
         weka_version = weka_version.strip()
         target_version = target_version.strip()
@@ -3407,6 +3408,7 @@ def target_version_check(
             visited.add(current)
 
             current_v = parse_version(current)
+            current_major = current.split(".")[0]
 
             for ver, rule in upgrade_map.items():
                 if ver in visited:
@@ -3416,17 +3418,19 @@ def target_version_check(
                     continue
                 if ver_v <= current_v:
                     continue
+                # Filter min entries to only those matching current version's major
                 min_list = rule.get("min", [])
-                min_list_parsed = [parsed_versions.get(m) or parse_version(m) for m in min_list]
-                min_list_parsed = [m for m in min_list_parsed if m is not None]
+                min_list_parsed = [(m, parsed_versions.get(m) or parse_version(m)) for m in min_list]
+                min_list_parsed = [v for m, v in min_list_parsed if m.split(".")[0] == current_major and v is not None]
                 if not min_list_parsed:
                     continue
                 if not any(current_v >= m for m in min_list_parsed):
                     continue
+                # Filter max entries to only those matching current version's major
                 max_list = rule.get("max", [])
-                max_list_parsed = [parsed_versions.get(m) or parse_version(m) for m in max_list]
-                max_list_parsed = [m for m in max_list_parsed if m is not None]
-                if max_list_parsed and all(current_v > m for m in max_list_parsed):
+                max_list_parsed = [(m, parsed_versions.get(m) or parse_version(m)) for m in max_list]
+                max_list_parsed = [v for m, v in max_list_parsed if m.split(".")[0] == current_major and v is not None]
+                if max_list_parsed and any(current_v > m for m in max_list_parsed):
                     continue
                 hop_cost = 1 if same_major(ver, current) else 2
                 new_cost = cost + hop_cost
