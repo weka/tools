@@ -4,6 +4,7 @@ import argparse
 import base64
 import concurrent.futures
 import datetime
+import heapq
 import itertools
 import json
 import logging
@@ -39,7 +40,7 @@ from packaging.version import parse as V, InvalidVersion
 
 parse = V 
 
-pg_version = "1.10.4"
+pg_version = "1.10.5"
 known_issues_file = "known_issues.json"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
@@ -2828,6 +2829,7 @@ def backend_host_checks(
         if con_status[container]["type"] == "weka":
             api_ports.append(con_status[container]["status"]["APIPort"])
             ip = con_status[container]["resources"]["ips"]
+            if not ip: continue
             first_ip = ip[0]
             if first_ip not in ips:
                 ips.append(first_ip)
@@ -3313,31 +3315,29 @@ def target_version_check(
         try:
             with open(upgrade_path, "r") as f:
                 upgrade_map = json.load(f)
-
             # Validate the structure of upgrade_map
             for ver, rule in upgrade_map.items():
                 if not isinstance(rule, dict):
                     WARN(f"Invalid entry in upgrade_map for version {ver}: not a dict")
                     continue
-
-                if "min" not in rule or not rule["min"].strip():
-                    WARN(f"Invalid entry in upgrade_map for version {ver}: missing or empty 'min'")
+                # min is REQUIRED and must be a non-empty list
+                if "min" not in rule or not isinstance(rule["min"], list) or not rule["min"]:
+                    WARN(f"Invalid entry in upgrade_map for version {ver}: missing or empty 'min' list")
                     continue
-
-                # min is REQUIRED
-                min_v = parse_version(rule["min"])
-                if not min_v:
-                    WARN(f"Invalid entry in upgrade_map for version {ver}: cannot parse min '{rule['min']}'")
-                    continue
-
+                # Validate each min version is parseable
+                for min_str in rule["min"]:
+                    if not isinstance(min_str, str) or not min_str.strip():
+                        WARN(f"Invalid entry in upgrade_map for version {ver}: empty/non-string in 'min'")
+                        continue
+                    min_v = parse_version(min_str)
+                    if not min_v:
+                        WARN(f"Invalid entry in upgrade_map for version {ver}: cannot parse min '{min_str}'")
                 # Parse the target version
                 ver_v = parse_version(ver)
                 if not ver_v:
                     WARN(f"Invalid entry in upgrade_map for version {ver}: cannot parse version key")
                     continue
-
             return upgrade_map
-
         except FileNotFoundError:
             WARN(f"Error: Upgrade path file '{upgrade_path}' not found.")
             return {}
@@ -3359,35 +3359,44 @@ def target_version_check(
     def find_upgrade_path(weka_version, target_version, upgrade_map):
         """
         Find a valid upgrade path from weka_version to target_version using upgrade_map.
-        upgrade_map format:
-        {
-            "target_version": {
-                "min": "<min_version>",
-                "max": ["<max_version1>", "<max_version2>", ...]  # optional, may be empty
-            },
-            ...
-        }
-
-        Warnings are only printed if a candidate version would otherwise be valid but violates min/max.
+        Uses cost-based search:
+          - Same-major hops cost 1, cross-major hops cost 2.
+          - Within equal cost, more same-major hops are preferred.
+          - Within equal cost and same-major hops, higher same-major intermediates are preferred.
         """
-
         weka_version = weka_version.strip()
         target_version = target_version.strip()
 
-        visited = set()
-        queue = deque([[weka_version]])
-
         # Pre-parse upgrade_map keys for efficiency
         parsed_versions = {}
-        for ver in upgrade_map:
+        for pver in upgrade_map:
             try:
-                parsed_versions[ver] = parse_version(ver)
+                parsed_versions[pver] = parse_version(pver)
             except Exception:
-                WARN(f"Cannot parse version key '{ver}' in upgrade_map")
-                parsed_versions[ver] = None
+                WARN(f"Cannot parse version key '{pver}' in upgrade_map")
+                parsed_versions[pver] = None
 
-        while queue:
-            path = queue.popleft()
+        def same_major(v1, v2):
+            try:
+                return v1.split(".")[0] == v2.split(".")[0]
+            except Exception:
+                return False
+
+        def version_sort_key(ver):
+            """Return a fixed-length 4-tuple of ints for a version string."""
+            v = parsed_versions.get(ver)
+            if v is None:
+                return (0, 0, 0, 0)
+            parts = list(v.release)
+            while len(parts) < 4:
+                parts.append(0)
+            return tuple(parts[:4])
+
+        heap = [(0, 0, (0, 0, 0, 0), [weka_version])]  # (cost, neg_same_major, neg_max_intermediate, path)
+        visited = set()
+
+        while heap:
+            cost, neg_same, neg_max, path = heapq.heappop(heap)
             current = path[-1]
 
             if current == target_version:
@@ -3395,43 +3404,43 @@ def target_version_check(
 
             if current in visited:
                 continue
-
             visited.add(current)
+
             current_v = parse_version(current)
 
-            next_versions = []
-
             for ver, rule in upgrade_map.items():
+                if ver in visited:
+                    continue
                 ver_v = parsed_versions.get(ver)
                 if ver_v is None:
                     continue
-
-                # Only consider upgrades
                 if ver_v <= current_v:
                     continue
-
-                min_str = rule["min"].strip()
-                min_v = parse_version(min_str)
-
-                # Evaluate max list (may be empty)
-                max_list = rule.get("max", [])
-                max_list_parsed = [parse_version(m) for m in max_list if parse_version(m)]
-
-                # --- Skip irrelevant candidates silently ---
-                if current_v < min_v:
+                min_list = rule.get("min", [])
+                min_list_parsed = [parsed_versions.get(m) or parse_version(m) for m in min_list]
+                min_list_parsed = [m for m in min_list_parsed if m is not None]
+                if not min_list_parsed:
                     continue
+                if not any(current_v >= m for m in min_list_parsed):
+                    continue
+                max_list = rule.get("max", [])
+                max_list_parsed = [parsed_versions.get(m) or parse_version(m) for m in max_list]
+                max_list_parsed = [m for m in max_list_parsed if m is not None]
                 if max_list_parsed and all(current_v > m for m in max_list_parsed):
                     continue
-
-                # --- Passed checks, consider as next candidate ---
-                next_versions.append(ver)
-
-            # Sort next versions newest first
-            next_versions.sort(key=parse_version, reverse=True)
-
-            for nv in next_versions:
-                if nv not in visited:
-                    queue.append(path + [nv])
+                hop_cost = 1 if same_major(ver, current) else 2
+                new_cost = cost + hop_cost
+                new_neg_same = neg_same - (1 if same_major(ver, current) else 0)
+                # Only track same-major-as-source intermediates as tiebreaker, exclude destination
+                if ver == target_version:
+                    new_neg_max = neg_max
+                elif same_major(ver, weka_version):
+                    vkey = version_sort_key(ver)
+                    cur_neg = tuple(-x for x in vkey)
+                    new_neg_max = min(neg_max, cur_neg)
+                else:
+                    new_neg_max = neg_max
+                heapq.heappush(heap, (new_cost, new_neg_same, new_neg_max, path + [ver]))
 
         WARN(f"Could not reach target version {target_version} from {weka_version}")
         return []
@@ -3441,9 +3450,7 @@ def target_version_check(
         if not upgrade_map:
             WARN("Invalid or empty upgrade map. Ensure upgrade_path.json exists and is not empty.")
             return
-
         upgrade_hops = find_upgrade_path(weka_version, target_version, upgrade_map)
-
         if upgrade_hops:  # Only proceed if a valid path exists
             total_hops = len(upgrade_hops) - 1
             if total_hops == 1:
@@ -3451,7 +3458,6 @@ def target_version_check(
             print(f"{colors.OKCYAN}Total upgrade hops: {total_hops}{colors.ENDC}")
             print(f"{colors.OKCYAN}Upgrade path: {' --> '.join(upgrade_hops)}{colors.ENDC}\n")
             ECHO(' --> '.join(upgrade_hops))
-
             # Check for known issues with protocol filtering
             check_known_issues(
                 upgrade_hops,
@@ -3462,7 +3468,6 @@ def target_version_check(
                 obj_store_enabled,
                 multi_org,
             )
-
     except (FileNotFoundError, ValueError) as e:
         WARN(f"Error: {e}")
 
