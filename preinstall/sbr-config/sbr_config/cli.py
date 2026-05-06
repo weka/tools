@@ -54,7 +54,10 @@ Safety:
 """,
     )
 
-    mode = parser.add_mutually_exclusive_group(required=True)
+    # Action group is not strictly required at the argparse level so we can
+    # treat bare `--dry-run` as `--configure --dry-run` (the only mode where
+    # dry-run is meaningful).  Enforced manually after parsing.
+    mode = parser.add_mutually_exclusive_group(required=False)
     mode.add_argument(
         "-V", "--validate",
         action="store_true",
@@ -89,7 +92,7 @@ Safety:
     parser.add_argument(
         "-n", "--dry-run",
         action="store_true",
-        help="Show proposed changes without applying them",
+        help="Show proposed changes without applying them (implies -c if no mode given)",
     )
     parser.add_argument(
         "-t", "--confirm-timeout",
@@ -159,6 +162,20 @@ def main(argv: List[str] = None) -> int:
     """
     parser = build_parser()
     args = parser.parse_args(argv)
+
+    # `--dry-run` on its own is shorthand for `--configure --dry-run` since
+    # configure is the only mode where a dry-run preview makes sense.
+    if args.dry_run and not (
+        args.validate or args.configure or args.rollback or args.check_prereqs
+    ):
+        args.configure = True
+
+    # Otherwise an action is required.
+    if not (args.validate or args.configure or args.rollback or args.check_prereqs):
+        parser.error(
+            "one of the arguments -V/--validate -c/--configure -r/--rollback "
+            "-p/--check-prereqs is required"
+        )
 
     # Setup
     setup_logging(args.log_file, args.verbose)
