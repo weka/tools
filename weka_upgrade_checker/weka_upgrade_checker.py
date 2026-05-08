@@ -40,7 +40,7 @@ from packaging.version import parse as V, InvalidVersion
 
 parse = V 
 
-pg_version = "1.10.7"
+pg_version = "1.10.8"
 known_issues_file = "known_issues.json"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
@@ -2492,22 +2492,6 @@ def backend_host_checks(
     if connection_counts:
         max_per_host = get_rpc_max_connections()
         evaluate_nfs_failover_risk(connection_counts, max_per_host, good_nfs_hosts)
-
-    if good_nfs_hosts:
-        INFO("VALIDATING IPV6 ON NFS BACKENDS")
-        results = parallel_execution(
-            good_nfs_hosts,
-            ["test -f /proc/net/if_inet6"],
-            use_check_output=False,
-            use_call=True,
-            ssh_identity=ssh_identity,
-        )
-        for host_name, result in results:
-            INFO2(f'{" " * 2}Checking IPv6 status on NFS Host: {host_name}:')
-            if result == 0:
-                GOOD(f"IPv6 is enabled")
-            else:
-                BAD(f"IPv6 should be enabled on NFS hosts")
 
     INFO("CHECKING WEKA AGENT STATUS ON BACKENDS")
     command = r"""
