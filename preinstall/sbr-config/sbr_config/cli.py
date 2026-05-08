@@ -82,7 +82,11 @@ Safety:
     parser.add_argument(
         "-f", "--force",
         action="store_true",
-        help="Skip interactive confirmation (use with -c/--configure)",
+        help=(
+            "Skip all interactive confirmation -- both the pre-apply 'are you sure?' "
+            "prompt and the post-apply dead man's switch. Use for non-interactive / "
+            "remote runs."
+        ),
     )
     parser.add_argument(
         "-P", "--no-persist",
@@ -316,8 +320,13 @@ def _do_configure(args: argparse.Namespace, out: Output) -> int:
         # have connectivity before finalising.  If no response within
         # the timeout, auto-rollback to the backup we just saved.
         # Ctrl+C during the countdown also triggers rollback.
+        #
+        # --force skips the dead man's switch entirely so the tool can
+        # run non-interactively (e.g. driven from a remote host where no
+        # one is watching for the prompt).  Caller takes responsibility
+        # for the connectivity check.
         confirm_timeout = getattr(args, "confirm_timeout", 30)
-        if confirm_timeout > 0:
+        if confirm_timeout > 0 and not args.force:
             try:
                 confirmed = out.prompt_timed_confirm(confirm_timeout)
             except KeyboardInterrupt:
