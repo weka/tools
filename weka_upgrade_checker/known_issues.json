@@ -1,4 +1,36 @@
 {
+    "WEKAPP-615442":
+    {
+        "description": "Unable to run ClusterAdmin S3 related commands after upgrade",
+        "related_protocols": ["s3"],
+        "link_types": [ ],
+        "problematic_kernel_arguments": [ ],
+        "internal_reference": "WEKAPP-615442",
+        "affected_versions": [
+            {
+                "min": "5.1.20.7",
+                "max": ""
+            }
+        ],
+        "multi_org": false,
+        "obj_store": false
+    },
+    "WEKAPP-611144":
+    {
+        "description": "Mixed network resiliency issue",
+        "related_protocols": [],
+        "link_types": [ ],
+        "problematic_kernel_arguments": [ ],
+        "internal_reference": "WEKAPP-611144",
+        "affected_versions": [
+            {
+                "min": "4.4.20.113",
+                "max": "4.4.26"
+            }
+        ],
+        "multi_org": false,
+        "obj_store": false
+    },
     "WEKAPP-606367":
     {
         "description": "LDAP auth fails if entryUUID is missing",
