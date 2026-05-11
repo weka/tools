@@ -2818,24 +2818,27 @@ def backend_host_checks(
             if first_ip not in ips:
                 ips.append(first_ip)
 
-    curl_commands = [
-        f"curl -sL --insecure https://[{ips[0]}]:{port} -o /dev/null; echo $? {port}"
-        if ":" in ips[0]
-        else f"curl -sL --insecure https://{ips[0]}:{port} -o /dev/null; echo $? {port}"
-        for port in api_ports
-    ]
+    if not ips:
+        WARN("Unable to verify backend host port connectivity: no IPs found in weka local status")
+    else:
+        curl_commands = [
+            f"curl -sL --insecure https://[{ips[0]}]:{port} -o /dev/null; echo $? {port}"
+            if ":" in ips[0]
+            else f"curl -sL --insecure https://{ips[0]}:{port} -o /dev/null; echo $? {port}"
+            for port in api_ports
+        ]
 
-    results = parallel_execution(
-        ssh_bk_hosts,
-        curl_commands,
-        use_check_output=True,
-        ssh_identity=ssh_identity,
-    )
-    for host_name, result in results:
-        if result is None:
-            WARN(f"Unable to Determine Host: {host_name} port connectivity")
+        results = parallel_execution(
+            ssh_bk_hosts,
+            curl_commands,
+            use_check_output=True,
+            ssh_identity=ssh_identity,
+        )
+        for host_name, result in results:
+            if result is None:
+                WARN(f"Unable to Determine Host: {host_name} port connectivity")
 
-    host_port_connectivity(results)
+        host_port_connectivity(results)
 
     INFO("CHECKING FOR KNOWN PROBLEMATIC KERNEL ARGUMENTS")
     command = r"""
