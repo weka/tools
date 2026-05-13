@@ -40,7 +40,7 @@ from packaging.version import parse as V, InvalidVersion
 
 parse = V 
 
-pg_version = "1.10.11"
+pg_version = "1.10.12"
 known_issues_file = "known_issues.json"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
@@ -1374,10 +1374,8 @@ def weka_cluster_checks(target_version):
                 print(f"Error processing host for CX-4 {key}: {e}")
 
         if cx4_found:
-            BAD("CX4 detected. (The ConnectX-4 Lx ethernet NICs from NVIDIA Mellanox were officially announced " \
-                "as End of Life (EOL) on November 2020). We currently recommend delaying upgrades to 4.4.x " \
-                "which may cause unintended service disruption on servers using these cards in DPDK mode." \
-                "Using UDP mode is a viable workaround.")
+            BAD("CX4 detected. (The ConnectX-4 LX ethernet NICs from NVIDIA Mellanox were officially announced " \
+                "as End of Life (EOL) on November 2020). This model NIC is officially deprecated in WEKA 5.x.")
         else:
             GOOD(f"No CX-4 NICs located")
 

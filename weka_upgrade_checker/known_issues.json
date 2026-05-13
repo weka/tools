@@ -1,4 +1,20 @@
 {
+    "WEKAPP-616874":
+    {
+        "description": "S3 Webhook configuration migration may fail after upgrade",
+        "related_protocols": ["s3"],
+        "link_types": [ ],
+        "problematic_kernel_arguments": [ ],
+        "internal_reference": "WEKAPP-616874",
+        "affected_versions": [
+            {
+                "min": "5.1.0",
+                "max": "5.1.22"
+            }
+        ],
+        "multi_org": false,
+        "obj_store": false
+    },
     "WEKAPP-615442":
     {
         "description": "Unable to run ClusterAdmin S3 related commands after upgrade",
@@ -9,7 +25,7 @@
         "affected_versions": [
             {
                 "min": "5.1.20.7",
-                "max": ""
+                "max": "5.1.21"
             }
         ],
         "multi_org": false,
@@ -25,7 +41,7 @@
         "affected_versions": [
             {
                 "min": "4.4.20.113",
-                "max": "4.4.26"
+                "max": "4.4.30"
             }
         ],
         "multi_org": false,
