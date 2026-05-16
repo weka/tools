@@ -40,7 +40,7 @@ from packaging.version import parse as V, InvalidVersion
 
 parse = V 
 
-pg_version = "1.10.12"
+pg_version = "1.10.13"
 known_issues_file = "known_issues.json"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
@@ -349,28 +349,38 @@ def weka_cluster_checks(target_version):
 
     INFO("VERIFYING WEKA LOCAL CONTAINER STATUS")
     running_container = []
-    try:
-        con_status = subprocess.check_output(
-            ["weka", "local", "status", "-J"], stderr=subprocess.STDOUT
-        )
-        con_status = con_status.decode("utf-8").strip()
-        if not con_status:
-            raise ValueError("Empty output from 'weka local status -J'")
-        con_status = json.loads(con_status)
-    except (subprocess.CalledProcessError, ValueError, json.JSONDecodeError) as e:
-        BAD(f"Error checking Weka local container status: {str(e)}")
-        sys.exit(1)
-
-    for container in con_status:
-        if con_status[container].get("type") == "weka" and con_status[container].get(
-            "isRunning"
-        ):
-            GOOD("WEKA local container is running")
-            running_container += [container]
+    con_status = None
+    last_error = None
+    for attempt in range(2):
+        try:
+            raw = subprocess.check_output(
+                ["weka", "local", "status", "-J"], stderr=subprocess.STDOUT
+            )
+            raw = raw.decode("utf-8").strip()
+            if not raw:
+                raise ValueError("Empty output from 'weka local status -J'")
+            con_status = json.loads(raw)
             break
+        except (subprocess.CalledProcessError, ValueError, json.JSONDecodeError) as e:
+            last_error = e
+            if attempt == 0:
+                time.sleep(2)
+
+    if con_status is None:
+        WARN(
+            f"Unable to verify Weka local container status after retry ({last_error});"
+        )
     else:
-        BAD("WEKA local container is NOT running, cannot continue")
-        sys.exit(1)
+        for container in con_status:
+            if con_status[container].get("type") == "weka" and con_status[container].get(
+                "isRunning"
+            ):
+                GOOD("WEKA local container is running")
+                running_container += [container]
+                break
+        else:
+            BAD("WEKA local container is NOT running, cannot continue")
+            sys.exit(1)
 
     INFO("WEKA USER LOGIN TEST")
     p = run(["weka", "status"], stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
@@ -707,22 +717,20 @@ def weka_cluster_checks(target_version):
         check_version = ".".join(sw_version[:2])
         cl_machine_need_upgrade = []
         cl_host_need_upgrade = []
-
         try:
             for w_cl_server in weka_cl_servers:
                 clsw_version = w_cl_server.versions.split(".")
                 if ".".join(clsw_version[:2]) != check_version:
-                    cl_machine_need_upgrade += [w_cl_server.name, w_cl_server.ip]
+                    cl_machine_need_upgrade += [w_cl_server.name, w_cl_server.ip, w_cl_server.versions]
         except NameError as e:
             WARN("Unable to determine client WEKA version")
     except NameError as e:
         WARN("Unable to determine client WEKA version")
-
     if cl_machine_need_upgrade:
         WARN(
-            f"The following client hosts must be upgraded to {weka_version} prior to the WEKA upgrade\n"
+            f"The following client hosts are running a release different than the cluster release ({weka_version}), and may needed upgraded prior to the WEKA cluster upgrade\n"
         )
-        printlist(cl_machine_need_upgrade, 2)
+        printlist(cl_machine_need_upgrade, 3)
     else:
         GOOD("All clients hosts are up to date")
 
