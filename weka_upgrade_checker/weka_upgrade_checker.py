@@ -40,7 +40,7 @@ from packaging.version import parse as V, InvalidVersion
 
 parse = V 
 
-pg_version = "1.10.13"
+pg_version = "1.11.0"
 known_issues_file = "known_issues.json"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
@@ -1569,11 +1569,7 @@ def check_os_release(
         BAD(f"Host {host_name} - could not parse OS information: {exc}")
         return
 
-    compat_data = supported_os.get(weka_version)
-    if not isinstance(compat_data, list):
-        compat_data = None
-
-    _check_os_distro(host_name, os_id, version_id, kernel, weka_version, compat_data, backend=backend)
+    _check_os_distro(host_name, os_id, version_id, kernel, weka_version, backend=backend)
 
 
 def _ver_tuple(v: str):
@@ -1594,7 +1590,24 @@ def _is_newer_than_max(version_id: str, supported: set) -> bool:
     return _ver_tuple(version_id) > _ver_tuple(_max_version(supported))
 
 
-def _check_os_distro(host_name, os_id, version_id, kernel, weka_version, compat_data, backend=True):
+def _matched_supported_version(version_id: str, supported: set):
+    """Return the entry from *supported* that matches *version_id*.
+
+    Match precedence:
+      1. Exact match (e.g. host '22.04.5' against listed '22.04.5').
+      2. Prefix match by dropping trailing components (e.g. host '22.04.5'
+         against listed '22.04', then against listed '22').
+    Returns the matched supported string, or None.
+    """
+    parts = version_id.split(".")
+    for n in range(len(parts), 0, -1):
+        candidate = ".".join(parts[:n])
+        if candidate in supported:
+            return candidate
+    return None
+
+
+def _check_os_distro(host_name, os_id, version_id, kernel, weka_version, backend=True):
     """Two-tier OS check: GOOD if distro+version is listed for the target WEKA version
     (filtered by backend/client role), BAD otherwise.
     The current kernel is printed in parentheses for reference only.
@@ -1609,7 +1622,8 @@ def _check_os_distro(host_name, os_id, version_id, kernel, weka_version, compat_
 
     kernel_str = f" (kernel {kernel})" if kernel else ""
 
-    if compat_data is None:
+    distro_entries = supported_os.get(api_distro)
+    if not distro_entries:
         BAD(
             f"Host {host_name}: OS {os_id} {version_id}{kernel_str} — "
             f"no OS compatibility data for WEKA version {weka_version}"
@@ -1619,11 +1633,18 @@ def _check_os_distro(host_name, os_id, version_id, kernel, weka_version, compat_
     role_key = "backend" if backend else "client"
     supported = {
         _normalize_api_distro_version(e["distroVersion"])
-        for e in compat_data
-        if e["distro"] == api_distro and e.get(role_key, True)
+        for e in distro_entries
+        if weka_version in e.get(role_key, [])
     }
 
-    if version_id in supported:
+    if not supported:
+        BAD(
+            f"Host {host_name}: OS {os_id} {version_id}{kernel_str} — "
+            f"no OS compatibility data for WEKA version {weka_version}"
+        )
+        return
+
+    if _matched_supported_version(version_id, supported) is not None:
         GOOD(
             f"Host {host_name}: OS {os_id} {version_id}{kernel_str} "
             f"is supported with target WEKA version {weka_version}"
@@ -3188,7 +3209,6 @@ def cluster_summary():
     GOOD(f"Total Checks Passed: {num_good}")
     WARN(f"Total Warnings: {num_warn}")
     BAD(f"Total Checks Failed: {num_bad}")
-    create_tar_file(log_file_path, "./weka_upgrade_checker.tar.gz")
 
 def major(v):
     return v.split('.')[0]
@@ -3279,11 +3299,15 @@ def check_known_issues(
                                     description,
                                 ]
 
-                if found_issues:                       
-                    print(f"\n{colors.WARNING}Known issues for version {version}:{colors.ENDC}")
+                if found_issues:
+                    header = f"Known issues for version {version}:"
+                    print(f"\n{colors.WARNING}{header}{colors.ENDC}")
+                    logging.warning(header)
                     printlist(found_issues, 2)
                 else:
-                    print(f"{colors.OKCYAN}No known issues for version {version}.{colors.ENDC}")
+                    no_issues_msg = f"No known issues for version {version}."
+                    print(f"{colors.OKCYAN}{no_issues_msg}{colors.ENDC}")
+                    logging.info(no_issues_msg)
 
     except FileNotFoundError:
         WARN(f"Error: {known_issues_file} not found.")
@@ -3452,8 +3476,12 @@ def target_version_check(
             total_hops = len(upgrade_hops) - 1
             if total_hops == 1:
                 total_hops = "Direct path upgrade"
-            print(f"{colors.OKCYAN}Total upgrade hops: {total_hops}{colors.ENDC}")
-            print(f"{colors.OKCYAN}Upgrade path: {' --> '.join(upgrade_hops)}{colors.ENDC}\n")
+            hops_msg = f"Total upgrade hops: {total_hops}"
+            path_msg = f"Upgrade path: {' --> '.join(upgrade_hops)}"
+            print(f"{colors.OKCYAN}{hops_msg}{colors.ENDC}")
+            print(f"{colors.OKCYAN}{path_msg}{colors.ENDC}\n")
+            logging.info(hops_msg)
+            logging.info(path_msg)
             ECHO(' --> '.join(upgrade_hops))
             # Check for known issues with protocol filtering
             check_known_issues(
@@ -3574,6 +3602,7 @@ def main():
         client_hosts_checks(weka_version, ssh_cl_hosts, check_version, ssh_identity, target_version=args.target_version)
         cluster_summary()
         INFO(f"Cluster upgrade checks complete!")
+        create_tar_file(log_file_path, "./weka_upgrade_checker.tar.gz")
         sys.exit(0)
 
     elif args.cluster_checks_only:
@@ -3582,6 +3611,7 @@ def main():
         )
         cluster_summary()
         INFO(f"Cluster upgrade checks complete!")
+        create_tar_file(log_file_path, "./weka_upgrade_checker.tar.gz")
         sys.exit(0)
 
     elif args.check_specific_backend_hosts:
@@ -3614,6 +3644,7 @@ def main():
         )
         cluster_summary()
         INFO(f"Cluster upgrade checks complete!")
+        create_tar_file(log_file_path, "./weka_upgrade_checker.tar.gz")
         sys.exit(0)
 
     elif args.skip_client_checks:
@@ -3660,6 +3691,7 @@ def main():
                 obj_store_enabled,
                 multi_org
             )
+        create_tar_file(log_file_path, "./weka_upgrade_checker.tar.gz")
         sys.exit(0)
 
 
