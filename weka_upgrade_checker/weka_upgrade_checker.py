@@ -40,7 +40,7 @@ from packaging.version import parse as V, InvalidVersion
 
 parse = V 
 
-pg_version = "1.11.0"
+pg_version = "1.11.1"
 known_issues_file = "known_issues.json"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
@@ -1361,28 +1361,28 @@ def weka_cluster_checks(target_version):
             
     # Added 2025-11-22
     #  There may be CX-4 compatibility issues (see WEKAPP-540128)
-    if V(target_version) >= V("4.4"):
+    if V(target_version) >= V("5.0"):
         INFO("CHECKING FOR CX-4 NICs")
 
         cx4_found = False
-
-        for key, val in host_hw_info.items():
-            if not val or "eths" not in val:
-                continue
-            try:
-                for eth in val["eths"]:
-                    device = eth.get("device", "")
-                    if "connectx-4" in device.lower():
+        try:
+            net_entries = json.loads(
+                subprocess.check_output(
+                    ["weka", "cluster", "container", "net", "-J"], text=True
+                )
+            )
+            for entry in net_entries:
+                for dev in entry.get("net_devices") or []:
+                    if "connectx-4" in (dev.get("device") or "").lower():
                         cx4_found = True
                         break
-
-                    if cx4_found:
-                        break
-            except Exception as e:
-                print(f"Error processing host for CX-4 {key}: {e}")
+                if cx4_found:
+                    break
+        except Exception as e:
+            print(f"Error checking for CX-4 NICs: {e}")
 
         if cx4_found:
-            BAD("CX4 detected. (The ConnectX-4 LX ethernet NICs from NVIDIA Mellanox were officially announced " \
+            BAD("CX4 detected. (The ConnectX-4 ethernet NICs from NVIDIA Mellanox were officially announced " \
                 "as End of Life (EOL) on November 2020). This model NIC is officially deprecated in WEKA 5.x.")
         else:
             GOOD(f"No CX-4 NICs located")
