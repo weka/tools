@@ -40,7 +40,7 @@ from packaging.version import parse as V, InvalidVersion
 
 parse = V 
 
-pg_version = "1.11.1"
+pg_version = "1.11.2"
 known_issues_file = "known_issues.json"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
@@ -1067,6 +1067,23 @@ def weka_cluster_checks(target_version):
     if override_list:
         printlist(override_list, 5)
 
+
+    # WEKAPP-578864
+    try:
+        catalog = json.loads(
+            subprocess.check_output(["weka", "debug", "config", "show", "catalogInfo"],
+                stderr=subprocess.DEVNULL
+            )
+        )
+        INFO("CHECKING FOR WEKA CATALOG INDEXING ENABLED")
+        if catalog.get("indexEnabled", False):
+            BAD("Catalog indexing must be disabled before upgrades (weka catalog config update --index-enabled false).")
+        else:
+            GOOD("Catalog indexing not running.")
+    except subprocess.CalledProcessError as e:
+        pass
+
+
     INFO("CHECKING FOR WEKA CLUSTER TASKS")
     bg_task = []
     cluster_tasks = json.loads(
@@ -1074,13 +1091,18 @@ def weka_cluster_checks(target_version):
     )
 
     for task in cluster_tasks:
-        if task["type"] != "FSCK":
-            WARN("There are active cluster tasks that should be considered before running the upgrade.")
+        if task["type"] not in ("FSCK", "RAID_SCANNER"):
             bg_task += [task["type"], task["description"]]
-            printlist(bg_task, 2)
-            break
-    else:
+
+            # WEKAPP-578864
+            if task["type"] in ("CATALOG_INGEST", "CATALAOG_INGEST", "CATALOG_METADATA_DELETE", "CATALOG_METADATA_DELETE_ALL"):
+                BAD("Catalog tasks are running. These must complete before the upgrade can continue.")
+
+    if not bg_task:
         GOOD("No unexpected WEKA cluster tasks running")
+    else:
+        WARN("There are active cluster tasks that should be considered before running the upgrade.")
+        printlist(bg_task, 2)
 
     INFO("CHECKING FOR WEKA BLACKLISTED NODES")
     blacklist = []

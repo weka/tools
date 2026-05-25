@@ -57,7 +57,7 @@
         "affected_versions": [
             {
                 "min": "5.1.0",
-                "max": ""
+                "max": "5.1.30"
             }
         ],
         "multi_org": false,
