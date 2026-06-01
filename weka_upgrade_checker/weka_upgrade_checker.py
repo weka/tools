@@ -38,9 +38,28 @@ except (pkg_resources.DistributionNotFound, ImportError):
 
 from packaging.version import parse as V, InvalidVersion
 
+
+def _clean_subprocess_env():
+    """Env for spawning *system* binaries (e.g. ssh) from a PyInstaller binary.
+
+    PyInstaller points LD_LIBRARY_PATH at its _MEIxxxx bundle dir so the frozen
+    app loads its own libs; inherited by child processes, this makes system ssh
+    load the bundled libselinux.so.1 and emit 'no version information available'
+    warnings. Restore the original library path (saved by the bootloader as
+    *_ORIG) so ssh uses the host's libs instead.
+    """
+    env = dict(os.environ)
+    for key in ("LD_LIBRARY_PATH", "LD_PRELOAD", "DYLD_LIBRARY_PATH"):
+        orig = env.pop(key + "_ORIG", None)
+        if orig is not None:
+            env[key] = orig
+        else:
+            env.pop(key, None)
+    return env
+
 parse = V 
 
-pg_version = "1.11.2"
+pg_version = "1.11.4"
 known_issues_file = "known_issues.json"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
@@ -144,9 +163,16 @@ def WARN2(text):
 
 def BAD(text):
     global num_bad
-    wrapped_text = textwrap.fill(text, width=150, subsequent_indent="          ")
+    indent = "          "
+    # Wrap each explicitly-separated line on its own so caller-supplied "\n" line
+    # breaks are preserved (textwrap.fill would otherwise collapse them to spaces).
+    wrapped_lines = [
+        textwrap.fill(line, width=150, subsequent_indent=indent)
+        for line in text.split("\n")
+    ]
+    wrapped_text = ("\n" + indent).join(wrapped_lines)
     print(f"{colors.FAIL}{' ' * 5}❌  {wrapped_text}{colors.ENDC}")
-    logging.debug(wrapped_text)
+    logging.debug("\n".join(wrapped_lines))
     num_bad += 1
 
 
@@ -1789,39 +1815,48 @@ results_lock = threading.Lock()
 
 
 def free_space_check_data(results):
-    results_by_host = {}
+    # Mirror the product's per-container upgrade preflight (agent
+    # ensure_available_space): a host passes only if EVERY container data
+    # directory has at least 1.5x its own size available on its partition.
+    # Evaluated per container, never summed across containers. Each host's result
+    # holds one "<container>:<avail_mb>:<used_mb>" line per container data dir.
+    containers_by_host = {}
 
     for host_name, result in results:
-        with results_lock:
-            if host_name not in results_by_host:
-                results_by_host[host_name] = {"sizes": [], "used": 0}
-
+        if result is None:
+            continue
+        for line in str(result).splitlines():
+            line = line.strip()
+            if not line:
+                continue
             try:
-                weka_partition_size, weka_partition_used = map(
-                    int, result.strip().split(":")
-                )
-                if not results_by_host[host_name]["sizes"]:
-                    results_by_host[host_name]["sizes"].append(weka_partition_size)
-                results_by_host[host_name]["used"] += weka_partition_used
+                name, avail_mb, used_mb = line.split(":")
+                avail_mb, used_mb = int(avail_mb), int(used_mb)
             except ValueError:
                 WARN(f"Could not parse space data for host: {host_name}")
                 continue
+            containers_by_host.setdefault(host_name, []).append((name, avail_mb, used_mb))
 
-    for host_name, data in results_by_host.items():
-        if data["sizes"]:
-            weka_partition_size = data["sizes"][0]
-            total_weka_used = data["used"]
-            free_capacity_needed = total_weka_used * 1.5
-
-            if free_capacity_needed > weka_partition_size:
-                WARN(
-                    f"Host: {host_name} does not have enough free capacity, need to free up "
-                    f"~{(free_capacity_needed - weka_partition_size) / 1000:.3f}G"
-                )
-            else:
-                GOOD(f"Host: {host_name} has adequate free space")
-        else:
+    for host_name, containers in containers_by_host.items():
+        if not containers:
             WARN(f"Insufficient data for host: {host_name}")
+            continue
+
+        shortfalls = []
+        for name, avail_mb, used_mb in containers:
+            free_capacity_needed = used_mb * 1.5
+            if free_capacity_needed > avail_mb:
+                shortfalls.append(
+                    f"container '{name}': free up ~{(free_capacity_needed - avail_mb) / 1024:.3f}G"
+                )
+
+        if shortfalls:
+            WARN(
+                f"Host: {host_name} does not have enough free capacity for upgrade "
+                f"(needs 1.5x each container's data dir size free): {'; '.join(shortfalls)}"
+            )
+        else:
+            GOOD(f"Host: {host_name} has adequate free space")
 
 
 def free_space_check_logs(results):
@@ -2363,6 +2398,9 @@ def parallel_execution(
     if ssh_identity:
         ssh_opts += [["-i", ssh_identity]]
 
+    # System ssh must not inherit PyInstaller's LD_LIBRARY_PATH (see helper).
+    ssh_env = _clean_subprocess_env()
+
     def run_command(host, command, use_check_output, use_json, use_call, ssh_opts):
         if isinstance(host, dict):
             host_ip = host["ip"]
@@ -2377,13 +2415,17 @@ def parallel_execution(
 
         if use_check_output:
             result = (
-                subprocess.check_output(["ssh"] + ssh_opts_flat + [host_ip, command])
+                subprocess.check_output(
+                    ["ssh"] + ssh_opts_flat + [host_ip, command], env=ssh_env
+                )
                 .decode("utf-8")
                 .strip()
             )
         elif use_json:
             result = json.loads(
-                subprocess.check_output(["ssh"] + ssh_opts_flat + [host_ip, command])
+                subprocess.check_output(
+                    ["ssh"] + ssh_opts_flat + [host_ip, command], env=ssh_env
+                )
                 .decode("utf-8")
                 .strip()
             )
@@ -2392,12 +2434,14 @@ def parallel_execution(
                 ["ssh"] + ssh_opts_flat + [host_ip, command],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.STDOUT,
+                env=ssh_env,
             )
         else:
             result = subprocess.run(
                 ["ssh"] + ssh_opts_flat + [host_ip, command],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.STDOUT,
+                env=ssh_env,
             )
         return host_name, result
 
@@ -2581,67 +2625,49 @@ def backend_host_checks(
             WARN(f"Unable to determine time on Host: {host_name}")
 
     INFO("CHECKING WEKA DATA DIRECTORY SPACE USAGE ON BACKENDS")
+    # Match the product's upgrade preflight (agent ensure_available_space), which
+    # checks EACH container individually: available space on the container data
+    # dir's partition must exceed 1.5x that container's size. Enumeration runs on
+    # each backend itself (data dirs differ per host) and considers only
+    # directories under /opt/weka/data -- stray files are skipped. Apparent size
+    # (du --apparent-size) matches the product's getDirectorySize, and df is taken
+    # on each dir's own partition like getAvailableDiskSpace. One
+    # "<container>:<avail_mb>:<used_mb>" line is emitted per container dir and
+    # checked per container in free_space_check_data (never summed).
     if V(weka_version) >= V("4.2.7"):
-        data_dir = "/opt/weka/data/"
-        excluded_dirs = {
-            "envoy",
-            "smbw",
-            "ganesha",
-            "agent",
-            "dependencies",
-            "ofed",
-            "igb_uio",
-            "logs.loop",
-            "mpin_user",
-            "pkg_tools",
-            "uio_generic",
-            "weka_driver",
-        }
-        subdirectories = [
-            d
-            for d in subprocess.check_output(["sudo", "ls", data_dir])
-            .decode()
-            .splitlines()
-            if "_" not in d and d not in excluded_dirs
-        ]
-
-        commands = [
-            f"weka_partition_size=$(df -m /opt/weka | awk 'NR==2 {{print $4}}'); "
-            f"weka_partition_used=$(sudo du -smc /opt/weka/data/{d} 2>&1 | grep -v  '^du:' | awk '/total/ {{print $1}}'); "
-            f'echo "$weka_partition_size:$weka_partition_used"'
-            for d in subdirectories
-        ]
-
-        results = parallel_execution(
-            ssh_bk_hosts,
-            commands,
-            use_check_output=True,
-            ssh_identity=ssh_identity,
+        # Live container dirs have no version suffix; skip staged "<id>_<version>"
+        # dirs and runtime/dependency dirs.
+        excluded = "envoy|smbw|ganesha|agent|dependencies|ofed|igb_uio|logs.loop|mpin_user|pkg_tools|uio_generic|weka_driver"
+        name_filter = (
+            'case "$name" in *_*) continue;; esac; '
+            f'case "$name" in {excluded}) continue;; esac; '
         )
-        for host_name, result in results:
-            if result is None:
-                WARN(f"Unable to determine Host: {host_name} available space")
-
-        free_space_check_data(results)
-
     else:
-        data_dir = f"/opt/weka/data/*_{str(weka_version)}"
-        commands = [
-            "df -m /opt/weka | awk 'NR==2 {print $4}'",
-            f"sudo du -smc {data_dir} 2>&1 | grep -v  '^du:' | awk '/total/ {{print $1}}'",
-        ]
+        # Pre-4.2.7 the live data dir carries the running version suffix.
+        name_filter = f'case "$name" in *_{weka_version}) : ;; *) continue;; esac; '
 
-        results = parallel_execution(
-            ssh_bk_hosts,
-            commands,
-            use_check_output=True,
-            ssh_identity=ssh_identity,
-        )
-        for host_name, result in results:
-            if result is None:
-                WARN(f"Unable to determine Host: {host_name} available space")
+    data_check_cmd = (
+        "for d in /opt/weka/data/*/; do "
+        '[ -d "$d" ] || continue; '
+        'name=$(basename "$d"); '
+        f"{name_filter}"
+        "used=$(sudo du -sm --apparent-size \"$d\" 2>/dev/null | awk '{print $1}'); "
+        "avail=$(df -m \"$d\" 2>/dev/null | awk 'NR==2 {print $4}'); "
+        '[ -n "$avail" ] && [ -n "$used" ] && echo "$name:$avail:$used"; '
+        "done"
+    )
 
-        free_space_check_data(results)
+    results = parallel_execution(
+        ssh_bk_hosts,
+        [data_check_cmd],
+        use_check_output=True,
+        ssh_identity=ssh_identity,
+    )
+    for host_name, result in results:
+        if result is None:
+            WARN(f"Unable to determine Host: {host_name} available space")
+
+    free_space_check_data(results)
 
     INFO("CHECKING WEKA LOGS DIRECTORY SPACE USAGE ON BACKENDS")
     results = parallel_execution(
@@ -3337,6 +3363,158 @@ def check_known_issues(
         WARN(f"Error: {known_issues_file} contains invalid JSON.")
 
 
+def _clean_version(version):
+    # Strip hotfix/suffix (e.g. "5.1.0-hcfs") so packaging.version can parse it.
+    return version.split("-")[0].strip()
+
+
+def _in_442x(version):
+    """True if version is a 4.4.2x release (4.4.20 - 4.4.29)."""
+    try:
+        return V("4.4.20") <= V(_clean_version(version)) < V("4.4.30")
+    except InvalidVersion:
+        return False
+
+
+def _same_release(a, b):
+    """True if two version strings share the same Major.Minor.Patch, ignoring any
+    build-number/hotfix metadata (mirrors SWVersion.StripMetadata().Equals())."""
+    try:
+        return V(_clean_version(str(a))).release[:3] == V(_clean_version(str(b))).release[:3]
+    except (InvalidVersion, AttributeError):
+        return False
+
+
+def _fsck_path_applies(upgrade_hops, target_version):
+    """
+    The completed-FSCK check only applies to upgrade paths that transit through a
+    4.4.2x release (4.4.20 - 4.4.29) on their way to a 5.1.y target where y < 30.
+    Because customers may take a multi-hop upgrade (e.g. 4.2.x -> 4.4.2x -> 5.1.y),
+    we inspect every hop in the computed path, not just the current cluster version.
+    """
+    try:
+        target_in_range = V("5.1.0") <= V(_clean_version(target_version)) < V("5.1.30")
+    except InvalidVersion:
+        return False
+
+    return target_in_range and any(_in_442x(hop) for hop in upgrade_hops)
+
+
+def report_intermediate_fsck_requirement(upgrade_hops, target_version):
+    """
+    When 4.4.2x is an intermediate hop rather than the current cluster version, the
+    live FSCK state we can read now belongs to the starting release, not the 4.4.2x
+    release the upgrade will pass through. The checker is not re-run after the
+    intermediate upgrade, so we cannot verify it automatically - emit a failing
+    message with the manual steps the customer must perform at the 4.4.2x hop.
+    """
+    INFO("VERIFYING A CLEAN FSCK COMPLETED SINCE THE LAST UPGRADE")
+    intermediate = next((hop for hop in upgrade_hops if _in_442x(hop)), "4.4.2x")
+    BAD(
+        f"This upgrade path reaches the {target_version} target through an intermediate "
+        f"{intermediate} hop. The upgrade checker cannot verify the FSCK state of that "
+        "intermediate release now and is not re-run automatically after the intermediate "
+        f"upgrade. ACTION REQUIRED - after upgrading to {intermediate} and BEFORE upgrading "
+        f"to {target_version}, confirm a clean FSCK has completed since that upgrade:\n"
+        "    1. weka debug manhole --slot 0 get_completed_fsck_info\n"
+        "    2. weka debug config show upgradeInfo.lastUpgradeTime.usecs\n"
+        "    Proceed only if issuesCount == 0 AND the FSCK startTime.usecs is later than "
+        "lastUpgradeTime.usecs (and lastUpgradeTime.usecs is not -1). Otherwise run a full "
+        "FSCK and resolve all issues before continuing the upgrade."
+    )
+
+
+def check_completed_fsck(current_version):
+    """
+    Before a backend upgrade, confirm a clean FSCK has completed since the last
+    upgrade. This mirrors WEKA's own verifyCleanFsckSinceLastUpgrade.
+
+    The check is SKIPPED (PASS) when the cluster has never been through a real
+    upgrade, because there is no upgrade boundary to anchor a FSCK against:
+      - lastUpgradeTime.usecs == -1 (no prior upgrade recorded), OR
+      - clusterInfo.initialSwVersion matches the current release. A fresh install
+        still writes lastUpgradeTime (firstLeaderStepUpPostUpgrade fires on the
+        first leader step-up), so lastUpgradeTime alone cannot distinguish a
+        freshly-deployed cluster from an upgraded one -- initialSwVersion is the
+        reliable discriminator. This is the "deployed straight onto 4.4.2x" case.
+
+    Otherwise PASS only if both hold:
+      - issuesCount == 0
+      - the completed FSCK startTime is AFTER the last upgrade time
+    Otherwise FAIL -- the upgrade must not be started until a clean FSCK is run.
+    """
+    INFO("VERIFYING A CLEAN FSCK COMPLETED SINCE THE LAST UPGRADE")
+
+    try:
+        fsck_raw = subprocess.check_output(
+            ["weka", "debug", "manhole", "--slot", "0", "get_completed_fsck_info"],
+            stderr=subprocess.STDOUT,
+        )
+        fsck_info = json.loads(fsck_raw.decode("utf-8").strip())
+        issues_count = fsck_info["issuesCount"]["__unaligned_value"]
+        fsck_start_usecs = fsck_info["startTime"]["__unaligned_value"]["usecs"]
+    except (subprocess.CalledProcessError, ValueError, json.JSONDecodeError, KeyError, TypeError) as e:
+        WARN(
+            f"Unable to retrieve completed FSCK info ({e}); cannot confirm a clean FSCK "
+            "ran since the last upgrade. Verify manually before upgrading."
+        )
+        return
+
+    try:
+        last_upgrade_usecs = json.loads(
+            subprocess.check_output(
+                ["weka", "debug", "config", "show", "upgradeInfo.lastUpgradeTime.usecs", "-J"]
+            )
+        )
+    except (subprocess.CalledProcessError, ValueError, json.JSONDecodeError) as e:
+        WARN(
+            f"Unable to retrieve last upgrade time ({e}); verify a clean FSCK ran since "
+            "the last upgrade manually before upgrading."
+        )
+        return
+
+    # PASS: no prior upgrade recorded -- nothing to anchor a FSCK against.
+    if last_upgrade_usecs == -1:
+        GOOD(
+            "Cluster has never been upgraded (lastUpgradeTime == -1); a clean FSCK "
+            "since the last upgrade is not required"
+        )
+        return
+
+    # PASS: fresh install still on its originally-deployed version (e.g. a cluster
+    # deployed straight onto 4.4.2x). initialSwVersion is the reliable discriminator
+    # because a fresh install still writes lastUpgradeTime.
+    try:
+        initial_sw_version = json.loads(
+            subprocess.check_output(
+                ["weka", "debug", "config", "show", "clusterInfo.initialSwVersion", "-J"]
+            )
+        )
+    except (subprocess.CalledProcessError, ValueError, json.JSONDecodeError):
+        initial_sw_version = None  # older clusters may lack the key; fall through
+
+    if initial_sw_version and _same_release(initial_sw_version, current_version):
+        GOOD(
+            f"Cluster was deployed on {current_version} and has never been upgraded "
+            f"(initialSwVersion {initial_sw_version} matches the current release); a clean "
+            "FSCK since the last upgrade is not required"
+        )
+        return
+
+    if issues_count == 0 and fsck_start_usecs > last_upgrade_usecs:
+        GOOD("A clean FSCK (0 issues) completed after the last upgrade")
+    else:
+        reasons = []
+        if issues_count != 0:
+            reasons.append(f"FSCK reported {issues_count} issue(s)")
+        if fsck_start_usecs <= last_upgrade_usecs:
+            reasons.append("the last completed FSCK predates the last upgrade")
+        BAD(
+            "A clean FSCK has NOT completed since the last upgrade - DO NOT start the upgrade. "
+            f"Reason(s): {'; '.join(reasons)}. Run a full FSCK and resolve all issues before upgrading."
+        )
+
+
 def target_version_check(
     weka_version,
     target_version,
@@ -3515,6 +3693,19 @@ def target_version_check(
                 obj_store_enabled,
                 multi_org,
             )
+
+            # Added 2026-06-01
+            # Paths transiting a 4.4.2x release on the way to 5.1.y (y < 30) must
+            # confirm a clean FSCK completed since the last upgrade before starting
+            # a backend upgrade. The live FSCK state only reflects the current cluster
+            # version, so we can only verify it directly when the cluster is already on
+            # 4.4.2x. When 4.4.2x is an intermediate hop, the checker won't be re-run at
+            # that point, so we emit a failing message with manual steps instead.
+            if _fsck_path_applies(upgrade_hops, target_version):
+                if _in_442x(upgrade_hops[0]):
+                    check_completed_fsck(weka_version)
+                else:
+                    report_intermediate_fsck_requirement(upgrade_hops, target_version)
     except (FileNotFoundError, ValueError) as e:
         WARN(f"Error: {e}")
 
