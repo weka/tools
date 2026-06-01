@@ -40,7 +40,7 @@ from packaging.version import parse as V, InvalidVersion
 
 parse = V 
 
-pg_version = "1.10.9"
+pg_version = "1.10.11"
 known_issues_file = "known_issues.json"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
@@ -1393,6 +1393,30 @@ def weka_cluster_checks(target_version):
             BAD("Remote traces are enabled. It is recommended that they be disabled by running: " \
                 "weka debug traces remote-endpoint disable")
 
+
+    # Added 2026-06-01
+    # Catalog indexing must be disabled before upgrade WEKAPP-620819
+    if V(weka_version) >= V("5.1.20"):
+        INFO("CHECKING IF CATALOG INDEXING IS ENABLED")
+        try:
+            catalog_output = subprocess.check_output(
+                ["weka", "catalog", "config", "show"],
+                text=True,
+                stderr=subprocess.DEVNULL,
+            )
+            if "Indexing enabled: true" in catalog_output:
+                BAD(
+                    "Catalog indexing is currently enabled. Upgrades cannot proceed while catalog "
+                    "indexing is active. Please disable catalog indexing before continuing with the upgrade by running: "
+                    "weka catalog config update --index-enabled false"
+                )
+            else:
+                GOOD("Catalog indexing is not enabled")
+        except subprocess.CalledProcessError:
+            WARN(
+                "Unable to determine catalog indexing status. Please verify manually that "
+                "catalog indexing is disabled before proceeding with the upgrade."
+            )
 
     orgs = json.loads(
         subprocess.check_output(["weka", "org", "-J"])
@@ -2818,24 +2842,27 @@ def backend_host_checks(
             if first_ip not in ips:
                 ips.append(first_ip)
 
-    curl_commands = [
-        f"curl -sL --insecure https://[{ips[0]}]:{port} -o /dev/null; echo $? {port}"
-        if ":" in ips[0]
-        else f"curl -sL --insecure https://{ips[0]}:{port} -o /dev/null; echo $? {port}"
-        for port in api_ports
-    ]
+    if not ips:
+        WARN("No IP addresses found in weka local container resources; unable to verify backend host port connectivity")
+    else:
+        curl_commands = [
+            f"curl -sL --insecure https://[{ips[0]}]:{port} -o /dev/null; echo $? {port}"
+            if ":" in ips[0]
+            else f"curl -sL --insecure https://{ips[0]}:{port} -o /dev/null; echo $? {port}"
+            for port in api_ports
+        ]
 
-    results = parallel_execution(
-        ssh_bk_hosts,
-        curl_commands,
-        use_check_output=True,
-        ssh_identity=ssh_identity,
-    )
-    for host_name, result in results:
-        if result is None:
-            WARN(f"Unable to Determine Host: {host_name} port connectivity")
+        results = parallel_execution(
+            ssh_bk_hosts,
+            curl_commands,
+            use_check_output=True,
+            ssh_identity=ssh_identity,
+        )
+        for host_name, result in results:
+            if result is None:
+                WARN(f"Unable to Determine Host: {host_name} port connectivity")
 
-    host_port_connectivity(results)
+        host_port_connectivity(results)
 
     INFO("CHECKING FOR KNOWN PROBLEMATIC KERNEL ARGUMENTS")
     command = r"""
