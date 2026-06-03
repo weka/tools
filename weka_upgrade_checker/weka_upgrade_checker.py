@@ -59,7 +59,7 @@ def _clean_subprocess_env():
 
 parse = V 
 
-pg_version = "1.11.4"
+pg_version = "1.11.5"
 known_issues_file = "known_issues.json"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
@@ -1095,19 +1095,20 @@ def weka_cluster_checks(target_version):
 
 
     # WEKAPP-578864
-    try:
-        catalog = json.loads(
-            subprocess.check_output(["weka", "debug", "config", "show", "catalogInfo"],
-                stderr=subprocess.DEVNULL
+    if V(weka_version) >= V("5.1.20"):
+        try:
+            catalog = json.loads(
+                subprocess.check_output(["weka", "debug", "config", "show", "catalogInfo"],
+                    stderr=subprocess.DEVNULL
+                )
             )
-        )
-        INFO("CHECKING FOR WEKA CATALOG INDEXING ENABLED")
-        if catalog.get("indexEnabled", False):
-            BAD("Catalog indexing must be disabled before upgrades (weka catalog config update --index-enabled false).")
-        else:
-            GOOD("Catalog indexing not running.")
-    except subprocess.CalledProcessError as e:
-        pass
+            INFO("CHECKING FOR WEKA CATALOG INDEXING ENABLED")
+            if catalog.get("indexEnabled", False):
+                BAD("Catalog indexing must be disabled before upgrades (weka catalog config update --index-enabled false).")
+            else:
+                GOOD("Catalog indexing not running.")
+        except subprocess.CalledProcessError as e:
+            pass
 
 
     INFO("CHECKING FOR WEKA CLUSTER TASKS")
