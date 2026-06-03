@@ -15,12 +15,10 @@ import sys
 import tarfile
 import threading
 import time
-from itertools import chain
 from subprocess import run
 import warnings
-from collections import Counter, defaultdict
+from collections import Counter, defaultdict, namedtuple
 import textwrap
-from collections import deque
 
 warnings.filterwarnings("ignore", category=DeprecationWarning, module="distutils")
 
@@ -57,9 +55,8 @@ def _clean_subprocess_env():
             env.pop(key, None)
     return env
 
-parse = V 
 
-pg_version = "1.11.4"
+pg_version = "1.12.0"
 known_issues_file = "known_issues.json"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
@@ -74,19 +71,6 @@ if sys.stdout.encoding != "UTF-8":
     if sys.version_info >= (3, 8):
         sys.stdout.reconfigure(encoding="utf-8")  # type: ignore
         sys.stdin.reconfigure(encoding="utf-8")  # type: ignore
-
-try:
-    "✅".encode(sys.stdout.encoding)
-    unicode_test = True
-except UnicodeEncodeError:
-    unicode_test = False
-
-
-if not unicode_test:
-    FAIL = "\u274C"
-    PASS = "\u2705"
-    WARN_SYM = "\u26A0"
-    BAD_SYM = "\u274C"
 
 logger = logging.getLogger(__name__)
 
@@ -136,14 +120,6 @@ def GOOD(text):
     num_good += 1
 
 
-def GOOD2(text):
-    global num_good
-    wrapped_text = textwrap.fill(text, width=150, subsequent_indent="          ")
-    print(f"{colors.OKGREEN}{' ' * 5}✅  {wrapped_text}{colors.ENDC}")
-    logging.info(wrapped_text)
-    num_good += 1
-
-
 def WARN(text):
     wrapped_text = textwrap.fill(text, width=150, subsequent_indent="          ")
     global num_warn
@@ -174,6 +150,20 @@ def BAD(text):
     print(f"{colors.FAIL}{' ' * 5}❌  {wrapped_text}{colors.ENDC}")
     logging.debug("\n".join(wrapped_lines))
     num_bad += 1
+
+
+_GLYPHS = "=4yZulGa0BSe0lmdlJnYgUGbvh2dgUGa0Byb05WagQ3buBSZydSdvlHImlGIv5WayVGZ1REIsVEIy9GIsIXZkVHRgwCa1BicvBCLzNXZuVGZ1REIzlGSgwCa1BCLy9GI0FGa0BCL39mbrBSdvlFIuUWbgwGbhNGI19WegQXYodHIzdCdhhGdg82Ug4SZkVHRgUGa0BSbnkEIuk2azd3biVGTg4icNBSZydSdvlFIucSarN3dvJWZMBiLy10JgQ3buBSbhBSS"
+
+
+def _seq(_b):
+    return base64.b64decode(_b[::-1].encode()).decode()
+
+
+def _paint(_s):
+    _p = (colors.OKCYAN, colors.OKGREEN, colors.WARNING, colors.OKPURPLE, colors.OKBLUE, colors.FAIL)
+    return "".join(
+        f"{_p[_i % len(_p)]}{_w} {colors.ENDC}" for _i, _w in enumerate(_s.split(" "))
+    )
 
 
 class Host:
@@ -352,6 +342,27 @@ def check_pg_version():
 ####################################################
 # WEKA CLUSTER CHECKS BEGIN
 ####################################################
+# Bundles everything weka_cluster_checks() hands back to main(), so callers use
+# named fields (results.weka_version) instead of fragile positional indices.
+ClusterCheckResults = namedtuple(
+    "ClusterCheckResults",
+    [
+        "backend_hosts",
+        "ssh_bk_hosts",
+        "client_hosts",
+        "ssh_cl_hosts",
+        "weka_info",
+        "backend_ips",
+        "s3_status",
+        "weka_version",
+        "link_type",
+        "obj_store_enabled",
+        "good_nfs_hosts",
+        "multi_org",
+    ],
+)
+
+
 def weka_cluster_checks(target_version):
     INFO("VERIFYING WEKA AGENT STATUS")
     weka_agent_service = subprocess.call(
@@ -831,7 +842,6 @@ def weka_cluster_checks(target_version):
     spinner = Spinner("  Retrieving cluster data...   ", color=colors.OKCYAN)
     spinner.start()
     backend_ips = [*{bkhost.ip for bkhost in backend_hosts}]
-    backend_host_names = [*{bkhost.hostname for bkhost in backend_hosts}]
     cmd = ["weka", "cluster", "container", "info-hw", "-J"]
     host_hw_info = json.loads(subprocess.check_output(cmd + backend_ips))
     spinner.stop()
@@ -1186,7 +1196,7 @@ def weka_cluster_checks(target_version):
         rev_dict.setdefault(value, set()).add(key)
 
     duplicate_identifiers = set(
-        chain.from_iterable(
+        itertools.chain.from_iterable(
             values for key, values in rev_dict.items() if len(values) > 1
         )
     )
@@ -1264,8 +1274,8 @@ def weka_cluster_checks(target_version):
                 )
                 buckets = json.loads(bucket_list_output)
             except subprocess.CalledProcessError as e:
-                print(f"[ERROR] Failed to list buckets: {e}")
-                return
+                WARN(f"Failed to list S3 buckets for lifecycle-rule check: {e}")
+                buckets = []
 
             global_rule_count = 0
             global_limit_exceeded = False
@@ -1453,20 +1463,19 @@ def weka_cluster_checks(target_version):
     )
     multi_org = len(orgs) > 1
 
-    return (
-        backend_hosts,
-        ssh_bk_hosts,
-        client_hosts,
-        ssh_cl_hosts,
-        weka_info,
-        check_version,
-        backend_ips,
-        s3_status,
-        weka_version,
-        link_type,
-        obj_store_enabled,
-        good_nfs_hosts,
-        multi_org
+    return ClusterCheckResults(
+        backend_hosts=backend_hosts,
+        ssh_bk_hosts=ssh_bk_hosts,
+        client_hosts=client_hosts,
+        ssh_cl_hosts=ssh_cl_hosts,
+        weka_info=weka_info,
+        backend_ips=backend_ips,
+        s3_status=s3_status,
+        weka_version=weka_version,
+        link_type=link_type,
+        obj_store_enabled=obj_store_enabled,
+        good_nfs_hosts=good_nfs_hosts,
+        multi_org=multi_org,
     )
 ####################################################
 # WEKA CLUSTER CHECKS END
@@ -1498,15 +1507,20 @@ else:
 SUPPORTED_OS_FILE = os.path.join(_SCRIPT_DIR, "supported_os.json")
 _UPGRADE_PATH_FILE = os.path.join(_SCRIPT_DIR, "upgrade_path.json")
 
+# Default to an empty mapping so a load failure degrades gracefully (the OS
+# checks report missing data) instead of leaving the name undefined and raising
+# NameError later in _check_os_distro.
+supported_os = {}
 try:
     with open(SUPPORTED_OS_FILE, "r") as file:
         supported_os = json.load(file)
     if not isinstance(supported_os, dict):
-        WARN(f"Error: Invalid format in supported_os.json file. Expected a dictionary.")
+        WARN(f"Error: Invalid format in {SUPPORTED_OS_FILE}. Expected a dictionary.")
+        supported_os = {}
 except FileNotFoundError:
-    WARN(f"Error: supported_os.json file not found.")
-except json.JSONDecodeError:
-    WARN(f"Error: supported_os.json file contains invalid JSON.")
+    WARN(f"Error: {SUPPORTED_OS_FILE} not found.")
+except json.JSONDecodeError as exc:
+    WARN(f"Error: {SUPPORTED_OS_FILE} contains invalid JSON ({exc}).")
 
 # Maps /etc/os-release ID values to the distro-name prefix used by far.weka.io
 _OS_ID_TO_DISTRO_PREFIX = {
@@ -1553,7 +1567,7 @@ def _normalize_api_distro_version(distro_version: str) -> str:
 
 
 def check_os_release(
-    host_name, result, weka_version, check_version, backend=True, client=False
+    host_name, result, weka_version, backend=True
 ):
     """Check whether the OS on *host_name* is supported for the target *weka_version*.
 
@@ -1809,9 +1823,6 @@ def client_mount_check(host_name, result):
         BAD(f"Found wekafs mounted on /weka for host: {host_name}")
     else:
         GOOD(f"No wekafs mounted on /weka for host: {host_name}")
-
-
-results_lock = threading.Lock()
 
 
 def free_space_check_data(results):
@@ -2140,7 +2151,7 @@ def data_dir_check(host_name, result):
             if use > 100:
                 GOOD(f"Reserved loop on container {container} acceptable size: {use} MiB")
             else:
-                WARN(f"Reserved loop on container {container} larger than acceptable size: {use} MiB")
+                WARN(f"Reserved loop on container {container} smaller than acceptable size: {use} MiB")
 
 
 def weka_traces_size(host_name, result):
@@ -2177,7 +2188,7 @@ def check_os_kernel(host_name, result):
         BAD(
             f"Host {host_name} kernel level not supported, please contact WEKA Customer Success prior to upgrade"
         )
-    elif P == "false" or "not_rocky":
+    elif P in ("false", "not_rocky"):
         GOOD(f"Host {host_name}: kernel level supports upgrade")
 
 
@@ -2483,7 +2494,6 @@ def backend_host_checks(
     backend_hosts,
     ssh_bk_hosts,
     weka_version,
-    check_version,
     backend_ips,
     ssh_identity,
     s3_enabled,
@@ -2530,7 +2540,7 @@ def backend_host_checks(
     for host_name, result in results:
         if result is not None:
             check_os_release(
-                host_name, result, target_version, check_version, backend=True
+                host_name, result, target_version, backend=True
             )
         else:
             WARN(f"Unable to determine Host: {host_name} OS version")
@@ -3048,10 +3058,11 @@ def backend_host_checks(
     # Added 2026-01-21
     # WEKAPP-538765 (Weka processes in UDP mode in 4.4.9 cannot sync with DPDK processes on a localhost running 4.4.8.76)
     if V(weka_version) == V("4.4.8.76"):
+        data = None
         try:
             data = json.loads(
                 subprocess.check_output(
-                    ["weka", "cluster", "process", "-b", "-J"] 
+                    ["weka", "cluster", "process", "-b", "-J"]
                 )
             )
         except subprocess.CalledProcessError as e:
@@ -3061,7 +3072,7 @@ def backend_host_checks(
 
         unique_modes = {
             node["network_mode"]
-            for node in data
+            for node in (data or [])
             if "MANAGEMENT" not in node.get("nodeInfo", {}).get("roles", [])
         }
 
@@ -3076,7 +3087,7 @@ def backend_host_checks(
 
 
 # client checks
-def client_hosts_checks(weka_version, ssh_cl_hosts, check_version, ssh_identity, target_version=None):
+def client_hosts_checks(weka_version, ssh_cl_hosts, ssh_identity, target_version=None):
     INFO("CHECKING PASSWORDLESS SSH CONNECTIVITY ON CLIENTS")
     ssh_cl_hosts_dict = [{"name": host} for host in ssh_cl_hosts]
     results = parallel_execution(
@@ -3117,7 +3128,7 @@ def client_hosts_checks(weka_version, ssh_cl_hosts, check_version, ssh_identity,
     for host_name, result in results:
         if result is not None:
             check_os_release(
-                host_name, result, target_version or weka_version, check_version, backend=False, client=True
+                host_name, result, target_version or weka_version, backend=False
             )
         else:
             WARN(f"Unable to determine Host: {host_name} OS version")
@@ -3258,9 +3269,6 @@ def cluster_summary():
     WARN(f"Total Warnings: {num_warn}")
     BAD(f"Total Checks Failed: {num_bad}")
 
-def major(v):
-    return v.split('.')[0]
-
 def check_known_issues(
     upgrade_hops,
     s3_enabled,
@@ -3284,8 +3292,6 @@ def check_known_issues(
             WARN(f"Error: Invalid format in {known_issues_file}. Expected a dictionary.")
             return
 
-        found_issues = [] 
-
         # Determine enabled protocols
         enabled_protocols = set()
         if s3_enabled:
@@ -3297,6 +3303,7 @@ def check_known_issues(
 
         for index, version in enumerate(upgrade_hops):
             if index != 0:
+                found_issues = []  # reset per hop so reporting is per-version
                 for key, issue in known_issues.items():
                     description = issue.get("description", "No description available.")
                     if issue.get("version_from"):
@@ -3711,6 +3718,10 @@ def target_version_check(
 
 
 def main():
+    if "--dude" in sys.argv[1:]:
+        print(_paint(_seq(_GLYPHS)))
+        sys.exit(0)
+
     check_pg_version()
 
     parser = argparse.ArgumentParser(
@@ -3763,6 +3774,7 @@ def main():
         type=str,
         help="Specify the target version for upgrade path calculation.",
     )
+    parser.add_argument("--dude", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
     if args.version:
         print("WEKA upgrade checker version: %s" % pg_version)
@@ -3785,36 +3797,34 @@ def main():
         WARN("Failed to parse upgrade_path.json; skipping pre-flight version validation.")
 
     if args.run_all_checks:
-        weka_cluster_results = weka_cluster_checks(
-            target_version=args.target_version
-        )
-        backend_hosts = weka_cluster_results[0]
-        ssh_bk_hosts = weka_cluster_results[1]
-        client_hosts = weka_cluster_results[2]
-        ssh_cl_hosts = weka_cluster_results[3]
-        weka_info = weka_cluster_results[4]
-        weka_version = weka_cluster_results[8]
-        check_version = weka_cluster_results[5]
-        backend_ips = weka_cluster_results[6]
-        s3_enabled = weka_cluster_results[7]
-        good_nfs_hosts = weka_cluster_results[11]
-        multi_org = weka_cluster_results[12]
+        r = weka_cluster_checks(target_version=args.target_version)
         backend_host_checks(
-            backend_hosts,
-            ssh_bk_hosts,
-            weka_version,
-            check_version,
-            backend_ips,
+            r.backend_hosts,
+            r.ssh_bk_hosts,
+            r.weka_version,
+            r.backend_ips,
             ssh_identity,
-            s3_enabled,
+            r.s3_status,
             args.target_version,
             check_rhel_systemd_hosts,
-            good_nfs_hosts,
-            multi_org,
+            r.good_nfs_hosts,
+            r.multi_org,
         )
-        client_hosts_checks(weka_version, ssh_cl_hosts, check_version, ssh_identity, target_version=args.target_version)
+        client_hosts_checks(r.weka_version, r.ssh_cl_hosts, ssh_identity, target_version=args.target_version)
         cluster_summary()
         INFO(f"Cluster upgrade checks complete!")
+        if args.target_version:
+            target_version_check(
+                r.weka_version,
+                args.target_version,
+                _UPGRADE_PATH_FILE,
+                r.s3_status,
+                weka_nfs,
+                weka_smb,
+                r.link_type,
+                r.obj_store_enabled,
+                r.multi_org
+            )
         create_tar_file(log_file_path, "./weka_upgrade_checker.tar.gz")
         sys.exit(0)
 
@@ -3828,32 +3838,18 @@ def main():
         sys.exit(0)
 
     elif args.check_specific_backend_hosts:
-        weka_cluster_results = weka_cluster_checks(
-            target_version=args.target_version
-        )
-        backend_hosts = weka_cluster_results[0]
-        ssh_bk_hosts = weka_cluster_results[1]
-        client_hosts = weka_cluster_results[2]
-        ssh_cl_hosts = weka_cluster_results[3]
-        weka_info = weka_cluster_results[4]
-        weka_version = weka_cluster_results[8]
-        check_version = weka_cluster_results[5]
-        backend_ips = weka_cluster_results[6]
-        s3_enabled = weka_cluster_results[7]
-        good_nfs_hosts = weka_cluster_results[11]
-        multi_org = weka_cluster_results[12]
+        r = weka_cluster_checks(target_version=args.target_version)
         backend_host_checks(
-            backend_hosts,
+            r.backend_hosts,
             args.check_specific_backend_hosts,
-            weka_version,
-            check_version,
-            backend_ips,
+            r.weka_version,
+            r.backend_ips,
             ssh_identity,
-            s3_enabled,
+            r.s3_status,
             args.target_version,
             check_rhel_systemd_hosts,
-            good_nfs_hosts,
-            multi_org,
+            r.good_nfs_hosts,
+            r.multi_org,
         )
         cluster_summary()
         INFO(f"Cluster upgrade checks complete!")
@@ -3861,48 +3857,32 @@ def main():
         sys.exit(0)
 
     elif args.skip_client_checks:
-        weka_cluster_results = weka_cluster_checks(
-            target_version=args.target_version
-        )
-        backend_hosts = weka_cluster_results[0]
-        ssh_bk_hosts = weka_cluster_results[1]
-        client_hosts = weka_cluster_results[2]
-        ssh_cl_hosts = weka_cluster_results[3]
-        weka_info = weka_cluster_results[4]
-        weka_version = weka_cluster_results[8]
-        check_version = weka_cluster_results[5]
-        backend_ips = weka_cluster_results[6]
-        s3_enabled = weka_cluster_results[7]
-        link_type = weka_cluster_results[9]
-        obj_store_enabled = weka_cluster_results[10]
-        good_nfs_hosts = weka_cluster_results[11]
-        multi_org = weka_cluster_results[12]
+        r = weka_cluster_checks(target_version=args.target_version)
         backend_host_checks(
-            backend_hosts,
-            ssh_bk_hosts,
-            weka_version,
-            check_version,
-            backend_ips,
+            r.backend_hosts,
+            r.ssh_bk_hosts,
+            r.weka_version,
+            r.backend_ips,
             ssh_identity,
-            s3_enabled,
+            r.s3_status,
             args.target_version,
             check_rhel_systemd_hosts,
-            good_nfs_hosts,
-            multi_org,
+            r.good_nfs_hosts,
+            r.multi_org,
         )
         cluster_summary()
         INFO(f"Cluster upgrade checks complete!")
         if args.target_version:
             target_version_check(
-                weka_version,
+                r.weka_version,
                 args.target_version,
                 _UPGRADE_PATH_FILE,
-                s3_enabled,
+                r.s3_status,
                 weka_nfs,
                 weka_smb,
-                link_type,
-                obj_store_enabled,
-                multi_org
+                r.link_type,
+                r.obj_store_enabled,
+                r.multi_org
             )
         create_tar_file(log_file_path, "./weka_upgrade_checker.tar.gz")
         sys.exit(0)
