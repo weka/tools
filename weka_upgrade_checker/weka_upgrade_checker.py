@@ -56,7 +56,7 @@ def _clean_subprocess_env():
     return env
 
 
-pg_version = "1.12.0"
+pg_version = "1.12.1"
 known_issues_file = "known_issues.json"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
@@ -3350,9 +3350,12 @@ def check_known_issues(
                                     continue
 
                                 found_issues += [
-                                    key, 
+                                    key,
                                     description,
                                 ]
+                                # Stop at the first matching range so an issue with
+                                # multiple affected_versions entries isn't reported twice.
+                                break
 
                 if found_issues:
                     header = f"Known issues for version {version}:"
@@ -3375,10 +3378,18 @@ def _clean_version(version):
     return version.split("-")[0].strip()
 
 
-def _in_442x(version):
-    """True if version is a 4.4.2x release (4.4.20 - 4.4.29)."""
+def _is_44x(version):
+    """True if version is a 4.4.x release."""
     try:
-        return V("4.4.20") <= V(_clean_version(version)) < V("4.4.30")
+        return V("4.4.0") <= V(_clean_version(version)) < V("4.5.0")
+    except InvalidVersion:
+        return False
+
+
+def _is_51_lt30(version):
+    """True if version is a 5.1.x release with x < 30 (5.1.0 - 5.1.29)."""
+    try:
+        return V("5.1.0") <= V(_clean_version(version)) < V("5.1.30")
     except InvalidVersion:
         return False
 
@@ -3392,31 +3403,30 @@ def _same_release(a, b):
         return False
 
 
-def _fsck_path_applies(upgrade_hops, target_version):
+def _fsck_path_applies(upgrade_hops):
     """
-    The completed-FSCK check only applies to upgrade paths that transit through a
-    4.4.2x release (4.4.20 - 4.4.29) on their way to a 5.1.y target where y < 30.
-    Because customers may take a multi-hop upgrade (e.g. 4.2.x -> 4.4.2x -> 5.1.y),
-    we inspect every hop in the computed path, not just the current cluster version.
+    The completed-FSCK check applies whenever the computed upgrade path contains
+    both a 4.4.x release and a 5.1.x (x < 30) release -- i.e. the upgrade crosses
+    the 4.4.x -> 5.1.x(<30) boundary, before which a clean FSCK must have completed
+    since the last upgrade. Because customers may take a multi-hop upgrade
+    (e.g. 4.2.x -> 4.4.x -> 5.1.x), we inspect every hop in the computed path, so the
+    4.4.x release may be an intermediate hop rather than the current cluster version.
     """
-    try:
-        target_in_range = V("5.1.0") <= V(_clean_version(target_version)) < V("5.1.30")
-    except InvalidVersion:
-        return False
-
-    return target_in_range and any(_in_442x(hop) for hop in upgrade_hops)
+    return any(_is_44x(hop) for hop in upgrade_hops) and any(
+        _is_51_lt30(hop) for hop in upgrade_hops
+    )
 
 
 def report_intermediate_fsck_requirement(upgrade_hops, target_version):
     """
-    When 4.4.2x is an intermediate hop rather than the current cluster version, the
-    live FSCK state we can read now belongs to the starting release, not the 4.4.2x
+    When 4.4.x is an intermediate hop rather than the current cluster version, the
+    live FSCK state we can read now belongs to the starting release, not the 4.4.x
     release the upgrade will pass through. The checker is not re-run after the
     intermediate upgrade, so we cannot verify it automatically - emit a failing
-    message with the manual steps the customer must perform at the 4.4.2x hop.
+    message with the manual steps the customer must perform at the 4.4.x hop.
     """
     INFO("VERIFYING A CLEAN FSCK COMPLETED SINCE THE LAST UPGRADE")
-    intermediate = next((hop for hop in upgrade_hops if _in_442x(hop)), "4.4.2x")
+    intermediate = next((hop for hop in upgrade_hops if _is_44x(hop)), "4.4.x")
     BAD(
         f"This upgrade path reaches the {target_version} target through an intermediate "
         f"{intermediate} hop. The upgrade checker cannot verify the FSCK state of that "
@@ -3702,14 +3712,15 @@ def target_version_check(
             )
 
             # Added 2026-06-01
-            # Paths transiting a 4.4.2x release on the way to 5.1.y (y < 30) must
-            # confirm a clean FSCK completed since the last upgrade before starting
-            # a backend upgrade. The live FSCK state only reflects the current cluster
-            # version, so we can only verify it directly when the cluster is already on
-            # 4.4.2x. When 4.4.2x is an intermediate hop, the checker won't be re-run at
-            # that point, so we emit a failing message with manual steps instead.
-            if _fsck_path_applies(upgrade_hops, target_version):
-                if _in_442x(upgrade_hops[0]):
+            # Paths crossing the 4.4.x -> 5.1.x(<30) boundary (a 4.4.x and a
+            # 5.1.x where x < 30 release both appear in the hops) must confirm a clean
+            # FSCK completed since the last upgrade before starting a backend upgrade.
+            # The live FSCK state only reflects the current cluster version, so we can
+            # verify it directly only when the cluster is already on 4.4.x. When 4.4.x
+            # is an intermediate hop, the checker won't be re-run at that point, so we
+            # emit a failing message with manual steps instead.
+            if _fsck_path_applies(upgrade_hops):
+                if _is_44x(weka_version):
                     check_completed_fsck(weka_version)
                 else:
                     report_intermediate_fsck_requirement(upgrade_hops, target_version)
