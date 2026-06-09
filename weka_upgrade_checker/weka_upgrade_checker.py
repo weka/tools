@@ -56,7 +56,7 @@ def _clean_subprocess_env():
     return env
 
 
-pg_version = "1.12.1"
+pg_version = "1.12.2"
 known_issues_file = "known_issues.json"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
@@ -1888,6 +1888,29 @@ def free_space_check_logs(results):
             GOOD(f"Host: {hname} has {percent_free}% free — OK.")
 
 
+def free_space_check_path(results, path):
+    for hname, output in results:
+        if output is None:
+            continue
+        try:
+            used_str, avail_str = output.split()
+            used = int(used_str)
+            avail = int(avail_str)
+        except (ValueError, AttributeError):
+            WARN(f"Host: {hname} could not parse free space for {path}")
+            continue
+
+        percent_free = int((avail / (used + avail)) * 100)
+
+        if percent_free < 20:
+            WARN(
+                f"Host: {hname} {path} partition is only {percent_free}% free. "
+                "Consider freeing space."
+            )
+        else:
+            GOOD(f"Host: {hname} {path} has {percent_free}% free — OK.")
+
+
 def weka_container_status(results, weka_version):
     containers_by_host = {
         host: [
@@ -2691,6 +2714,32 @@ def backend_host_checks(
             WARN(f"Unable to determine Host: {host_name} available space")
 
     free_space_check_logs(results)
+
+    INFO("CHECKING /var DIRECTORY SPACE USAGE ON BACKENDS")
+    results = parallel_execution(
+        ssh_bk_hosts,
+        ["df -m /var | awk 'NR==2 {print $3, $4}'"],
+        use_check_output=True,
+        ssh_identity=ssh_identity,
+    )
+    for host_name, result in results:
+        if result is None:
+            WARN(f"Unable to determine Host: {host_name} /var available space")
+
+    free_space_check_path(results, "/var")
+
+    INFO("CHECKING /root DIRECTORY SPACE USAGE ON BACKENDS")
+    results = parallel_execution(
+        ssh_bk_hosts,
+        ["df -m /root | awk 'NR==2 {print $3, $4}'"],
+        use_check_output=True,
+        ssh_identity=ssh_identity,
+    )
+    for host_name, result in results:
+        if result is None:
+            WARN(f"Unable to determine Host: {host_name} /root available space")
+
+    free_space_check_path(results, "/root")
 
     INFO("CHECKING BACKEND WEKA CONTAINER STATUS ON BACKENDS")
     results = parallel_execution(
