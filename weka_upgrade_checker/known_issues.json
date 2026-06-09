@@ -61,7 +61,7 @@
         "affected_versions": [
             {
                 "min": "4.4.20.113",
-                "max": "4.4.31"
+                "max": "4.4.31.6"
             }
         ],
         "multi_org": false,
