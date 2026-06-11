@@ -9,11 +9,11 @@
         "affected_versions": [
             {
                 "min": "4.4.24",
-                "max": ""
+                "max": "4.4.32"
             },
             {
                 "min": "5.1.0",
-                "max": ""
+                "max": "5.1.24"
             }
         ],
         "multi_org": false,
