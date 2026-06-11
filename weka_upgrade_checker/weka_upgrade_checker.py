@@ -56,7 +56,7 @@ def _clean_subprocess_env():
     return env
 
 
-pg_version = "1.12.2"
+pg_version = "1.12.3"
 known_issues_file = "known_issues.json"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
