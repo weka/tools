@@ -56,7 +56,7 @@ def _clean_subprocess_env():
     return env
 
 
-pg_version = "1.12.3"
+pg_version = "1.12.4"
 known_issues_file = "known_issues.json"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
@@ -334,7 +334,7 @@ def check_pg_version():
         else:
             GOOD(f"Running the latest version of WEKA upgrade checker {pg_version}\n")
     else:
-        WARN(f"Unable to verify if this is the latest version of the WEKA upgrade checker - currentlly running {pg_version}\n" \
+        WARN(f"Unable to verify if this is the latest version of the WEKA upgrade checker - currently running {pg_version}\n" \
               "Check https://github.com/weka/tools/blob/master/weka_upgrade_checker/version.txt to validate."
             )
 
