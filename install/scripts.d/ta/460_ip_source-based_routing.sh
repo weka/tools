@@ -46,8 +46,8 @@ check_sysctl() {
 
     local all_val iface_val
 
-    all_val=$(sysctl -n "net.ipv4.conf.all.$key" 2>/dev/null)
-    iface_val=$(sysctl -n "net.ipv4.conf.$interface.$key" 2>/dev/null)
+    all_val=$(sysctl -n "net/ipv4/conf/all/${key}" 2>/dev/null)
+    iface_val=$(sysctl -n "net/ipv4/conf/${interface}/${key}" 2>/dev/null)
 
     if [[ "$all_val" == "$expected" ]]; then
         echo "$all_val"

@@ -22,31 +22,31 @@ RETURN_CODE=0
 
 # Nb: per interface setting (where “interface” is the name of your network interface); “all” is a special interface: changes the settings for all interfaces.
 
-RP_FILTER_VALUE_ALL=$(sysctl -n net.ipv4.conf.all.rp_filter)
+RP_FILTER_VALUE_ALL=$(sysctl -n net/ipv4/conf/all/rp_filter)
 
 # If rp_filter is set to 2, on the "all" interface,
 # no further checks are necessary
 if [[ $RP_FILTER_VALUE_ALL != "2" ]]; then
   interfaces=($(ip -4 -o addr | awk '{print $2}' | uniq | grep -vw "lo"))
   for INTERFACE in "${interfaces[@]}"; do
-    RP_FILTER_VALUE=$(sysctl -n net.ipv4.conf.${INTERFACE}.rp_filter)
+    RP_FILTER_VALUE=$(sysctl -n net/ipv4/conf/${INTERFACE}/rp_filter)
     if [[ $RP_FILTER_VALUE == "1" ]]; then
       RETURN_CODE="254"
-      echo "The value for net.ipv4.conf.${INTERFACE}.rp_filter is set to ${RP_FILTER_VALUE}."
+      echo "The value for net/ipv4/conf/${INTERFACE}/rp_filter is set to ${RP_FILTER_VALUE}."
       echo "This can disrupt floating IP addresses for protocols."
-      echo "It is recommended to set net.ipv4.conf.${INTERFACE}.rp_filter to 2."
+      echo "It is recommended to set net/ipv4/conf/${INTERFACE}/rp_filter to 2."
       echo "Recommended resolution: set this value in e.g. /etc/sysctl.d/99-weka-nics.conf"
     elif [[ $RP_FILTER_VALUE_ALL == "1" && $RP_FILTER_VALUE == "0" ]]; then
       RETURN_CODE="254"
-      echo "The value for net.ipv4.conf.${INTERFACE}.rp_filter is set to ${RP_FILTER_VALUE}."
-      echo "The value for net.ipv4.conf.all.rp_filter is set to ${RP_FILTER_VALUE_ALL} and takes precedence."
+      echo "The value for net/ipv4/conf/${INTERFACE}.rp_filter is set to ${RP_FILTER_VALUE}."
+      echo "The value for net/ipv4/conf/all/rp_filter is set to ${RP_FILTER_VALUE_ALL} and takes precedence."
       echo "This can disrupt floating IP addresses for protocols."
-      echo "It is recommended to set net.ipv4.conf.${INTERFACE}.rp_filter or net.ipv4.conf.all.rp_filter to 2."
+      echo "It is recommended to set net/ipv4/conf/${INTERFACE}/rp_filter or net/ipv4/conf/all/rp_filter to 2."
       echo "Recommended resolution: set this value in e.g. /etc/sysctl.d/99-weka-nics.conf"
     fi
   done
 else
-  echo "net.ipv4.conf.all.rp_filter is set to 2, no further testing necessary."
+  echo "net/ipv4/conf/all/rp_filter is set to 2, no further testing necessary."
 fi
 
 exit ${RETURN_CODE}
