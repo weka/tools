@@ -56,7 +56,7 @@ def _clean_subprocess_env():
     return env
 
 
-pg_version = "1.12.5"
+pg_version = "1.12.6"
 known_issues_file = "known_issues.json"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
@@ -2154,6 +2154,30 @@ def data_dir_check(host_name, result):
                 WARN(f"Reserved loop on container {container} smaller than acceptable size: {use} MiB")
 
 
+# Added 2026-06-25 (WEKAPP-545988)
+def fallocate_check(host_name, result):
+    result_lines = result.splitlines()
+    P = None
+    for line in result_lines:
+        if line.startswith("P="):
+            P = line.split("=", 1)[1]
+            break
+
+    if P == "ok":
+        GOOD(f"Host {host_name}: /opt/weka supports fallocate")
+    elif P == "fail":
+        BAD(
+            f"Host {host_name}: the filesystem backing /opt/weka does not support fallocate. "
+            f"WEKA 5.1.0+ requires fallocate support on /opt/weka. "
+        )
+    elif P == "nobin":
+        WARN(f"Host {host_name}: 'fallocate' binary not found, unable to verify fallocate support on /opt/weka")
+    elif P == "nofile":
+        WARN(f"Host {host_name}: unable to create a probe file under /opt/weka, unable to verify fallocate support")
+    else:
+        WARN(f"Host {host_name}: unable to determine fallocate support on /opt/weka")
+
+
 def weka_traces_size(host_name, result):
     weka_trace_status = json.loads(
         subprocess.check_output(["weka", "debug", "traces", "status", "-J"])
@@ -2678,6 +2702,32 @@ def backend_host_checks(
             WARN(f"Unable to determine Host: {host_name} available space")
 
     free_space_check_data(results)
+
+    # WEKA 5.1.0+ requires the filesystem backing /opt/weka to support fallocate.
+    # Probe each backend with a benign 4 KiB allocation on a temp file under
+    # /opt/weka, then immediately remove it (nothing is left behind regardless of
+    # outcome). A non-zero fallocate exit (e.g. EOPNOTSUPP on ext2/ext3, FAT, some
+    # network filesystems) means the FS cannot back /opt/weka for this upgrade.
+    if V(target_version) >= V("5.1.0"):
+        INFO("CHECKING FALLOCATE SUPPORT ON /opt/weka ON BACKENDS")
+        fallocate_cmd = (
+            'if ! command -v fallocate >/dev/null 2>&1; then echo "P=nobin"; exit 0; fi; '
+            'f=$(sudo mktemp -p /opt/weka .upgrade_fallocate_check.XXXXXX 2>/dev/null); '
+            '[ -n "$f" ] || { echo "P=nofile"; exit 0; }; '
+            'if sudo fallocate -l 4096 "$f" >/dev/null 2>&1; then echo "P=ok"; else echo "P=fail"; fi; '
+            'sudo rm -f "$f"'
+        )
+        results = parallel_execution(
+            ssh_bk_hosts,
+            [fallocate_cmd],
+            use_check_output=True,
+            ssh_identity=ssh_identity,
+        )
+        for host_name, result in results:
+            if result is None:
+                WARN(f"Unable to determine fallocate support on /opt/weka on Host: {host_name}")
+            else:
+                fallocate_check(host_name, result)
 
     INFO("CHECKING WEKA LOGS DIRECTORY SPACE USAGE ON BACKENDS")
     results = parallel_execution(
