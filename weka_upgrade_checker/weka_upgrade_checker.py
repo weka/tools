@@ -56,7 +56,7 @@ def _clean_subprocess_env():
     return env
 
 
-pg_version = "1.12.7"
+pg_version = "1.12.8"
 known_issues_file = "known_issues.json"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
@@ -2703,12 +2703,12 @@ def backend_host_checks(
 
     free_space_check_data(results)
 
-    # WEKA 5.1.0+ requires the filesystem backing /opt/weka to support fallocate.
+    # WEKA 4.4.10+ and 5.1.0+ requires the filesystem backing /opt/weka to support fallocate.
     # Probe each backend with a benign 4 KiB allocation on a temp file under
     # /opt/weka, then immediately remove it (nothing is left behind regardless of
     # outcome). A non-zero fallocate exit (e.g. EOPNOTSUPP on ext2/ext3, FAT, some
     # network filesystems) means the FS cannot back /opt/weka for this upgrade.
-    if V(target_version) >= V("5.1.0"):
+    if ( (V("4.4.10.171") <= V(target_version) < V("5.0.0")) or V(target_version) >= V("5.1.0")):
         INFO("CHECKING FALLOCATE SUPPORT ON /opt/weka ON BACKENDS")
         fallocate_cmd = (
             'if ! command -v fallocate >/dev/null 2>&1; then echo "P=nobin"; exit 0; fi; '
@@ -3951,4 +3951,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
