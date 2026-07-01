@@ -3582,6 +3582,35 @@ def check_completed_fsck(current_version):
         )
 
 
+def check_mixed_accepted_versions():
+    """
+    Before upgrading to 5.1.0+, clusterInfo.acceptedVersionsPerType must not
+    carry a non-empty MIXED entry. A populated MIXED list indicates the cluster
+    still has mixed-mode containers and must not be upgraded. See WEKAPP-638315.
+
+    PASS when: no MIXED key, or MIXED is an empty list.
+    FAIL when: MIXED is present and non-empty.
+    """
+    INFO("VERIFYING NO MIXED ACCEPTED VERSIONS")
+    try:
+        accepted = json.loads(subprocess.check_output(
+            ["weka", "debug", "config", "show",
+             "clusterInfo.acceptedVersionsPerType", "-J"]))
+    except (subprocess.CalledProcessError, ValueError, json.JSONDecodeError) as e:
+        WARN(f"Unable to retrieve clusterInfo.acceptedVersionsPerType ({e}); "
+             "verify manually that there is no non-empty MIXED entry before upgrading.")
+        return
+
+    mixed = accepted.get("MIXED") if isinstance(accepted, dict) else None
+    if not mixed:
+        GOOD("No MIXED accepted-versions entry (or it is empty)")
+    else:
+        BAD("clusterInfo.acceptedVersionsPerType has a non-empty MIXED entry "
+            f"({', '.join(map(str, mixed))}) - DO NOT start the upgrade. This "
+            "indicates the cluster still has mixed-mode containers. Resolve "
+            "before upgrading. See WEKAPP-638315.")
+
+
 def target_version_check(
     weka_version,
     target_version,
@@ -3760,6 +3789,12 @@ def target_version_check(
                 obj_store_enabled,
                 multi_org,
             )
+
+            # Added 2026-07-01 (WEKAPP-638315)
+            # Upgrades to 5.1.0+ must not proceed while a non-empty MIXED entry
+            # exists in clusterInfo.acceptedVersionsPerType.
+            if V(target_version) >= V("5.1.0"):
+                check_mixed_accepted_versions()
 
             # Added 2026-06-01
             # Paths crossing the 4.4.x -> 5.1.x(<30) boundary (a 4.4.x and a
