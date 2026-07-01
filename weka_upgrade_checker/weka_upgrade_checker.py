@@ -3588,16 +3588,32 @@ def check_mixed_accepted_versions():
     carry a non-empty MIXED entry. A populated MIXED list indicates the cluster
     still has mixed-mode containers and must not be upgraded. See WEKAPP-638315.
 
-    PASS when: no MIXED key, or MIXED is an empty list.
+    PASS when: the config member does not exist (older versions predate it),
+    no MIXED key, or MIXED is an empty list.
     FAIL when: MIXED is present and non-empty.
     """
     INFO("VERIFYING NO MIXED ACCEPTED VERSIONS")
+    result = subprocess.run(
+        ["weka", "debug", "config", "show",
+         "clusterInfo.acceptedVersionsPerType", "-J"],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+    )
+    if result.returncode != 0:
+        err = result.stderr.decode("utf-8", "replace").strip()
+        # Older versions predate this config member; its absence is permissible
+        # and treated the same as an empty/absent MIXED entry.
+        if "does not have a member named acceptedVersionsPerType" in err:
+            GOOD("Cluster version predates clusterInfo.acceptedVersionsPerType; "
+                 "no MIXED entry possible")
+        else:
+            WARN(f"Unable to retrieve clusterInfo.acceptedVersionsPerType ({err or result.returncode}); "
+                 "verify manually that there is no non-empty MIXED entry before upgrading.")
+        return
+
     try:
-        accepted = json.loads(subprocess.check_output(
-            ["weka", "debug", "config", "show",
-             "clusterInfo.acceptedVersionsPerType", "-J"]))
-    except (subprocess.CalledProcessError, ValueError, json.JSONDecodeError) as e:
-        WARN(f"Unable to retrieve clusterInfo.acceptedVersionsPerType ({e}); "
+        accepted = json.loads(result.stdout)
+    except (ValueError, json.JSONDecodeError) as e:
+        WARN(f"Unable to parse clusterInfo.acceptedVersionsPerType ({e}); "
              "verify manually that there is no non-empty MIXED entry before upgrading.")
         return
 
