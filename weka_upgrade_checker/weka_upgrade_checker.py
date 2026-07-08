@@ -56,7 +56,7 @@ def _clean_subprocess_env():
     return env
 
 
-pg_version = "1.12.9"
+pg_version = "1.12.10"
 known_issues_file = "known_issues.json"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
@@ -1494,8 +1494,6 @@ def ssh_check(host_name, result, ssh_bk_hosts):
     return ssh_bk_hosts
 
 
-check_rhel_systemd_hosts = []
-
 # ---------------------------------------------------------------------------
 # OS compatibility helpers (far.weka.io data format)
 # ---------------------------------------------------------------------------
@@ -1583,7 +1581,6 @@ def check_os_release(
         WARN – distro family is supported but this exact minor version is not listed
         BAD  – distro family is not supported at all for the target WEKA version
     """
-    global check_rhel_systemd_hosts
 
     # ------------------------------------------------------------------
     # Strip WEKA_KERNEL / WEKA_ARCH header lines added by the SSH command
@@ -1621,12 +1618,6 @@ def check_os_release(
             if os_id == "ubuntu":
                 m = re.search(r"\b\d+(\.\d+){0,2}\b", dict_info.get("VERSION", ""))
                 version_id = m.group() if m else "Unknown"
-            elif os_id in ("rocky", "rhel"):
-                try:
-                    if float(version_id) >= 9.0:
-                        check_rhel_systemd_hosts.append(host_name)
-                except ValueError:
-                    pass
     except Exception as exc:
         BAD(f"Host {host_name} - could not parse OS information: {exc}")
         return
@@ -2522,7 +2513,6 @@ def backend_host_checks(
     ssh_identity,
     s3_enabled,
     target_version,
-    check_rhel_systemd_hosts,
     good_nfs_hosts,
     multi_org
 ):
@@ -2568,31 +2558,6 @@ def backend_host_checks(
             )
         else:
             WARN(f"Unable to determine Host: {host_name} OS version")
-
-    relevant_hosts = [host for host in check_rhel_systemd_hosts]
-
-    if check_rhel_systemd_hosts:
-        INFO("CHECKING WEKA AGENT SERVICE TYPE")
-        command = r"""
-        if [ -f "/etc/init.d/weka-agent" ]; then
-            echo "SRV=init.d";
-        else
-            echo "SRV=systemd";
-        fi
-        """
-        results = parallel_execution(
-            relevant_hosts,
-            [command],
-            use_check_output=True,
-            ssh_identity=ssh_identity,
-        )
-        for host_name, result in results:
-            if result is not None:
-                weka_agent_unit_type(host_name, result)
-            else:
-                WARN(
-                    f"Unable to determine Host: {host_name} WEKA agent service unit type"
-                )
 
     connection_counts = {}
 
@@ -3918,7 +3883,6 @@ def main():
             ssh_identity,
             r.s3_status,
             args.target_version,
-            check_rhel_systemd_hosts,
             r.good_nfs_hosts,
             r.multi_org,
         )
@@ -3959,7 +3923,6 @@ def main():
             ssh_identity,
             r.s3_status,
             args.target_version,
-            check_rhel_systemd_hosts,
             r.good_nfs_hosts,
             r.multi_org,
         )
@@ -3978,7 +3941,6 @@ def main():
             ssh_identity,
             r.s3_status,
             args.target_version,
-            check_rhel_systemd_hosts,
             r.good_nfs_hosts,
             r.multi_org,
         )
