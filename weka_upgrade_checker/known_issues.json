@@ -219,10 +219,10 @@
         "related_protocols": [],
         "link_types": [ ],
         "problematic_kernel_arguments": [ ],
-        "internal_reference": "WEKAPP-604059",
+        "internal_reference": "WEKAPP-641112",
         "affected_versions": [
             {
-                "min": "4.2.0"
+                "min": "5.1.0"
             }
         ],
         "multi_org": true,
