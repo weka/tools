@@ -211,5 +211,22 @@
         "internal_reference": "WEKAPP-450389",
         "version_from": "4.4.6",
         "obj_store": false
+    },
+
+    "WEKAPP-641112":
+    {
+        "description": "Organisations are being migrated to tenants in 5.x. You need to specify a network space on the tenants or specify 'weka tenant update <tenant name>--enforce-mount-netspace-access false' after cluster upgrade, prior to upgrading the clients.",
+        "related_protocols": [],
+        "link_types": [ ],
+        "problematic_kernel_arguments": [ ],
+        "internal_reference": "WEKAPP-604059",
+        "affected_versions": [
+            {
+                "min": "4.2.0"
+            }
+        ],
+        "multi_org": true,
+        "obj_store": false
     }
+
 }
