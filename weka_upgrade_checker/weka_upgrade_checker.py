@@ -56,7 +56,7 @@ def _clean_subprocess_env():
     return env
 
 
-pg_version = "1.12.12"
+pg_version = "1.12.13"
 known_issues_file = "known_issues.json"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
@@ -1462,6 +1462,39 @@ def weka_cluster_checks(target_version):
         subprocess.check_output(["weka", "org", "-J"])
     )
     multi_org = len(orgs) > 1
+
+    # Added 2026-07-10
+    #  Organizations are migrated to tenants when upgrading to 5.1.0 or higher.
+    #  On the migrated tenants, mount network-space access enforcement can block
+    #  clients from mounting after the clients themselves are upgraded, unless
+    #  each tenant either has a network space assigned or has enforcement
+    #  disabled. Advise the operator to handle this after the cluster upgrade and
+    #  BEFORE upgrading the clients.
+    #
+    #  This only applies when the upgrade crosses the organization -> tenant
+    #  boundary. If the migration has already taken place, do not raise the
+    #  warning. The migration (introduced in 5.1.2) adds the
+    #  enforce_mount_netspace_access field to every organization/tenant; a
+    #  pre-migration cluster's running binary does not emit this field in
+    #  `weka org -J`, so its presence is a definitive signal that the migration
+    #  has already been applied on this cluster.
+    if V(target_version) >= V("5.1.0"):
+        INFO("CHECKING ORGANIZATION TO TENANT MIGRATION (MOUNT NETSPACE ACCESS)")
+        migration_done = any("enforce_mount_netspace_access" in o for o in orgs)
+        if migration_done:
+            GOOD(
+                "Organizations were already migrated to tenants; no mount network-space "
+                "action is required for this upgrade."
+            )
+        else:
+            WARN(
+                "Organizations are migrated to tenants when upgrading to 5.1.0 or higher. On the "
+                "migrated tenants, mount network-space access enforcement is enabled, which can "
+                "prevent clients from mounting after they are upgraded. After the cluster upgrade "
+                "completes and BEFORE upgrading the clients, either assign a network space to each "
+                "tenant, or disable enforcement per tenant with: "
+                "weka tenant update <tenant name> --enforce-mount-netspace-access false"
+            )
 
     return ClusterCheckResults(
         backend_hosts=backend_hosts,
