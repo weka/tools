@@ -5,6 +5,7 @@ import base64
 import concurrent.futures
 import datetime
 import heapq
+import ipaddress
 import itertools
 import json
 import logging
@@ -56,7 +57,84 @@ def _clean_subprocess_env():
     return env
 
 
-pg_version = "1.12.15"
+# ssh's own exit code for connect/auth failures, as opposed to a remote command
+# that ran and returned non-zero.
+SSH_EXIT_ERROR = 255
+
+
+def _ssh_failed(result):
+    """True when ssh itself failed to establish the session."""
+    if isinstance(result, bool):
+        return False
+    if isinstance(result, int):
+        return result == SSH_EXIT_ERROR
+    if isinstance(result, subprocess.CompletedProcess):
+        return result.returncode == SSH_EXIT_ERROR
+    return False
+
+
+def _host_id(host):
+    """Display name used to match a host across the ssh_*_hosts lists.
+
+    Hosts arrive either as dicts from cluster discovery or as bare strings when
+    the user names them with -b, so both shapes have to be handled.
+    """
+    if isinstance(host, dict):
+        return host.get("hostname") or host.get("name") or host.get("ip", "unknown")
+    return host
+
+
+def _addr_kind(addr):
+    """Label an ssh target as an IP or a hostname."""
+    try:
+        ipaddress.ip_address(addr)
+    except (ValueError, TypeError):
+        return "hostname"
+    return "IP"
+
+
+def _ssh_via(host):
+    """Which address the connection actually used, for the result line."""
+    if host is None:
+        return ""
+    target = host.get("ssh_target") if isinstance(host, dict) else host
+    if not target:
+        return ""
+    return f" (connected via {_addr_kind(target)} {target})"
+
+
+def _ssh_tried(host):
+    """Which addresses were attempted, for the failure line."""
+    if host is None:
+        return ""
+    targets = _ssh_targets(host)
+    if not targets:
+        return ""
+    return " (tried " + ", ".join(f"{_addr_kind(t)} {t}" for t in targets) + ")"
+
+
+def _ssh_targets(host):
+    """Addresses to try for a host, in preference order.
+
+    The cluster's primary IP is not always reachable over ssh -- it can sit on a
+    data network whose NIC is DPDK-bound, so the kernel has no route to it and
+    ssh fails with 255 while the host's name still resolves. Try the IP first,
+    then fall back to the name. Once one works it is cached on the host dict so
+    later checks do not retry the failed address.
+    """
+    if not isinstance(host, dict):
+        return [host]
+    if host.get("ssh_target"):
+        return [host["ssh_target"]]
+    targets = []
+    for key in ("ip", "hostname", "name"):
+        value = host.get(key)
+        if value and value not in targets:
+            targets.append(value)
+    return targets
+
+
+pg_version = "1.12.16"
 known_issues_file = "known_issues.json"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
@@ -1516,15 +1594,36 @@ def weka_cluster_checks(target_version):
 
 def ssh_check(host_name, result, ssh_bk_hosts):
     passwordless_ssh = result
+    host = next((x for x in ssh_bk_hosts if _host_id(x) == host_name), None)
     if passwordless_ssh != 0:
         BAD(
-            f"Passwordless SSH not configured on host: {host_name}, will exclude from checks"
+            f"Passwordless SSH not configured on host: {host_name}"
+            f"{_ssh_tried(host)}, will exclude from checks"
         )
-        ssh_bk_hosts = [x for x in ssh_bk_hosts if x["name"] != host_name]
+        ssh_bk_hosts = [x for x in ssh_bk_hosts if _host_id(x) != host_name]
     else:
-        GOOD(f"Passwordless SSH configured on host: {host_name}")
+        GOOD(f"Passwordless SSH configured on host: {host_name}{_ssh_via(host)}")
 
     return ssh_bk_hosts
+
+
+def report_ssh_fallbacks(hosts):
+    """Flag hosts only reachable by name, so an unusable primary IP is visible."""
+    fallbacks = [
+        f'{_host_id(h)}: primary IP {h["ip"]} unreachable, used {h["ssh_target"]}'
+        for h in hosts
+        if isinstance(h, dict)
+        and h.get("ssh_target")
+        and h.get("ip")
+        and h["ssh_target"] != h["ip"]
+    ]
+    if fallbacks:
+        WARN2(
+            "SSH to the cluster primary IP failed on these hosts; used their name "
+            "instead. Check whether the primary IP is on a network without a "
+            "kernel route, or is blocked by an authorized_keys from= restriction\n"
+        )
+        printlist(fallbacks, 1)
 
 
 # ---------------------------------------------------------------------------
@@ -2464,48 +2563,68 @@ def parallel_execution(
     ssh_env = _clean_subprocess_env()
 
     def run_command(host, command, use_check_output, use_json, use_call, ssh_opts):
-        if isinstance(host, dict):
-            host_ip = host["ip"]
-            host_name = (
-                host.get("hostname") or host.get("name") or host.get("ip", "unknown")
-            )
-        else:
-            host_ip = host
-            host_name = host
+        host_name = _host_id(host)
 
         ssh_opts_flat = list(itertools.chain(*ssh_opts))
 
-        if use_check_output:
-            result = (
-                subprocess.check_output(
-                    ["ssh"] + ssh_opts_flat + [host_ip, command], env=ssh_env
+        def ssh_exec(target):
+            if use_check_output:
+                return (
+                    subprocess.check_output(
+                        ["ssh"] + ssh_opts_flat + [target, command], env=ssh_env
+                    )
+                    .decode("utf-8")
+                    .strip()
                 )
-                .decode("utf-8")
-                .strip()
-            )
-        elif use_json:
-            result = json.loads(
-                subprocess.check_output(
-                    ["ssh"] + ssh_opts_flat + [host_ip, command], env=ssh_env
+            elif use_json:
+                return json.loads(
+                    subprocess.check_output(
+                        ["ssh"] + ssh_opts_flat + [target, command], env=ssh_env
+                    )
+                    .decode("utf-8")
+                    .strip()
                 )
-                .decode("utf-8")
-                .strip()
-            )
-        elif use_call:
-            result = subprocess.call(
-                ["ssh"] + ssh_opts_flat + [host_ip, command],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.STDOUT,
-                env=ssh_env,
-            )
-        else:
-            result = subprocess.run(
-                ["ssh"] + ssh_opts_flat + [host_ip, command],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.STDOUT,
-                env=ssh_env,
-            )
-        return host_name, result
+            elif use_call:
+                proc = subprocess.run(
+                    ["ssh"] + ssh_opts_flat + [target, command],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.PIPE,
+                    env=ssh_env,
+                )
+                # ssh's stderr is the only clue why a host looks unreachable, so
+                # keep it in the log file rather than discarding it.
+                if proc.returncode != 0:
+                    logger.debug(
+                        f"ssh {target} exited {proc.returncode}: "
+                        f"{proc.stderr.decode('utf-8', errors='replace').strip()}"
+                    )
+                return proc.returncode
+            else:
+                return subprocess.run(
+                    ["ssh"] + ssh_opts_flat + [target, command],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.STDOUT,
+                    env=ssh_env,
+                )
+
+        targets = _ssh_targets(host)
+        for i, target in enumerate(targets):
+            is_last = i == len(targets) - 1
+            try:
+                result = ssh_exec(target)
+            except subprocess.CalledProcessError as exc:
+                if is_last or exc.returncode != SSH_EXIT_ERROR:
+                    raise
+                logger.debug(f"ssh to {target} failed, trying next address")
+                continue
+            if _ssh_failed(result) and not is_last:
+                logger.debug(f"ssh to {target} failed, trying next address")
+                continue
+            # Only remember an address that actually worked, so a fully failed
+            # host still reports every address it tried.
+            if isinstance(host, dict) and not _ssh_failed(result):
+                host["ssh_target"] = target
+            return host_name, result
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=50) as executor:
         future_to_host = {
@@ -2527,13 +2646,8 @@ def parallel_execution(
                 result = future.result()
                 results.append(result)
             except Exception as exc:
-                host_name = (
-                    host.get("hostname")
-                    or host.get("name")
-                    or host.get("ip", "unknown")
-                    if isinstance(host, dict)
-                    else host
-                )
+                host_name = _host_id(host)
+                logger.debug(f"{host_name}: {exc}")
                 WARN(f"Unable to determine Host: {host_name} results")
 
     spinner.stop()
@@ -2553,7 +2667,7 @@ def backend_host_checks(
     multi_org
 ):
     INFO("CHECKING PASSWORDLESS SSH CONNECTIVITY")
-    INFO("Testing passwordless SSH using backend IP addresses")
+    INFO("Testing passwordless SSH using backend IP addresses, then hostnames")
     results = parallel_execution(
         ssh_bk_hosts,
         ["/bin/true"],
@@ -2566,6 +2680,8 @@ def backend_host_checks(
             ssh_bk_hosts = ssh_check(host_name, result, ssh_bk_hosts)
         else:
             WARN(f"Unable to determine SSH connectivity on Host: {host_name}")
+
+    report_ssh_fallbacks(ssh_bk_hosts)
 
     if len(ssh_bk_hosts) == 0:
         BAD(f"Unable to proceed, passwordless SSH not configured on any host")
@@ -3141,7 +3257,9 @@ def backend_host_checks(
 # client checks
 def client_hosts_checks(weka_version, ssh_cl_hosts, ssh_identity, target_version=None):
     INFO("CHECKING PASSWORDLESS SSH CONNECTIVITY ON CLIENTS")
-    ssh_cl_hosts_dict = [{"name": host} for host in ssh_cl_hosts]
+    ssh_cl_hosts_dict = [
+        host if isinstance(host, dict) else {"name": host} for host in ssh_cl_hosts
+    ]
     results = parallel_execution(
         ssh_cl_hosts,
         ["/bin/true"],
@@ -3155,7 +3273,10 @@ def client_hosts_checks(weka_version, ssh_cl_hosts, ssh_identity, target_version
         else:
             WARN(f"Unable to check SSH connectivity on Host: {host_name}")
 
-    ssh_cl_hosts = [host_dict["name"] for host_dict in ssh_cl_hosts_dict]
+    # Keep the discovery dicts so later checks reuse the resolved ssh target
+    # instead of falling back to the name again on every command.
+    ssh_cl_hosts = ssh_cl_hosts_dict
+    report_ssh_fallbacks(ssh_cl_hosts)
     if len(ssh_cl_hosts) == 0:
         BAD(f"Unable to proceed, passwordless SSH not configured on any host")
         sys.exit(1)
