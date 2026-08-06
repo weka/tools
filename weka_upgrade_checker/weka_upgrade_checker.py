@@ -56,7 +56,7 @@ def _clean_subprocess_env():
     return env
 
 
-pg_version = "1.12.14"
+pg_version = "1.12.15"
 known_issues_file = "known_issues.json"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
@@ -2445,6 +2445,9 @@ def parallel_execution(
     spinner.start()
 
     SSH_OPTIONS = [
+        # BatchMode disables all interactive prompts (password, keyboard-interactive,
+        # key passphrase) so a missing key fails fast instead of waiting for input.
+        ["-o", "BatchMode=yes"],
         ["-o", "PasswordAuthentication=no"],
         ["-o", "LogLevel=ERROR"],
         ["-o", "UserKnownHostsFile=/dev/null"],
@@ -2550,6 +2553,7 @@ def backend_host_checks(
     multi_org
 ):
     INFO("CHECKING PASSWORDLESS SSH CONNECTIVITY")
+    INFO("Testing passwordless SSH using backend IP addresses")
     results = parallel_execution(
         ssh_bk_hosts,
         ["/bin/true"],
