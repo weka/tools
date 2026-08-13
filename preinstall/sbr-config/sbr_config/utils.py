@@ -69,6 +69,14 @@ def write_file_atomic(path: str, content: str, mode: Optional[int] = None) -> No
     """
     tmp_path = path + ".sbr-config.tmp"
     try:
+        parent = os.path.dirname(path)
+        if parent and not os.path.isdir(parent):
+            os.makedirs(parent, 0o755)
+            # makedirs honors the umask; pin the mode so non-root tools
+            # (e.g. `ip` resolving rt_tables names) can still read the dir
+            os.chmod(parent, 0o755)
+            logger.info("Created directory %s", parent)
+
         # Determine permissions to use
         if mode is not None:
             file_mode = mode
@@ -159,18 +167,18 @@ class FileLock:
         except OSError:
             self._fd.close()
             raise LockError(
-                "Another sbr-config instance is running. "
-                f"If this is wrong, remove {self.path}"
+                "Another sbr-config instance is running "
+                f"(lock file: {self.path})"
             )
         self._fd.write(str(os.getpid()))
         self._fd.flush()
         return self
 
     def __exit__(self, *args):
+        # The lock file is deliberately left in place: unlinking it opens
+        # a race where two later instances can each flock a different
+        # inode at this path and both "hold" the lock. A stale file never
+        # blocks anything -- flock is released when the process exits.
         if self._fd:
             fcntl.flock(self._fd, fcntl.LOCK_UN)
             self._fd.close()
-            try:
-                os.unlink(self.path)
-            except FileNotFoundError:
-                pass

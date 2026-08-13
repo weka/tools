@@ -1,9 +1,24 @@
 """Abstract base class for persistence backends."""
 
 from abc import ABC, abstractmethod
-from typing import List
+from collections import OrderedDict
+from typing import List, Tuple
 
 from ..models import InterfaceInfo, PlannedChange, RoutingTable
+
+
+def group_by_name(interfaces: List[InterfaceInfo]) -> List[Tuple[str, List[InterfaceInfo]]]:
+    """Group interface entries by name, preserving order.
+
+    state.interfaces holds one entry per IPv4 address, so an interface
+    with several addresses appears several times. Backends must emit ONE
+    config per interface covering all of its addresses -- duplicate
+    stanzas/files/YAML keys are either invalid or silently drop rules.
+    """
+    grouped = OrderedDict()
+    for iface in interfaces:
+        grouped.setdefault(iface.name, []).append(iface)
+    return list(grouped.items())
 
 
 class PersistenceBackend(ABC):

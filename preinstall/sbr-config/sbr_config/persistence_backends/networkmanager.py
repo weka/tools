@@ -12,7 +12,7 @@ from ..constants import (
 )
 from ..models import InterfaceInfo, PlannedChange, RoutingTable
 from ..utils import read_file, write_file_atomic
-from .base import PersistenceBackend
+from .base import PersistenceBackend, group_by_name
 
 logger = logging.getLogger(__name__)
 
@@ -86,32 +86,42 @@ class NetworkManagerBackend(PersistenceBackend):
             'case "$IFACE" in',
         ]
 
-        for iface in interfaces:
-            table_name = f"{TABLE_NAME_PREFIX}{iface.name}"
+        for name, entries in group_by_name(interfaces):
+            table_name = f"{TABLE_NAME_PREFIX}{name}"
             tnum = table_num.get(table_name)
             if tnum is None:
                 continue
 
-            # Derive the full command set from the desired state
-            up_commands = [
-                f"ip route replace {iface.subnet} dev {iface.name} "
-                f"src {iface.ip_address} table {table_name}",
-            ]
-            if iface.gateway is not None:
+            # Derive the full command set from the desired state, covering
+            # every address on the interface
+            up_commands = []
+            seen_subnets = set()
+            for entry in entries:
+                if entry.subnet in seen_subnets:
+                    continue
+                seen_subnets.add(entry.subnet)
                 up_commands.append(
-                    f"ip route replace default via {iface.gateway} "
-                    f"dev {iface.name} table {table_name}"
+                    f"ip route replace {entry.subnet} dev {name} "
+                    f"src {entry.ip_address} table {table_name}"
                 )
-            up_commands.append(
-                f"ip rule add from {iface.ip_address} table {table_name} 2>/dev/null"
-            )
+            gateway = next((e.gateway for e in entries if e.gateway is not None), None)
+            if gateway is not None:
+                up_commands.append(
+                    f"ip route replace default via {gateway} "
+                    f"dev {name} table {table_name}"
+                )
+            for entry in entries:
+                up_commands.append(
+                    f"ip rule add from {entry.ip_address} table {table_name} 2>/dev/null"
+                )
 
             down_commands = [
-                f"ip rule del from {iface.ip_address} table {table_name}",
-                f"ip route flush table {table_name}",
+                f"ip rule del from {entry.ip_address} table {table_name}"
+                for entry in entries
             ]
+            down_commands.append(f"ip route flush table {table_name}")
 
-            lines.append(f"    {iface.name})")
+            lines.append(f"    {name})")
             lines.append('        if [ "$ACTION" = "up" ]; then')
             for cmd in up_commands:
                 lines.append(f"            {cmd}")

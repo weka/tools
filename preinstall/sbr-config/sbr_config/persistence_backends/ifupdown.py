@@ -13,7 +13,7 @@ from ..constants import (
 )
 from ..models import InterfaceInfo, PlannedChange, RoutingTable
 from ..utils import read_file, write_file_atomic
-from .base import PersistenceBackend
+from .base import PersistenceBackend, group_by_name
 
 logger = logging.getLogger(__name__)
 
@@ -35,39 +35,60 @@ class IfupdownBackend(PersistenceBackend):
         table_num = {t.name: t.number for t in tables}
         written = []
 
-        for iface in interfaces:
-            table_name = f"{TABLE_NAME_PREFIX}{iface.name}"
+        # Strip managed lines from a previous run ONCE up front, so repeat
+        # runs replace them instead of stacking duplicate (and possibly
+        # stale) post-up/pre-down blocks. Done before the per-interface
+        # loop -- stripping inside it would delete lines just written for
+        # an earlier interface in this same run.
+        main_content = read_file(INTERFACES_FILE)
+        if main_content and MANAGED_COMMENT in main_content:
+            write_file_atomic(
+                INTERFACES_FILE, self._remove_managed_lines(main_content)
+            )
+
+        for name, entries in group_by_name(interfaces):
+            table_name = f"{TABLE_NAME_PREFIX}{name}"
             tnum = table_num.get(table_name)
             if tnum is None:
                 continue
 
-            # Derive the full command set from the desired state (not
-            # just this run's delta) so persistence is always complete.
-            up_cmds = [
-                f"ip route replace {iface.subnet} dev {iface.name} "
-                f"src {iface.ip_address} table {table_name}",
-            ]
-            if iface.gateway is not None:
+            # Derive the full command set from the desired state (not just
+            # this run's delta) so persistence is always complete, covering
+            # every address on the interface.
+            up_cmds = []
+            seen_subnets = set()
+            for entry in entries:
+                if entry.subnet in seen_subnets:
+                    continue
+                seen_subnets.add(entry.subnet)
                 up_cmds.append(
-                    f"ip route replace default via {iface.gateway} "
-                    f"dev {iface.name} table {table_name}"
+                    f"ip route replace {entry.subnet} dev {name} "
+                    f"src {entry.ip_address} table {table_name}"
                 )
-            up_cmds.append(
-                f"ip rule add from {iface.ip_address} table {table_name} 2>/dev/null"
-            )
+            gateway = next((e.gateway for e in entries if e.gateway is not None), None)
+            if gateway is not None:
+                up_cmds.append(
+                    f"ip route replace default via {gateway} "
+                    f"dev {name} table {table_name}"
+                )
+            for entry in entries:
+                up_cmds.append(
+                    f"ip rule add from {entry.ip_address} table {table_name} 2>/dev/null"
+                )
 
             down_cmds = [
-                f"ip rule del from {iface.ip_address} table {table_name}",
-                f"ip route flush table {table_name}",
+                f"ip rule del from {entry.ip_address} table {table_name}"
+                for entry in entries
             ]
+            down_cmds.append(f"ip route flush table {table_name}")
 
             # Try to add to existing stanza in interfaces file
-            if self._add_to_interfaces_file(iface.name, up_cmds, down_cmds):
+            if self._add_to_interfaces_file(name, up_cmds, down_cmds):
                 written.append(INTERFACES_FILE)
                 continue
 
             # Fall back to drop-in file
-            fpath = self._write_dropin(iface, up_cmds, down_cmds)
+            fpath = self._write_dropin(entries[0], up_cmds, down_cmds)
             if fpath:
                 written.append(fpath)
 

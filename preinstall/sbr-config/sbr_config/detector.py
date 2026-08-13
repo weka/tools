@@ -13,6 +13,8 @@ from .constants import (
     DHCP_LEASE_PATHS,
     INTERFACES_FILE,
     NETPLAN_DIR,
+    RESERVED_TABLE_NAMES,
+    RESERVED_TABLE_NUMBERS,
     RT_TABLES_PATH,
     SYSTEMD_NETWORK_DIR,
 )
@@ -469,6 +471,8 @@ def _parse_rt_tables(content: str) -> List[RoutingTable]:
         except ValueError:
             continue
         name = parts[1].strip()
+        if number in RESERVED_TABLE_NUMBERS or name in RESERVED_TABLE_NAMES:
+            continue
         tables.append(RoutingTable(number=number, name=name))
     return tables
 

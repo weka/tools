@@ -77,6 +77,17 @@ def plan_changes(
 
     next_number = TABLE_NUMBER_START
 
+    # An interface can carry multiple IPv4 addresses, so state.interfaces may
+    # hold several entries with the same name (one per address) and validation
+    # failures are merged per name. Track what this plan already covers and
+    # re-verify each phase against the detected state, otherwise a second
+    # address plans a duplicate `ip route add` that fails with EEXIST and
+    # aborts the whole apply.
+    planned_tables: Set[str] = set()
+    planned_routes: Set[tuple] = set()  # (table_name, destination)
+    planned_rules: Set[tuple] = set()   # (ip_address, table_name)
+    used_priorities = {r.priority for r in state.rules}
+
     for iface in state.interfaces:
         if iface.is_loopback or iface.is_default_route_interface or not iface.is_up:
             continue
@@ -88,7 +99,8 @@ def plan_changes(
         table_name = f"{TABLE_NAME_PREFIX}{iface.name}"
 
         # Phase 1: Routing table entry
-        if "routing_table_exists" in iface_fails:
+        if "routing_table_exists" in iface_fails and table_name not in planned_tables:
+            planned_tables.add(table_name)
             # Allocate a table number
             if iface.name not in table_assignments:
                 while (next_number in used_numbers
@@ -119,7 +131,10 @@ def plan_changes(
             ))
 
         # Phase 2: Subnet route
-        if "subnet_route_in_table" in iface_fails:
+        if ("subnet_route_in_table" in iface_fails
+                and (table_name, iface.subnet) not in planned_routes
+                and not _has_subnet_route(state, table_name, iface)):
+            planned_routes.add((table_name, iface.subnet))
             route_cmd = (
                 f"ip route add {iface.subnet} dev {iface.name} "
                 f"src {iface.ip_address} table {table_name}"
@@ -147,7 +162,11 @@ def plan_changes(
             ))
 
         # Phase 3: Default route in custom table (only if gateway exists)
-        if iface.gateway is not None and "default_route_in_table" in iface_fails:
+        if (iface.gateway is not None
+                and "default_route_in_table" in iface_fails
+                and (table_name, "default") not in planned_routes
+                and not _has_default_route(state, table_name, iface)):
+            planned_routes.add((table_name, "default"))
             route_cmd = (
                 f"ip route add default via {iface.gateway} "
                 f"dev {iface.name} table {table_name}"
@@ -175,9 +194,12 @@ def plan_changes(
             ))
 
         # Phase 4: IP rule
-        if "ip_rule_exists" in iface_fails:
+        if ("ip_rule_exists" in iface_fails
+                and (iface.ip_address, table_name) not in planned_rules
+                and not _has_ip_rule(state, iface, table_name)):
+            planned_rules.add((iface.ip_address, table_name))
+
             # Determine priority: find unused priority slot
-            used_priorities = {r.priority for r in state.rules}
             priority = RULE_PRIORITY_START
             while priority in used_priorities:
                 priority += RULE_PRIORITY_INCREMENT
@@ -211,3 +233,35 @@ def plan_changes(
 
     logger.info("Planned %d changes", len(changes))
     return changes
+
+
+# ---------------------------------------------------------------------------
+# State re-checks
+#
+# Validation failures are merged per interface NAME, but an interface can
+# have several addresses (and subnets). These mirror the validator's checks
+# so each planned change is verified against the exact entry it targets.
+# ---------------------------------------------------------------------------
+
+def _has_subnet_route(state: SystemState, table_name: str, iface: InterfaceInfo) -> bool:
+    return any(
+        r.destination == iface.subnet and r.device == iface.name
+        for r in state.routes_by_table.get(table_name, [])
+    )
+
+
+def _has_default_route(state: SystemState, table_name: str, iface: InterfaceInfo) -> bool:
+    return any(
+        r.destination == "default"
+        and r.gateway == iface.gateway
+        and r.device == iface.name
+        for r in state.routes_by_table.get(table_name, [])
+    )
+
+
+def _has_ip_rule(state: SystemState, iface: InterfaceInfo, table_name: str) -> bool:
+    return any(
+        r.selector_from in (iface.ip_address, f"{iface.ip_address}/32")
+        and r.table == table_name
+        for r in state.rules
+    )

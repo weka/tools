@@ -12,7 +12,7 @@ from ..constants import (
 )
 from ..models import InterfaceInfo, PlannedChange, RoutingTable
 from ..utils import read_file, run_command, write_file_atomic
-from .base import PersistenceBackend
+from .base import PersistenceBackend, group_by_name
 
 logger = logging.getLogger(__name__)
 
@@ -42,8 +42,8 @@ class NetplanBackend(PersistenceBackend):
 
         logger.info("Wrote netplan config: %s", fpath)
 
-        # Apply netplan
-        run_command("netplan apply", check=False)
+        # Apply netplan (can take a while -- it cycles interface config)
+        run_command("netplan apply", check=False, timeout=60)
 
         return [fpath]
 
@@ -56,7 +56,7 @@ class NetplanBackend(PersistenceBackend):
                 os.unlink(fpath)
                 removed.append(fpath)
                 logger.info("Removed netplan config: %s", fpath)
-                run_command("netplan apply", check=False)
+                run_command("netplan apply", check=False, timeout=60)
         return removed
 
     def describe(self) -> str:
@@ -85,35 +85,46 @@ class NetplanBackend(PersistenceBackend):
             "  ethernets:",
         ]
 
-        for iface in interfaces:
-            table_name = f"{TABLE_NAME_PREFIX}{iface.name}"
+        for name, entries in group_by_name(interfaces):
+            table_name = f"{TABLE_NAME_PREFIX}{name}"
             tnum = table_num.get(table_name)
             if tnum is None:
                 continue
 
-            priority = 100 + (tnum - 100) * 10
+            # Follows the planner's allocation scheme; clamped so pre-existing
+            # sbr_ tables numbered below 100 don't produce a negative priority.
+            priority = max(100, 100 + (tnum - 100) * 10)
 
             route_lines = [
-                f"    {iface.name}:",
+                f"    {name}:",
                 f"      routes:",
-                f"        - to: {iface.subnet}",
-                f"          table: {tnum}",
             ]
-
-            # Only add default route if a gateway is known
-            if iface.gateway is not None:
+            seen_subnets = set()
+            for entry in entries:
+                if entry.subnet in seen_subnets:
+                    continue
+                seen_subnets.add(entry.subnet)
                 route_lines.extend([
-                    f"        - to: default",
-                    f"          via: {iface.gateway}",
+                    f"        - to: {entry.subnet}",
                     f"          table: {tnum}",
                 ])
 
-            route_lines.extend([
-                f"      routing-policy:",
-                f"        - from: {iface.ip_address}",
-                f"          table: {tnum}",
-                f"          priority: {priority}",
-            ])
+            # Only add a default route if a gateway is known (one per table)
+            gateway = next((e.gateway for e in entries if e.gateway is not None), None)
+            if gateway is not None:
+                route_lines.extend([
+                    f"        - to: default",
+                    f"          via: {gateway}",
+                    f"          table: {tnum}",
+                ])
+
+            route_lines.append(f"      routing-policy:")
+            for entry in entries:
+                route_lines.extend([
+                    f"        - from: {entry.ip_address}",
+                    f"          table: {tnum}",
+                    f"          priority: {priority}",
+                ])
 
             lines.extend(route_lines)
 

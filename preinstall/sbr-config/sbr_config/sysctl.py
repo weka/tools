@@ -167,20 +167,22 @@ def apply_sysctl(key: str, value: str) -> None:
 
 
 def write_sysctl_persistence(
-    changes: List[PlannedChange],
+    interface_names: List[str],
 ) -> str:
     """Write /etc/sysctl.d/90-sbr-config.conf for persistence.
 
+    The file contains the COMPLETE set of required SBR sysctl settings,
+    not just the ones changed in this run. A setting that already happened
+    to be correct at runtime (e.g. set manually with `sysctl -w`) still
+    needs to be persisted or it reverts on reboot.
+
     Args:
-        changes: List of sysctl PlannedChange entries.
+        interface_names: Non-default interface names needing per-interface
+                         rp_filter settings.
 
     Returns:
         Path to the written config file.
     """
-    sysctl_changes = [c for c in changes if c.change_type == ChangeType.SET_SYSCTL]
-    if not sysctl_changes:
-        return ""
-
     lines = [
         MANAGED_COMMENT,
         "# Sysctl settings for source-based routing",
@@ -190,11 +192,15 @@ def write_sysctl_persistence(
         "",
     ]
 
-    for change in sysctl_changes:
-        # Extract key=value from the command "sysctl -w key=value"
-        kv = change.command.replace("sysctl -w ", "")
-        lines.append(f"# {change.description}")
-        lines.append(kv)
+    for key, spec in SYSCTL_SETTINGS.items():
+        lines.append(f"# {spec['description']}")
+        lines.append(f"{key} = {spec['required']}")
+        lines.append("")
+
+    for iface in interface_names:
+        key = SYSCTL_PER_IFACE_TEMPLATE.format(iface=iface)
+        lines.append(f"# Loose-mode rp_filter for {iface}")
+        lines.append(f"{key} = 2")
         lines.append("")
 
     content = "\n".join(lines) + "\n"

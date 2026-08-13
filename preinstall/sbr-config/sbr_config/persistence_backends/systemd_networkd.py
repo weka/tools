@@ -7,7 +7,7 @@ from typing import List
 from ..constants import MANAGED_COMMENT, SYSTEMD_NETWORK_DIR, TABLE_NAME_PREFIX
 from ..models import InterfaceInfo, PlannedChange, RoutingTable
 from ..utils import read_file, run_command, write_file_atomic
-from .base import PersistenceBackend
+from .base import PersistenceBackend, group_by_name
 
 logger = logging.getLogger(__name__)
 
@@ -32,21 +32,21 @@ class SystemdNetworkdBackend(PersistenceBackend):
         table_num = {t.name: t.number for t in tables}
 
         written = []
-        for iface in interfaces:
-            table_name = f"{TABLE_NAME_PREFIX}{iface.name}"
+        for name, entries in group_by_name(interfaces):
+            table_name = f"{TABLE_NAME_PREFIX}{name}"
             tnum = table_num.get(table_name)
             if tnum is None:
                 continue
 
-            content = self._generate_network_file(iface, tnum)
-            fpath = os.path.join(SYSTEMD_NETWORK_DIR, f"50-sbr-{iface.name}.network")
+            content = self._generate_network_file(name, entries, tnum)
+            fpath = os.path.join(SYSTEMD_NETWORK_DIR, f"50-sbr-{name}.network")
             write_file_atomic(fpath, content)
             written.append(fpath)
             logger.info("Wrote networkd config: %s", fpath)
 
         # Reload networkd
         if written:
-            run_command("networkctl reload", check=False)
+            run_command("networkctl reload", check=False, timeout=30)
 
         return written
 
@@ -65,7 +65,7 @@ class SystemdNetworkdBackend(PersistenceBackend):
                     logger.info("Removed networkd config: %s", fpath)
 
         if removed:
-            run_command("networkctl reload", check=False)
+            run_command("networkctl reload", check=False, timeout=30)
 
         return removed
 
@@ -75,39 +75,60 @@ class SystemdNetworkdBackend(PersistenceBackend):
             f"Files named 50-sbr-<interface>.network with Route and RoutingPolicyRule sections."
         )
 
-    def _generate_network_file(self, iface: InterfaceInfo, table_number: int) -> str:
-        """Generate a .network file for a single interface."""
-        # Determine priority (use same logic as planner)
-        priority = 100 + (table_number - 100) * 10
+    def _generate_network_file(
+        self,
+        name: str,
+        entries: List[InterfaceInfo],
+        table_number: int,
+    ) -> str:
+        """Generate a .network file for a single interface.
 
+        ``entries`` holds one InterfaceInfo per address on the interface.
+        """
+        # Follows the planner's allocation scheme; clamped so pre-existing
+        # sbr_ tables numbered below 100 don't produce an invalid negative
+        # priority.
+        priority = max(100, 100 + (table_number - 100) * 10)
+
+        ips = ", ".join(e.ip_address for e in entries)
         lines = [
             MANAGED_COMMENT,
-            f"# Source-based routing for {iface.name} ({iface.ip_address})",
+            f"# Source-based routing for {name} ({ips})",
             "",
             "[Match]",
-            f"Name={iface.name}",
-            "",
-            "[Route]",
-            f"Destination={iface.subnet}",
-            f"Table={table_number}",
+            f"Name={name}",
             "",
         ]
 
-        # Only add default route if a gateway is known
-        if iface.gateway is not None:
+        seen_subnets = set()
+        for entry in entries:
+            if entry.subnet in seen_subnets:
+                continue
+            seen_subnets.add(entry.subnet)
             lines.extend([
                 "[Route]",
-                f"Gateway={iface.gateway}",
+                f"Destination={entry.subnet}",
                 f"Table={table_number}",
                 "",
             ])
 
-        lines.extend([
-            "[RoutingPolicyRule]",
-            f"From={iface.ip_address}",
-            f"Table={table_number}",
-            f"Priority={priority}",
-            "",
-        ])
+        # Only add a default route if a gateway is known (one per table)
+        gateway = next((e.gateway for e in entries if e.gateway is not None), None)
+        if gateway is not None:
+            lines.extend([
+                "[Route]",
+                f"Gateway={gateway}",
+                f"Table={table_number}",
+                "",
+            ])
+
+        for entry in entries:
+            lines.extend([
+                "[RoutingPolicyRule]",
+                f"From={entry.ip_address}",
+                f"Table={table_number}",
+                f"Priority={priority}",
+                "",
+            ])
 
         return "\n".join(lines)

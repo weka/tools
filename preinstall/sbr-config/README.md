@@ -101,7 +101,9 @@ Each proposed change includes:
 
 ### Rollback (`--rollback`)
 
-Restores the system to its state before the last configuration:
+Restores the configuration that was running when the backup was taken:
+SBR rules, routes, rt_tables entries, and persistence files are put back
+exactly as they were, and anything added since is removed.
 
 ```bash
 # Restore from latest backup
@@ -154,9 +156,10 @@ For non-default interfaces, the tool tries multiple strategies to find the gatew
 2. DHCP lease files (`/var/lib/dhclient/`, `/var/lib/dhcp/`, etc.)
 3. NetworkManager (`nmcli`)
 4. systemd-networkd config files
-5. Common `.1` address heuristic
 
-If no gateway can be detected, the interface is skipped with a warning.
+If no gateway can be detected, the interface is configured without a
+default route in its table (subnet-only routing, normal for non-routable
+storage or interconnect networks).
 
 ## Backups
 
@@ -165,9 +168,13 @@ State backups are stored in `/var/lib/sbr-config/backups/` as JSON files contain
 - Routing table entries
 - All routes and rules
 - Sysctl values
-- Raw file contents for exact restoration
+- Raw file contents for exact restoration (rt_tables and every persistence file)
 
-A `latest.json` symlink always points to the most recent backup.
+Backups are named `state_<date>_<time>.json` and never overwritten (a
+counter suffix is added if two are saved in the same second), so any of
+them can be referenced later with `--backup-file`. A `latest.json` symlink
+always points to the most recent backup, and the 10 most recent backups
+are kept.
 
 ## Interface Filtering
 
