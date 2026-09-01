@@ -9,8 +9,11 @@ from ..constants import (
     MANAGED_COMMENT,
     NETWORKD_DROPIN_NAME,
     NETWORKD_LINKS_STATE_DIR,
+    RULE_PRIORITY_INCREMENT,
+    RULE_PRIORITY_START,
     SYSTEMD_NETWORK_DIR,
     TABLE_NAME_PREFIX,
+    TABLE_NUMBER_START,
 )
 from ..models import InterfaceInfo, PlannedChange, RoutingTable
 from ..utils import read_file, run_command, write_file_atomic
@@ -160,9 +163,13 @@ class SystemdNetworkdBackend(PersistenceBackend):
         that already matches the link.
         """
         # Follows the planner's allocation scheme; clamped so pre-existing
-        # sbr_ tables numbered below 100 don't produce an invalid negative
-        # priority.
-        priority = max(100, 100 + (table_number - 100) * 10)
+        # sbr_ tables numbered below the allocation base don't produce an
+        # invalid priority.
+        priority = max(
+            RULE_PRIORITY_START,
+            RULE_PRIORITY_START
+            + (table_number - TABLE_NUMBER_START) * RULE_PRIORITY_INCREMENT,
+        )
 
         ips = ", ".join(e.ip_address for e in entries)
         lines = [

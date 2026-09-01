@@ -12,8 +12,14 @@ TABLE_NAME_PREFIX = "sbr_"
 TABLE_NUMBER_START = 100
 TABLE_NUMBER_MAX = 250  # Stay below 253 (default), 254 (main), 255 (local)
 
-# IP rule priority allocation
-RULE_PRIORITY_START = 100
+# IP rule priority allocation. Base 10000 leaves priorities below free
+# for rules that should take precedence (VPNs, firewall marks, admin
+# rules) and sits in the same neighborhood as cloud tooling conventions
+# (amazon-ec2-net-utils uses 10000+ifindex), while still well before the
+# main table lookup at 32766. Rules created by versions <=1.3.1 used
+# base 100; they keep working and are renumbered on the next
+# rollback + configure cycle.
+RULE_PRIORITY_START = 10000
 RULE_PRIORITY_INCREMENT = 10
 
 # Reserved routing table numbers (never allocate these)

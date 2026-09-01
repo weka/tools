@@ -9,7 +9,10 @@ from ..constants import (
     INTERFACES_D_DIR,
     INTERFACES_FILE,
     MANAGED_COMMENT,
+    RULE_PRIORITY_INCREMENT,
+    RULE_PRIORITY_START,
     TABLE_NAME_PREFIX,
+    TABLE_NUMBER_START,
 )
 from ..models import InterfaceInfo, PlannedChange, RoutingTable
 from ..utils import read_file, strip_managed_lines, write_file_atomic
@@ -74,9 +77,18 @@ class IfupdownBackend(PersistenceBackend):
                     f"ip route replace default via {gateway} "
                     f"dev {name} table {table_name}"
                 )
+            # Explicit priority (planner's allocation scheme, clamped):
+            # without it the kernel assigns its own, and the re-added rule
+            # would land at a different precedence than the original.
+            priority = max(
+                RULE_PRIORITY_START,
+                RULE_PRIORITY_START
+                + (tnum - TABLE_NUMBER_START) * RULE_PRIORITY_INCREMENT,
+            )
             for entry in entries:
                 up_cmds.append(
-                    f"ip rule add from {entry.ip_address} table {table_name} 2>/dev/null"
+                    f"ip rule add from {entry.ip_address} table {table_name} "
+                    f"priority {priority} 2>/dev/null"
                 )
 
             down_cmds = [

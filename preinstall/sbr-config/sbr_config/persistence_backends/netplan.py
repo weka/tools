@@ -9,7 +9,10 @@ from ..constants import (
     MANAGED_COMMENT,
     NETPLAN_CONFIG_FILE,
     NETPLAN_DIR,
+    RULE_PRIORITY_INCREMENT,
+    RULE_PRIORITY_START,
     TABLE_NAME_PREFIX,
+    TABLE_NUMBER_START,
 )
 from ..models import InterfaceInfo, PlannedChange, RoutingTable
 from ..utils import read_file, run_command, write_file_atomic
@@ -207,9 +210,13 @@ class NetplanBackend(PersistenceBackend):
                 continue
 
             # Follows the planner's allocation scheme; clamped so
-            # pre-existing sbr_ tables numbered below 100 don't produce a
-            # negative priority.
-            priority = max(100, 100 + (tnum - 100) * 10)
+            # pre-existing sbr_ tables numbered below the allocation base
+            # don't produce an invalid priority.
+            priority = max(
+                RULE_PRIORITY_START,
+                RULE_PRIORITY_START
+                + (tnum - TABLE_NUMBER_START) * RULE_PRIORITY_INCREMENT,
+            )
 
             block = [f"    {name}:", "      routes:"]
 
