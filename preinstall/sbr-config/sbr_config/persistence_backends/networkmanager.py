@@ -8,14 +8,11 @@ from ..constants import (
     MANAGED_COMMENT,
     NM_DISPATCHER_DIR,
     NM_DISPATCHER_SCRIPT,
-    RULE_PRIORITY_INCREMENT,
-    RULE_PRIORITY_START,
     TABLE_NAME_PREFIX,
-    TABLE_NUMBER_START,
 )
 from ..models import InterfaceInfo, PlannedChange, RoutingTable
 from ..utils import command_exists, read_file, run_command, write_file_atomic
-from .base import PersistenceBackend, group_by_name
+from .base import PersistenceBackend, group_by_name, rule_priority_for
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +29,7 @@ class NetworkManagerBackend(PersistenceBackend):
         interfaces: List[InterfaceInfo],
         tables: List[RoutingTable],
         changes: List[PlannedChange],
+        rule_priorities=None,
     ) -> List[str]:
         script_path = os.path.join(NM_DISPATCHER_DIR, NM_DISPATCHER_SCRIPT)
 
@@ -39,7 +37,7 @@ class NetworkManagerBackend(PersistenceBackend):
             os.makedirs(NM_DISPATCHER_DIR, exist_ok=True)
 
         # Build the dispatcher script
-        script = self._generate_script(interfaces, tables, changes)
+        script = self._generate_script(interfaces, tables, changes, rule_priorities)
         write_file_atomic(script_path, script, mode=0o755)
 
         logger.info("Wrote NM dispatcher script: %s", script_path)
@@ -89,6 +87,7 @@ class NetworkManagerBackend(PersistenceBackend):
         interfaces: List[InterfaceInfo],
         tables: List[RoutingTable],
         changes: List[PlannedChange],
+        rule_priorities=None,
     ) -> str:
         """Generate the bash dispatcher script content.
 
@@ -134,15 +133,13 @@ class NetworkManagerBackend(PersistenceBackend):
                     f"ip route replace default via {gateway} "
                     f"dev {name} table {table_name}"
                 )
-            # Explicit priority (planner's allocation scheme, clamped):
-            # without it the kernel assigns its own, and the re-added rule
-            # would land at a different precedence than the original.
-            priority = max(
-                RULE_PRIORITY_START,
-                RULE_PRIORITY_START
-                + (tnum - TABLE_NUMBER_START) * RULE_PRIORITY_INCREMENT,
-            )
+            # Explicit priority: without it the kernel assigns its own,
+            # and the re-added rule would land at a different precedence
+            # than the original.
             for entry in entries:
+                priority = rule_priority_for(
+                    entry.ip_address, tnum, rule_priorities
+                )
                 up_commands.append(
                     f"ip rule add from {entry.ip_address} table {table_name} "
                     f"priority {priority} 2>/dev/null"

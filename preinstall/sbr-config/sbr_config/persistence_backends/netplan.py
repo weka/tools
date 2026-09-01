@@ -9,14 +9,11 @@ from ..constants import (
     MANAGED_COMMENT,
     NETPLAN_CONFIG_FILE,
     NETPLAN_DIR,
-    RULE_PRIORITY_INCREMENT,
-    RULE_PRIORITY_START,
     TABLE_NAME_PREFIX,
-    TABLE_NUMBER_START,
 )
 from ..models import InterfaceInfo, PlannedChange, RoutingTable
 from ..utils import read_file, run_command, write_file_atomic
-from .base import PersistenceBackend, group_by_name
+from .base import PersistenceBackend, group_by_name, rule_priority_for
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +38,7 @@ class NetplanBackend(PersistenceBackend):
         interfaces: List[InterfaceInfo],
         tables: List[RoutingTable],
         changes: List[PlannedChange],
+        rule_priorities=None,
     ) -> List[str]:
         if not os.path.isdir(NETPLAN_DIR):
             os.makedirs(NETPLAN_DIR, exist_ok=True)
@@ -49,7 +47,7 @@ class NetplanBackend(PersistenceBackend):
         groups = group_by_name(interfaces)
         existing = self._load_existing_config([name for name, _ in groups])
 
-        content = self._generate_yaml(groups, table_num, existing)
+        content = self._generate_yaml(groups, table_num, existing, rule_priorities)
         fpath = os.path.join(NETPLAN_DIR, NETPLAN_CONFIG_FILE)
         # 0600: netplan warns (newer versions error) on world-readable config
         write_file_atomic(fpath, content, mode=0o600)
@@ -164,6 +162,7 @@ class NetplanBackend(PersistenceBackend):
         groups: list,
         table_num: Dict[str, int],
         existing: Dict[str, dict],
+        rule_priorities=None,
     ) -> str:
         """Generate netplan YAML content.
 
@@ -209,15 +208,6 @@ class NetplanBackend(PersistenceBackend):
                 )
                 continue
 
-            # Follows the planner's allocation scheme; clamped so
-            # pre-existing sbr_ tables numbered below the allocation base
-            # don't produce an invalid priority.
-            priority = max(
-                RULE_PRIORITY_START,
-                RULE_PRIORITY_START
-                + (tnum - TABLE_NUMBER_START) * RULE_PRIORITY_INCREMENT,
-            )
-
             block = [f"    {name}:", "      routes:"]
 
             # Existing routes from other files first, verbatim
@@ -259,6 +249,9 @@ class NetplanBackend(PersistenceBackend):
             for entry in entries:
                 if (entry.ip_address, str(tnum)) in emitted_policy:
                     continue
+                priority = rule_priority_for(
+                    entry.ip_address, tnum, rule_priorities
+                )
                 block.extend([
                     f"        - from: {entry.ip_address}",
                     f"          table: {tnum}",

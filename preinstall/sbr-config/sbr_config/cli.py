@@ -33,6 +33,7 @@ Short flags:
   -t  --confirm-timeout   -x  --exclude          -i  --include
   -b  --backup-file       -l  --log-file         -C  --no-color
   -v  --verbose           -q  --quiet            -P  --no-persist
+  -R  --rule-priority
 
 Examples:
   sbr-config -V                      Check current SBR state
@@ -123,6 +124,20 @@ Safety:
         help="Only configure these interfaces (repeatable)",
     )
     parser.add_argument(
+        "-R", "--rule-priority",
+        type=int,
+        default=None,
+        metavar="PRIO",
+        help=(
+            "Base priority for new IP rules (default: 10000, stepping 10 "
+            "per rule). Lower values evaluate first; keep values below "
+            "10000 free for VPN/firewall/admin rules that should take "
+            "precedence. Must be 1-32765 (rules at 32766+ never fire when "
+            "the main table holds a default route). Use the same value on "
+            "every run of a given system."
+        ),
+    )
+    parser.add_argument(
         "-b", "--backup-file",
         metavar="PATH",
         help="Specific backup file to restore from (with -r/--rollback)",
@@ -180,6 +195,15 @@ def main(argv: List[str] = None) -> int:
             "one of the arguments -V/--validate -c/--configure -r/--rollback "
             "-p/--check-prereqs is required"
         )
+
+    if args.rule_priority is not None:
+        from .constants import RULE_PRIORITY_MAX
+        if not 1 <= args.rule_priority <= RULE_PRIORITY_MAX:
+            parser.error(
+                f"--rule-priority must be between 1 and {RULE_PRIORITY_MAX} "
+                f"(rules at 32766 or above sit after the main table lookup "
+                f"and never fire when main holds a default route)"
+            )
 
     # Setup
     setup_logging(args.log_file, args.verbose)
@@ -286,7 +310,9 @@ def _do_configure(args: argparse.Namespace, out: Output) -> int:
 
         # Plan changes
         out.header("Proposed Changes")
-        changes = plan_changes(state, results)
+        changes = plan_changes(
+            state, results, rule_priority_start=args.rule_priority
+        )
 
         if not changes:
             out.info("No actionable changes could be planned.")

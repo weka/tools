@@ -3,7 +3,8 @@
 import glob
 import logging
 import os
-from typing import List
+import re
+from typing import Dict, List
 
 from .constants import (
     INTERFACES_D_DIR,
@@ -103,10 +104,42 @@ def write_persistence(
         )
 
     logger.info("Using persistence backend: %s", backend.describe())
-    backend_files = backend.write_config(sbr_interfaces, tables, changes)
+    rule_priorities = _collect_rule_priorities(state, changes)
+    backend_files = backend.write_config(
+        sbr_interfaces, tables, changes, rule_priorities
+    )
     files_written.extend(backend_files)
 
     return files_written
+
+
+def _collect_rule_priorities(state, changes: List[PlannedChange]) -> Dict[str, int]:
+    """Map source IP -> the rule priority actually in effect for it.
+
+    Persistence follows the real priorities (existing kernel rules for
+    sbr_ tables, overridden by this run's planned rules) rather than
+    recomputing from the default base -- so a later run without the
+    --rule-priority flag can't renumber persisted files out from under a
+    configured system. Backends fall back to the derived formula only
+    for IPs absent from this map.
+    """
+    priorities: Dict[str, int] = {}
+
+    for rule in state.rules:
+        if (rule.selector_from and rule.table
+                and str(rule.table).startswith(TABLE_NAME_PREFIX)):
+            ip = rule.selector_from.split("/")[0]
+            priorities[ip] = rule.priority
+
+    for change in changes:
+        if change.change_type != ChangeType.ADD_RULE:
+            continue
+        m = re.search(r"from\s+(\S+)\s+table\s+\S+\s+priority\s+(\d+)",
+                      change.command)
+        if m:
+            priorities[m.group(1).split("/")[0]] = int(m.group(2))
+
+    return priorities
 
 
 def interface_persistence_exists() -> bool:

@@ -21,6 +21,9 @@ TABLE_NUMBER_MAX = 250  # Stay below 253 (default), 254 (main), 255 (local)
 # rollback + configure cycle.
 RULE_PRIORITY_START = 10000
 RULE_PRIORITY_INCREMENT = 10
+# Rules at or above the main table lookup (32766) never fire when main
+# holds a default route, so they are dead configuration. Hard ceiling.
+RULE_PRIORITY_MAX = 32765
 
 # Reserved routing table numbers (never allocate these)
 RESERVED_TABLE_NUMBERS = {0, 253, 254, 255}

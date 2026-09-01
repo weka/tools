@@ -1,12 +1,13 @@
 """Compute ordered change sets with human-readable explanations."""
 
 import logging
-from typing import Dict, List, Set
+from typing import Dict, List, Optional, Set
 
 from .constants import (
     RESERVED_TABLE_NAMES,
     RESERVED_TABLE_NUMBERS,
     RULE_PRIORITY_INCREMENT,
+    RULE_PRIORITY_MAX,
     RULE_PRIORITY_START,
     TABLE_NAME_PREFIX,
     TABLE_NUMBER_MAX,
@@ -27,6 +28,7 @@ logger = logging.getLogger(__name__)
 def plan_changes(
     state: SystemState,
     validation_results: List[ValidationResult],
+    rule_priority_start: Optional[int] = None,
 ) -> List[PlannedChange]:
     """Generate an ordered list of changes needed to establish correct SBR.
 
@@ -40,10 +42,14 @@ def plan_changes(
     Args:
         state: Current system state.
         validation_results: Results from validator.
+        rule_priority_start: Base priority for new IP rules; defaults to
+                             RULE_PRIORITY_START (10000).
 
     Returns:
         Ordered list of PlannedChange entries.
     """
+    if rule_priority_start is None:
+        rule_priority_start = RULE_PRIORITY_START
     changes: List[PlannedChange] = []
 
     # Collect failed checks by interface
@@ -205,10 +211,19 @@ def plan_changes(
                 and not _has_ip_rule(state, iface, table_name)):
             planned_rules.add((iface.ip_address, table_name))
 
-            # Determine priority: find unused priority slot
-            priority = RULE_PRIORITY_START
+            # Determine priority: find unused priority slot. Never step
+            # past the main table lookup (32766) -- a rule there is dead
+            # configuration, so skip it loudly instead.
+            priority = rule_priority_start
             while priority in used_priorities:
                 priority += RULE_PRIORITY_INCREMENT
+            if priority > RULE_PRIORITY_MAX:
+                logger.error(
+                    "No free rule priority slot below %d for %s "
+                    "(base %d); skipping its IP rule",
+                    RULE_PRIORITY_MAX + 1, iface.name, rule_priority_start,
+                )
+                continue
             used_priorities.add(priority)
 
             rule_cmd = (

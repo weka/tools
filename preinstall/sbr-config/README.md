@@ -56,6 +56,9 @@ Options:
 
   --exclude IFACE         Exclude interface from SBR (repeatable)
   --include IFACE         Only configure these interfaces (repeatable)
+  --rule-priority PRIO    Base priority for new IP rules (default: 10000,
+                          stepping 10 per rule; must be 1-32765). Use the
+                          same value on every run of a given system.
 
   --backup-file PATH      Specific backup file for --rollback
   --log-file PATH         Log file (default: /var/log/sbr-config.log)

@@ -9,15 +9,12 @@ from ..constants import (
     MANAGED_COMMENT,
     NETWORKD_DROPIN_NAME,
     NETWORKD_LINKS_STATE_DIR,
-    RULE_PRIORITY_INCREMENT,
-    RULE_PRIORITY_START,
     SYSTEMD_NETWORK_DIR,
     TABLE_NAME_PREFIX,
-    TABLE_NUMBER_START,
 )
 from ..models import InterfaceInfo, PlannedChange, RoutingTable
 from ..utils import read_file, run_command, write_file_atomic
-from .base import PersistenceBackend, group_by_name
+from .base import PersistenceBackend, group_by_name, rule_priority_for
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +37,7 @@ class SystemdNetworkdBackend(PersistenceBackend):
         interfaces: List[InterfaceInfo],
         tables: List[RoutingTable],
         changes: List[PlannedChange],
+        rule_priorities=None,
     ) -> List[str]:
         table_num = {t.name: t.number for t in tables}
 
@@ -72,7 +70,10 @@ class SystemdNetworkdBackend(PersistenceBackend):
             )
             os.makedirs(dropin_dir, exist_ok=True)
             fpath = os.path.join(dropin_dir, NETWORKD_DROPIN_NAME)
-            write_file_atomic(fpath, self._generate_dropin(name, entries, tnum))
+            write_file_atomic(
+                fpath,
+                self._generate_dropin(name, entries, tnum, rule_priorities),
+            )
             written.append(fpath)
             logger.info("Wrote networkd drop-in: %s", fpath)
 
@@ -156,21 +157,13 @@ class SystemdNetworkdBackend(PersistenceBackend):
         name: str,
         entries: List[InterfaceInfo],
         table_number: int,
+        rule_priorities=None,
     ) -> str:
         """Generate drop-in content: routes and policy rules only.
 
         No [Match] section -- the drop-in merges into the .network file
         that already matches the link.
         """
-        # Follows the planner's allocation scheme; clamped so pre-existing
-        # sbr_ tables numbered below the allocation base don't produce an
-        # invalid priority.
-        priority = max(
-            RULE_PRIORITY_START,
-            RULE_PRIORITY_START
-            + (table_number - TABLE_NUMBER_START) * RULE_PRIORITY_INCREMENT,
-        )
-
         ips = ", ".join(e.ip_address for e in entries)
         lines = [
             MANAGED_COMMENT,
@@ -201,6 +194,9 @@ class SystemdNetworkdBackend(PersistenceBackend):
             ])
 
         for entry in entries:
+            priority = rule_priority_for(
+                entry.ip_address, table_number, rule_priorities
+            )
             lines.extend([
                 "[RoutingPolicyRule]",
                 f"From={entry.ip_address}",
