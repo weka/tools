@@ -2,7 +2,8 @@
 
 import logging
 import os
-from typing import Dict, List, Tuple
+import re
+from typing import Dict, List, Optional, Tuple
 
 from .constants import (
     MANAGED_COMMENT,
@@ -17,22 +18,52 @@ from .utils import read_file, run_command, write_file_atomic
 logger = logging.getLogger(__name__)
 
 
-def read_sysctl(key: str) -> str:
-    """Read a sysctl value from /proc/sys.
-
-    Args:
-        key: Sysctl key in dotted notation (e.g., net.ipv4.conf.all.rp_filter).
-
-    Returns:
-        The current value as a string, or "unknown" if unreadable.
-    """
-    proc_path = "/proc/sys/" + key.replace(".", "/")
+def _read_proc_value(proc_path: str) -> str:
+    """Read a /proc/sys value, returning 'unknown' if unreadable."""
     try:
         with open(proc_path, "r") as f:
             return f.read().strip()
     except (FileNotFoundError, PermissionError) as e:
-        logger.warning("Cannot read sysctl %s: %s", key, e)
+        logger.warning("Cannot read %s: %s", proc_path, e)
         return "unknown"
+
+
+def read_sysctl(key: str) -> str:
+    """Read a global sysctl value from /proc/sys.
+
+    Args:
+        key: Sysctl key in dotted notation (e.g., net.ipv4.conf.all.rp_filter).
+             Only safe for keys whose segments contain no dots -- for
+             per-interface keys use sysctl_key_to_cmd/_read_proc_value with
+             an explicit path, since interface names may contain dots
+             (VLANs like eth0.100).
+
+    Returns:
+        The current value as a string, or "unknown" if unreadable.
+    """
+    return _read_proc_value("/proc/sys/" + key.replace(".", "/"))
+
+
+def sysctl_key_to_cmd(key: str) -> str:
+    """Return a sysctl(8)-safe form of a dotted key.
+
+    Per-interface rp_filter keys are rewritten to slash notation
+    (net/ipv4/conf/<iface>/rp_filter) so interface names containing dots
+    (VLANs like eth0.100) aren't split into bogus path components by the
+    sysctl binary. Global keys pass through unchanged.
+    """
+    m = re.match(r"^net\.ipv4\.conf\.(.+)\.rp_filter$", key)
+    if m and m.group(1) not in ("all", "default"):
+        return "net/ipv4/conf/{}/rp_filter".format(m.group(1))
+    return key
+
+
+def _rp_filter_effectively_loose(current: str, all_rp: str) -> bool:
+    """The kernel evaluates max(conf.all, conf.iface) for rp_filter, so
+    loose mode is effective when EITHER value is 2. Single source of truth
+    for both validation and planning -- they must stay in agreement.
+    """
+    return current == "2" or all_rp == "2"
 
 
 def read_all_sysctl_values(interface_names: List[str]) -> Dict[str, str]:
@@ -50,10 +81,14 @@ def read_all_sysctl_values(interface_names: List[str]) -> Dict[str, str]:
     for key in SYSCTL_SETTINGS:
         values[key] = read_sysctl(key)
 
-    # Per-interface rp_filter
+    # Per-interface rp_filter. Read via an explicit /proc path -- the
+    # dotted-key path building in read_sysctl would mangle interface
+    # names that contain dots (VLANs).
     for iface in interface_names:
         key = SYSCTL_PER_IFACE_TEMPLATE.format(iface=iface)
-        values[key] = read_sysctl(key)
+        values[key] = _read_proc_value(
+            "/proc/sys/net/ipv4/conf/{}/rp_filter".format(iface)
+        )
 
     return values
 
@@ -95,7 +130,7 @@ def validate_sysctl(
         key = SYSCTL_PER_IFACE_TEMPLATE.format(iface=iface)
         current = current_values.get(key, "unknown")
         required = "2"
-        is_correct = (current == required) or (all_rp == required)
+        is_correct = _rp_filter_effectively_loose(current, all_rp)
         results.append(ValidationResult(
             interface_name=iface,
             check_name=f"sysctl {key}",
@@ -151,7 +186,10 @@ def plan_sysctl_changes(
         key = SYSCTL_PER_IFACE_TEMPLATE.format(iface=iface)
         current = current_values.get(key, "unknown")
         required = "2"
-        if current != required and all_rp != required:
+        if not _rp_filter_effectively_loose(current, all_rp):
+            # Slash notation keeps dotted interface names (VLANs) intact
+            # when the sysctl binary parses the key.
+            cmd_key = sysctl_key_to_cmd(key)
             changes.append(PlannedChange(
                 change_type=ChangeType.SET_SYSCTL,
                 description=f"Set {key} = {required}",
@@ -160,9 +198,9 @@ def plan_sysctl_changes(
                     f"so that packets arriving on {iface} are not dropped by the "
                     f"reverse path filter when the main table doesn't have a matching route."
                 ),
-                command=f"sysctl -w {key}={required}",
+                command=f"sysctl -w {cmd_key}={required}",
                 interface=iface,
-                rollback_command=f"sysctl -w {key}={current}" if current != "unknown" else None,
+                rollback_command=f"sysctl -w {cmd_key}={current}" if current != "unknown" else None,
             ))
 
     return changes
@@ -199,6 +237,19 @@ def write_sysctl_persistence() -> str:
     Returns:
         Path to the written config file.
     """
+    write_file_atomic(SYSCTL_CONF_PATH, _sysctl_persistence_content())
+    logger.info("Wrote sysctl persistence config to %s", SYSCTL_CONF_PATH)
+    return SYSCTL_CONF_PATH
+
+
+def _sysctl_persistence_content() -> str:
+    """Build the exact desired content of the sysctl.d file.
+
+    Deterministic on purpose: staleness detection compares the on-disk
+    file against this output, which heals any drift (per-interface keys
+    from <=1.2.0, delta-style files from 1.1.x, future format changes)
+    without format-specific sniffing.
+    """
     lines = [
         MANAGED_COMMENT,
         "# Sysctl settings for source-based routing",
@@ -218,35 +269,43 @@ def write_sysctl_persistence() -> str:
         lines.append(f"{key} = {spec['required']}")
         lines.append("")
 
-    content = "\n".join(lines) + "\n"
-    write_file_atomic(SYSCTL_CONF_PATH, content)
-    logger.info("Wrote sysctl persistence config to %s", SYSCTL_CONF_PATH)
-    return SYSCTL_CONF_PATH
+    return "\n".join(lines) + "\n"
 
 
-def refresh_sysctl_persistence_if_stale() -> bool:
-    """Rewrite the sysctl.d file if it contains per-interface keys.
+def refresh_sysctl_persistence(ensure: bool = False) -> Optional[str]:
+    """Bring the managed sysctl.d file in line with the desired content.
 
-    Versions up to 1.2.0 persisted net.ipv4.conf.<iface>.rp_filter entries,
-    which fail at boot for interfaces created by late driver load (ib*) and
-    on machines cloned from images with different NICs. Called on otherwise
-    clean --configure runs so affected systems self-heal.
+    Staleness is "managed file differs from what write_sysctl_persistence
+    would write" -- covering per-interface keys from <=1.2.0 (which fail
+    at boot for interfaces created by late driver load, e.g. ib*),
+    delta-style files from 1.1.x, and any future format drift. A file
+    without our marker is never touched.
+
+    Args:
+        ensure: Also create the file when it doesn't exist (used on clean
+                --configure runs where SBR is active but persistence is
+                missing, so sysctls don't silently revert on reboot).
 
     Returns:
-        True if a stale file was rewritten.
+        "created", "rewritten", or None if nothing was done.
     """
-    import re
-    content = read_file(SYSCTL_CONF_PATH)
-    if not content or MANAGED_COMMENT not in content:
-        return False
-    if not re.search(r"^net\.ipv4\.conf\.(?!all\.|default\.)\S+", content, re.MULTILINE):
-        return False
+    current = read_file(SYSCTL_CONF_PATH)
+    if current is None:
+        if not ensure:
+            return None
+        write_sysctl_persistence()
+        return "created"
+    if MANAGED_COMMENT not in current:
+        logger.warning(
+            "%s exists but is not managed by sbr-config; leaving it alone",
+            SYSCTL_CONF_PATH,
+        )
+        return None
+    if current == _sysctl_persistence_content():
+        return None
     write_sysctl_persistence()
-    logger.info(
-        "Rewrote %s: removed per-interface keys that fail at boot for "
-        "late-created interfaces", SYSCTL_CONF_PATH,
-    )
-    return True
+    logger.info("Rewrote stale %s (old or drifted format)", SYSCTL_CONF_PATH)
+    return "rewritten"
 
 
 def remove_sysctl_persistence() -> bool:

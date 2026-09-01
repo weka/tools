@@ -1,9 +1,22 @@
 """Persistence dispatch: select and invoke the correct backend."""
 
+import glob
 import logging
+import os
 from typing import List
 
-from .constants import TABLE_NAME_PREFIX
+from .constants import (
+    INTERFACES_D_DIR,
+    INTERFACES_FILE,
+    MANAGED_COMMENT,
+    NETPLAN_CONFIG_FILE,
+    NETPLAN_DIR,
+    NETWORKD_DROPIN_NAME,
+    NM_DISPATCHER_DIR,
+    NM_DISPATCHER_SCRIPT,
+    SYSTEMD_NETWORK_DIR,
+    TABLE_NAME_PREFIX,
+)
 from .exceptions import PersistenceError
 from .models import (
     ChangeType,
@@ -94,6 +107,30 @@ def write_persistence(
     files_written.extend(backend_files)
 
     return files_written
+
+
+def interface_persistence_exists() -> bool:
+    """Check whether any managed interface-level persistence is present.
+
+    Used on clean --configure runs to warn when runtime SBR is correct
+    but nothing would restore it after a reboot.
+    """
+    from .utils import read_file
+
+    if os.path.exists(os.path.join(NM_DISPATCHER_DIR, NM_DISPATCHER_SCRIPT)):
+        return True
+    if os.path.exists(os.path.join(NETPLAN_DIR, NETPLAN_CONFIG_FILE)):
+        return True
+    if glob.glob(os.path.join(SYSTEMD_NETWORK_DIR, "*.network.d", NETWORKD_DROPIN_NAME)):
+        return True
+    if glob.glob(os.path.join(SYSTEMD_NETWORK_DIR, "50-sbr-*.network")):
+        return True  # legacy networkd layout (<=1.2.x)
+    if glob.glob(os.path.join(INTERFACES_D_DIR, "sbr-*")):
+        return True
+    interfaces_content = read_file(INTERFACES_FILE)
+    if interfaces_content and MANAGED_COMMENT in interfaces_content:
+        return True
+    return False
 
 
 def _select_backend(nm_type: NetworkManagerType):

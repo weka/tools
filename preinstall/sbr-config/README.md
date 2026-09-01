@@ -131,7 +131,7 @@ For each non-default network interface, `sbr-config` creates:
 | Setting | Value | Purpose |
 |---------|-------|---------|
 | `net.ipv4.conf.all.rp_filter` | `2` | Loose reverse path filtering (required for SBR) |
-| `net.ipv4.conf.<iface>.rp_filter` | `2` | Per-interface loose RP filter (runtime only, see below) |
+| `net.ipv4.conf.<iface>.rp_filter` | `2` | Per-interface loose RP filter (runtime only, and only when `conf.all` is not already loose -- the kernel uses `max(all, iface)`) |
 | `net.ipv4.conf.all.arp_filter` | `1` | Prevent ARP flux on multi-NIC systems |
 | `net.ipv4.conf.all.arp_announce` | `2` | Use best local address for ARP |
 
@@ -141,10 +141,10 @@ With `--persist`, the tool writes configuration appropriate for the detected net
 
 | Network Manager | Persistence Method |
 |----------------|--------------------|
-| **NetworkManager** | Dispatcher script in `/etc/NetworkManager/dispatcher.d/` |
-| **systemd-networkd** | `.network` files in `/etc/systemd/network/` |
-| **ifupdown** | `post-up`/`pre-down` in `/etc/network/interfaces` |
-| **Netplan** | YAML in `/etc/netplan/90-sbr-config.yaml` |
+| **NetworkManager** | Dispatcher script in `/etc/NetworkManager/dispatcher.d/` (fires only for NM-managed devices; unmanaged interfaces are warned about) |
+| **systemd-networkd** | Drop-in `<applied-file>.network.d/50-sbr.conf` merged into the `.network` file networkd already applies to each link (networkd applies exactly one `.network` file per link, so a standalone file would shadow or be shadowed by the real config) |
+| **ifupdown** | `post-up`/`pre-down` added to the interface's existing stanza in `/etc/network/interfaces` or a sourced `interfaces.d` file |
+| **Netplan** | YAML in `/etc/netplan/90-sbr-config.yaml`, merged with any routes/routing-policy other netplan files define for the same interfaces (netplan replaces list values wholesale across files) |
 
 Global sysctl settings are persisted to `/etc/sysctl.d/90-sbr-config.conf` regardless of network manager. Per-interface `rp_filter` keys are set at runtime only and deliberately never persisted: sysctl.d is applied early at boot, before late-binding drivers (e.g. Mellanox/IPoIB `ib*`) create their interfaces, so persisted per-interface keys log errors on every boot. They are also unnecessary -- `conf.default.rp_filter=2` is inherited by interfaces created later, and the kernel evaluates `max(all, iface)`, so `conf.all.rp_filter=2` already makes loose mode effective.
 

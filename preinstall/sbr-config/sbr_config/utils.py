@@ -7,7 +7,7 @@ import platform
 import subprocess
 from typing import Optional
 
-from .constants import LOCK_FILE
+from .constants import LOCK_FILE, MANAGED_COMMENT
 from .exceptions import ConfigurationError, LockError, PrivilegeError
 
 logger = logging.getLogger(__name__)
@@ -107,6 +107,30 @@ def read_file(path: str) -> Optional[str]:
     except PermissionError:
         logger.warning("Permission denied reading %s", path)
         return None
+
+
+def strip_managed_lines(content: str) -> str:
+    """Remove managed blocks sbr-config inserted into a shared config file.
+
+    A block is a MANAGED_COMMENT marker line followed by indented
+    post-up/pre-down lines (the ifupdown insertion format). Everything
+    else is preserved verbatim.
+    """
+    lines = content.splitlines()
+    new_lines = []
+    in_managed_block = False
+
+    for line in lines:
+        if MANAGED_COMMENT in line:
+            in_managed_block = True
+            continue
+        if in_managed_block:
+            if line.strip().startswith(("post-up", "pre-down")):
+                continue
+            in_managed_block = False
+        new_lines.append(line)
+
+    return "\n".join(new_lines)
 
 
 def check_root() -> None:

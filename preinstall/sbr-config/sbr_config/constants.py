@@ -26,6 +26,8 @@ NM_DISPATCHER_SCRIPT = "50-sbr-config"
 
 # systemd-networkd
 SYSTEMD_NETWORK_DIR = "/etc/systemd/network"
+NETWORKD_DROPIN_NAME = "50-sbr.conf"  # inside <applied-file>.network.d/
+NETWORKD_LINKS_STATE_DIR = "/run/systemd/netif/links"
 
 # Netplan
 NETPLAN_DIR = "/etc/netplan"

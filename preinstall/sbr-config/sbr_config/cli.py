@@ -278,16 +278,10 @@ def _do_configure(args: argparse.Namespace, out: Output) -> int:
         if failed == 0:
             out.nl()
             out.info("System is correctly configured for source-based routing.")
-            # Self-heal persistence written by <=1.2.0: per-interface sysctl
-            # keys fail at boot for late-created interfaces (e.g. ib*).
-            if not args.no_persist:
-                from .sysctl import refresh_sysctl_persistence_if_stale
-                if refresh_sysctl_persistence_if_stale():
-                    out.info(
-                        "Refreshed /etc/sysctl.d/90-sbr-config.conf: removed "
-                        "per-interface keys that fail at boot for interfaces "
-                        "created by late driver load (e.g. ib*)."
-                    )
+            # Gated on dry-run: a dry run must never write to disk, and
+            # errors here must not fail a run that needed nothing.
+            if not args.dry_run and not args.no_persist:
+                _heal_persistence(state, out)
             return 0
 
         # Plan changes
@@ -409,8 +403,51 @@ def _do_rollback(args: argparse.Namespace, out: Output) -> int:
 
 
 # ---------------------------------------------------------------------------
-# Persistence helper
+# Persistence helpers
 # ---------------------------------------------------------------------------
+
+def _heal_persistence(state, out: Output) -> None:
+    """Repair persistence drift on an already-correct system.
+
+    Rewrites the managed sysctl.d file when it differs from the desired
+    content (e.g. per-interface keys from <=1.2.0 that fail at boot for
+    late-created interfaces), creates it if SBR is active but the file is
+    missing, and warns when no interface-level persistence exists at all.
+    Failures downgrade to warnings -- this run needed no changes and must
+    not fail because /etc is read-only or full.
+    """
+    from .constants import TABLE_NAME_PREFIX
+    from .persistence import interface_persistence_exists
+    from .sysctl import refresh_sysctl_persistence
+
+    has_sbr = any(
+        rt.name.startswith(TABLE_NAME_PREFIX) for rt in state.routing_tables
+    )
+    try:
+        action = refresh_sysctl_persistence(ensure=has_sbr)
+    except (SbrConfigError, OSError) as e:
+        out.warning(f"Could not refresh sysctl persistence: {e}")
+        return
+    if action == "rewritten":
+        out.info(
+            "Refreshed /etc/sysctl.d/90-sbr-config.conf: replaced stale "
+            "content (e.g. per-interface keys that fail at boot for "
+            "late-created interfaces such as ib*)."
+        )
+    elif action == "created":
+        out.info(
+            "Wrote /etc/sysctl.d/90-sbr-config.conf: SBR is active but "
+            "sysctl persistence was missing."
+        )
+
+    if has_sbr and not interface_persistence_exists():
+        out.warning(
+            "SBR runtime configuration is correct but no managed interface "
+            "persistence files were found -- routes and rules may not "
+            "survive a reboot. To re-create persistence, run "
+            "'sbr-config --rollback' followed by 'sbr-config --configure'."
+        )
+
 
 def _write_persistence(
     state,

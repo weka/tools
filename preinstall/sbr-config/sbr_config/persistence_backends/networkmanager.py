@@ -11,7 +11,7 @@ from ..constants import (
     TABLE_NAME_PREFIX,
 )
 from ..models import InterfaceInfo, PlannedChange, RoutingTable
-from ..utils import read_file, write_file_atomic
+from ..utils import command_exists, read_file, run_command, write_file_atomic
 from .base import PersistenceBackend, group_by_name
 
 logger = logging.getLogger(__name__)
@@ -40,7 +40,28 @@ class NetworkManagerBackend(PersistenceBackend):
         write_file_atomic(script_path, script, mode=0o755)
 
         logger.info("Wrote NM dispatcher script: %s", script_path)
+
+        # The dispatcher only fires for NM-managed devices. Hand-configured
+        # storage NICs are often NM_CONTROLLED=no -- warn, or this
+        # persistence silently does nothing for exactly those interfaces.
+        self._warn_unmanaged(interfaces)
+
         return [script_path]
+
+    def _warn_unmanaged(self, interfaces: List[InterfaceInfo]) -> None:
+        if not command_exists("nmcli"):
+            return
+        for name, _ in group_by_name(interfaces):
+            result = run_command(
+                f"nmcli -t -f GENERAL.STATE device show {name}", check=False
+            )
+            if result.returncode == 0 and "unmanaged" in result.stdout:
+                logger.warning(
+                    "%s is unmanaged by NetworkManager; the dispatcher "
+                    "script never fires for it, so SBR will not be restored "
+                    "on link changes or reboot for this interface.",
+                    name,
+                )
 
     def remove_config(self) -> List[str]:
         script_path = os.path.join(NM_DISPATCHER_DIR, NM_DISPATCHER_SCRIPT)

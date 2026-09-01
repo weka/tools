@@ -14,6 +14,7 @@ from .constants import (
     MANAGED_COMMENT,
     NETPLAN_CONFIG_FILE,
     NETPLAN_DIR,
+    NETWORKD_DROPIN_NAME,
     NM_DISPATCHER_DIR,
     NM_DISPATCHER_SCRIPT,
     RT_TABLES_PATH,
@@ -23,8 +24,12 @@ from .constants import (
 )
 from .exceptions import RollbackError
 from .models import Route, Rule, SystemState
-from .sysctl import remove_sysctl_persistence
-from .utils import read_file, run_command, write_file_atomic
+from .sysctl import (
+    refresh_sysctl_persistence,
+    remove_sysctl_persistence,
+    sysctl_key_to_cmd,
+)
+from .utils import read_file, run_command, strip_managed_lines, write_file_atomic
 
 logger = logging.getLogger(__name__)
 
@@ -32,9 +37,12 @@ NM_DISPATCHER_PATH = os.path.join(NM_DISPATCHER_DIR, NM_DISPATCHER_SCRIPT)
 
 
 def _managed_file_paths() -> List[str]:
-    """All persistence file paths sbr-config manages (existing or not).
+    """All persistence file paths sbr-config manages or may append to.
 
     Fixed paths are always listed; glob-based ones only when present.
+    Includes every file in interfaces.d (not just our sbr-* drop-ins)
+    because sbr-config may append managed lines to a user's drop-in that
+    holds the interface stanza.
     """
     paths = [
         SYSCTL_CONF_PATH,
@@ -42,9 +50,29 @@ def _managed_file_paths() -> List[str]:
         os.path.join(NETPLAN_DIR, NETPLAN_CONFIG_FILE),
         INTERFACES_FILE,
     ]
+    # networkd: current drop-in layout plus the legacy standalone files
+    paths += sorted(glob.glob(
+        os.path.join(SYSTEMD_NETWORK_DIR, "*.network.d", NETWORKD_DROPIN_NAME)
+    ))
     paths += sorted(glob.glob(os.path.join(SYSTEMD_NETWORK_DIR, "50-sbr-*.network")))
-    paths += sorted(glob.glob(os.path.join(INTERFACES_D_DIR, "sbr-*")))
+    paths += sorted(
+        p for p in glob.glob(os.path.join(INTERFACES_D_DIR, "*"))
+        if os.path.isfile(p)
+    )
     return paths
+
+
+def _is_append_style(path: str) -> bool:
+    """Files sbr-config appends to but does not own outright.
+
+    These are never deleted during restore -- managed lines are stripped
+    instead -- and are only rewritten when our marker shows we modified
+    them.
+    """
+    if path == INTERFACES_FILE:
+        return True
+    dirname, basename = os.path.split(path)
+    return dirname == INTERFACES_D_DIR and not basename.startswith("sbr-")
 
 
 def save_state(state: SystemState, backup_dir: str = BACKUP_DIR) -> str:
@@ -358,8 +386,11 @@ def _restore_sysctl(saved: dict) -> None:
     saved_values = saved.get("sysctl_values", {})
     for key, value in saved_values.items():
         if value and value != "unknown":
+            # Slash notation for per-interface keys so dotted interface
+            # names (VLANs) aren't mangled by the sysctl binary.
+            cmd_key = sysctl_key_to_cmd(key)
             try:
-                run_command(f"sysctl -w {key}={value}", check=False)
+                run_command(f"sysctl -w {cmd_key}={value}", check=False)
                 logger.info("Restored sysctl %s = %s", key, value)
             except Exception as e:
                 logger.warning("Failed to restore sysctl %s: %s", key, e)
@@ -377,12 +408,20 @@ def _restore_persistence_files(saved: dict) -> None:
         _remove_persistence_files()
         return
 
-    # Remove managed files that didn't exist at backup time. The main
-    # interfaces file is never deleted -- it's user-owned; content restore
-    # below handles any lines we appended to it.
+    # Remove managed files that didn't exist at backup time. Append-style
+    # files (the main interfaces file and user drop-ins we may have
+    # appended to) are never deleted -- managed lines are stripped instead.
     for path in _managed_file_paths():
-        if snapshot.get(path) is None and path != INTERFACES_FILE:
+        if snapshot.get(path) is not None:
+            continue
+        if _is_append_style(path):
+            current = read_file(path)
+            if current and MANAGED_COMMENT in current:
+                write_file_atomic(path, strip_managed_lines(current))
+                logger.info("Stripped sbr-config lines from %s", path)
+        else:
             _remove_managed_file(path)
+            _cleanup_empty_dropin_dir(path)
 
     # Restore recorded contents
     for path, content in snapshot.items():
@@ -391,13 +430,34 @@ def _restore_persistence_files(saved: dict) -> None:
         current = read_file(path)
         if current == content:
             continue
-        if path == INTERFACES_FILE and (current is None or MANAGED_COMMENT not in current):
-            # Only rewrite the interfaces file if our own lines are in it;
+        if _is_append_style(path) and (current is None or MANAGED_COMMENT not in current):
+            # Only rewrite user-owned files if our own lines are in them;
             # otherwise the difference is someone else's edit.
             continue
         mode = 0o755 if path == NM_DISPATCHER_PATH else None
         write_file_atomic(path, content, mode=mode)
         logger.info("Restored %s from backup", path)
+
+    # A backup taken under <=1.2.0 restores a sysctl.d file with
+    # per-interface keys, reintroducing boot errors for late-created
+    # interfaces. Heal it to the current format right away.
+    try:
+        if refresh_sysctl_persistence():
+            logger.info(
+                "Healed restored %s to the current format", SYSCTL_CONF_PATH
+            )
+    except Exception as e:
+        logger.warning("Could not heal restored sysctl persistence: %s", e)
+
+
+def _cleanup_empty_dropin_dir(path: str) -> None:
+    """Remove a now-empty *.network.d drop-in directory."""
+    parent = os.path.dirname(path)
+    if parent.endswith(".network.d") and os.path.isdir(parent):
+        try:
+            os.rmdir(parent)
+        except OSError:
+            pass  # not empty or already gone
 
 
 def _remove_persistence_files() -> None:
@@ -411,17 +471,36 @@ def _remove_persistence_files() -> None:
     # Netplan config
     _remove_managed_file(os.path.join(NETPLAN_DIR, NETPLAN_CONFIG_FILE))
 
-    # systemd-networkd drop-in files
+    # systemd-networkd: drop-ins plus legacy standalone files (<=1.2.x)
+    for path in glob.glob(
+        os.path.join(SYSTEMD_NETWORK_DIR, "*.network.d", NETWORKD_DROPIN_NAME)
+    ):
+        _remove_managed_file(path)
+        _cleanup_empty_dropin_dir(path)
     if os.path.isdir(SYSTEMD_NETWORK_DIR):
         for fname in os.listdir(SYSTEMD_NETWORK_DIR):
-            if fname.startswith("50-sbr-"):
+            if fname.startswith("50-sbr-") and fname.endswith(".network"):
                 _remove_managed_file(os.path.join(SYSTEMD_NETWORK_DIR, fname))
 
-    # ifupdown files in interfaces.d
+    # ifupdown: strip managed lines from the main interfaces file
+    main_content = read_file(INTERFACES_FILE)
+    if main_content and MANAGED_COMMENT in main_content:
+        write_file_atomic(INTERFACES_FILE, strip_managed_lines(main_content))
+        logger.info("Stripped sbr-config lines from %s", INTERFACES_FILE)
+
+    # ifupdown: our drop-ins removed, managed lines stripped from user files
     if os.path.isdir(INTERFACES_D_DIR):
         for fname in os.listdir(INTERFACES_D_DIR):
+            fpath = os.path.join(INTERFACES_D_DIR, fname)
+            if not os.path.isfile(fpath):
+                continue
             if fname.startswith("sbr-"):
-                _remove_managed_file(os.path.join(INTERFACES_D_DIR, fname))
+                _remove_managed_file(fpath)
+            else:
+                content = read_file(fpath)
+                if content and MANAGED_COMMENT in content:
+                    write_file_atomic(fpath, strip_managed_lines(content))
+                    logger.info("Stripped sbr-config lines from %s", fpath)
 
     # Sysctl persistence
     remove_sysctl_persistence()

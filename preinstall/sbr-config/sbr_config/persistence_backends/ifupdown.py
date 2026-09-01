@@ -12,7 +12,7 @@ from ..constants import (
     TABLE_NAME_PREFIX,
 )
 from ..models import InterfaceInfo, PlannedChange, RoutingTable
-from ..utils import read_file, write_file_atomic
+from ..utils import read_file, strip_managed_lines, write_file_atomic
 from .base import PersistenceBackend, group_by_name
 
 logger = logging.getLogger(__name__)
@@ -21,9 +21,13 @@ logger = logging.getLogger(__name__)
 class IfupdownBackend(PersistenceBackend):
     """Write ifupdown configuration for SBR persistence.
 
-    Adds post-up/pre-down lines to interface stanzas in
-    /etc/network/interfaces or creates drop-in files in
-    /etc/network/interfaces.d/.
+    Adds post-up/pre-down lines to the interface's existing stanza --
+    searching /etc/network/interfaces AND the files in
+    /etc/network/interfaces.d/ (stanzas commonly live there via the
+    default `source` line). Only when no stanza exists anywhere does it
+    fall back to creating its own drop-in; a second stanza for an
+    interface that already has one elsewhere would conflict with the
+    original's method.
     """
 
     def write_config(
@@ -40,11 +44,10 @@ class IfupdownBackend(PersistenceBackend):
         # stale) post-up/pre-down blocks. Done before the per-interface
         # loop -- stripping inside it would delete lines just written for
         # an earlier interface in this same run.
-        main_content = read_file(INTERFACES_FILE)
-        if main_content and MANAGED_COMMENT in main_content:
-            write_file_atomic(
-                INTERFACES_FILE, self._remove_managed_lines(main_content)
-            )
+        for path in self._stanza_files():
+            content = read_file(path)
+            if content and MANAGED_COMMENT in content:
+                write_file_atomic(path, strip_managed_lines(content))
 
         for name, entries in group_by_name(interfaces):
             table_name = f"{TABLE_NAME_PREFIX}{name}"
@@ -82,31 +85,53 @@ class IfupdownBackend(PersistenceBackend):
             ]
             down_cmds.append(f"ip route flush table {table_name}")
 
-            # Try to add to existing stanza in interfaces file
-            if self._add_to_interfaces_file(name, up_cmds, down_cmds):
-                written.append(INTERFACES_FILE)
+            # Add to the interface's existing stanza wherever it lives --
+            # the main interfaces file or a sourced interfaces.d file
+            stanza_path = None
+            for path in self._stanza_files():
+                if self._add_to_stanza_file(path, name, up_cmds, down_cmds):
+                    stanza_path = path
+                    break
+            if stanza_path:
+                written.append(stanza_path)
                 continue
 
-            # Fall back to drop-in file
+            # No stanza anywhere: fall back to our own drop-in file
             fpath = self._write_dropin(entries[0], up_cmds, down_cmds)
             if fpath:
                 written.append(fpath)
 
         return written
 
+    def _stanza_files(self) -> List[str]:
+        """Files that may hold interface stanzas: the main interfaces
+        file first, then sourced interfaces.d files (excluding our own
+        sbr-* drop-ins, which are whole-file managed)."""
+        paths = []
+        if os.path.exists(INTERFACES_FILE):
+            paths.append(INTERFACES_FILE)
+        if os.path.isdir(INTERFACES_D_DIR):
+            for fname in sorted(os.listdir(INTERFACES_D_DIR)):
+                if fname.startswith("sbr-"):
+                    continue
+                fpath = os.path.join(INTERFACES_D_DIR, fname)
+                if os.path.isfile(fpath):
+                    paths.append(fpath)
+        return paths
+
     def remove_config(self) -> List[str]:
         removed = []
 
-        # Remove from interfaces file
-        if os.path.exists(INTERFACES_FILE):
-            content = read_file(INTERFACES_FILE)
+        # Strip managed lines from stanza files (main + user drop-ins)
+        for path in self._stanza_files():
+            content = read_file(path)
             if content and MANAGED_COMMENT in content:
-                cleaned = self._remove_managed_lines(content)
+                cleaned = strip_managed_lines(content)
                 if cleaned != content:
-                    write_file_atomic(INTERFACES_FILE, cleaned)
-                    removed.append(INTERFACES_FILE)
+                    write_file_atomic(path, cleaned)
+                    removed.append(path)
 
-        # Remove drop-in files
+        # Remove our own drop-in files
         if os.path.isdir(INTERFACES_D_DIR):
             for fname in os.listdir(INTERFACES_D_DIR):
                 if fname.startswith("sbr-"):
@@ -125,17 +150,18 @@ class IfupdownBackend(PersistenceBackend):
             f"  or drop-in files in {INTERFACES_D_DIR}/"
         )
 
-    def _add_to_interfaces_file(
+    def _add_to_stanza_file(
         self,
+        path: str,
         iface_name: str,
         up_cmds: List[str],
         down_cmds: List[str],
     ) -> bool:
-        """Try to add post-up/pre-down lines to an existing stanza.
+        """Try to add post-up/pre-down lines to an existing stanza in path.
 
         Returns True if successful, False if the stanza wasn't found.
         """
-        content = read_file(INTERFACES_FILE)
+        content = read_file(path)
         if not content:
             return False
 
@@ -145,7 +171,6 @@ class IfupdownBackend(PersistenceBackend):
         if not match:
             return False
 
-        stanza = match.group(0)
         stanza_end = match.end()
 
         # Build lines to insert
@@ -158,8 +183,8 @@ class IfupdownBackend(PersistenceBackend):
 
         # Insert at end of stanza
         new_content = content[:stanza_end] + "\n" + insert_block + content[stanza_end:]
-        write_file_atomic(INTERFACES_FILE, new_content)
-        logger.info("Added SBR lines to %s stanza in %s", iface_name, INTERFACES_FILE)
+        write_file_atomic(path, new_content)
+        logger.info("Added SBR lines to %s stanza in %s", iface_name, path)
         return True
 
     def _write_dropin(
@@ -199,23 +224,3 @@ class IfupdownBackend(PersistenceBackend):
         write_file_atomic(fpath, "\n".join(lines))
         logger.info("Wrote ifupdown drop-in: %s", fpath)
         return fpath
-
-    def _remove_managed_lines(self, content: str) -> str:
-        """Remove lines between MANAGED_COMMENT markers."""
-        lines = content.splitlines()
-        new_lines = []
-        in_managed_block = False
-
-        for line in lines:
-            if MANAGED_COMMENT in line:
-                in_managed_block = True
-                continue
-            if in_managed_block:
-                # Lines in a managed block are indented post-up/pre-down
-                if line.strip().startswith(("post-up", "pre-down")):
-                    continue
-                else:
-                    in_managed_block = False
-            new_lines.append(line)
-
-        return "\n".join(new_lines)
