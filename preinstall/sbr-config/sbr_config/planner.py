@@ -64,8 +64,14 @@ def plan_changes(
     sysctl_changes = plan_sysctl_changes(state.sysctl_values, non_default_ifaces)
     changes.extend(sysctl_changes)
 
-    # Allocate table numbers for interfaces that need them
+    # Allocate table numbers for interfaces that need them. Numbers in
+    # active kernel use (routes/rules referencing numeric-only tables,
+    # e.g. cloud-init policy routing) count as used even though they
+    # never appear in rt_tables -- allocating one would alias our named
+    # table onto someone else's, and rollback's flush would then destroy
+    # their routes.
     used_numbers = {rt.number for rt in state.routing_tables}
+    used_numbers.update(getattr(state, "active_table_numbers", []) or [])
     used_names = {rt.name for rt in state.routing_tables}
     table_assignments: Dict[str, int] = {}  # iface_name -> table_number
 

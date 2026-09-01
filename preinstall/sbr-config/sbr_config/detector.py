@@ -13,6 +13,7 @@ from .constants import (
     DHCP_LEASE_PATHS,
     INTERFACES_FILE,
     NETPLAN_DIR,
+    NETWORKD_LEASE_DIR,
     RESERVED_TABLE_NAMES,
     RESERVED_TABLE_NUMBERS,
     RT_TABLES_PATH,
@@ -89,6 +90,11 @@ def detect_system_state(
             routes_by_table[rt.name] = table_routes
     rules = _detect_rules(use_json)
 
+    # Table numbers actively used by the kernel (routes or rules),
+    # including numeric-only tables absent from rt_tables (e.g.
+    # cloud-init per-ENI policy routing). Planner must not allocate them.
+    active_table_numbers = _detect_active_table_numbers(rules)
+
     # Detect sysctl values
     iface_names = [i.name for i in interfaces if not i.is_loopback]
     sysctl_values = read_all_sysctl_values(iface_names)
@@ -106,6 +112,7 @@ def detect_system_state(
         sysctl_values=sysctl_values,
         network_manager=network_manager,
         timestamp=datetime.now(timezone.utc).isoformat(),
+        active_table_numbers=active_table_numbers,
     )
 
 
@@ -448,6 +455,30 @@ def _parse_rule_text(line: str) -> Optional[Rule]:
     )
 
 
+def _detect_active_table_numbers(rules: List[Rule]) -> List[int]:
+    """Collect every numeric routing table id the kernel is using.
+
+    Sources: routes in any table (`ip route show table all` prints a
+    'table <id>' suffix for non-main tables) and policy rules whose
+    table reference is numeric (names were already resolved via
+    rt_tables; numeric-only tables never appear there).
+    """
+    numbers = set()
+
+    result = run_command("ip route show table all", check=False)
+    for m in re.finditer(r'\btable\s+(\d+)\b', result.stdout):
+        numbers.add(int(m.group(1)))
+
+    for rule in rules:
+        if rule.table is not None:
+            try:
+                numbers.add(int(rule.table))
+            except (TypeError, ValueError):
+                pass  # named table -- covered by rt_tables parsing
+
+    return sorted(numbers)
+
+
 # ---------------------------------------------------------------------------
 # Routing table file parsing
 # ---------------------------------------------------------------------------
@@ -535,25 +566,45 @@ def _gateway_from_existing_routes(iface: InterfaceInfo, use_json: bool) -> Optio
 
 
 def _gateway_from_dhcp_leases(iface: InterfaceInfo) -> Optional[str]:
-    """Search DHCP lease files for gateway information."""
+    """Search DHCP lease files for gateway information.
+
+    Every lookup is scoped to THIS interface: dhclient-style paths embed
+    the interface name, and systemd-networkd leases are keyed by the
+    interface's ifindex. An unscoped search would hand a VLAN or
+    non-routable interface the router from some other NIC's lease.
+    """
     for pattern in DHCP_LEASE_PATHS:
         path = pattern.format(iface=iface.name)
-        matched_files = glob.glob(path)
-        for lease_file in matched_files:
-            try:
-                content = read_file(lease_file)
-                if not content:
-                    continue
-                # dhclient format: "option routers 10.0.2.1;"
-                m = re.search(r'option\s+routers\s+([\d.]+)', content)
-                if m:
-                    return m.group(1)
-                # systemd-networkd lease format: "ROUTER=10.0.2.1"
-                m = re.search(r'ROUTER=([\d.]+)', content)
-                if m:
-                    return m.group(1)
-            except Exception as e:
-                logger.debug("Error reading lease file %s: %s", lease_file, e)
+        for lease_file in glob.glob(path):
+            gw = _router_from_lease_file(lease_file)
+            if gw:
+                return gw
+
+    # systemd-networkd: lease file named by this interface's ifindex
+    try:
+        with open("/sys/class/net/{}/ifindex".format(iface.name)) as f:
+            ifindex = f.read().strip()
+    except OSError:
+        return None
+    return _router_from_lease_file(os.path.join(NETWORKD_LEASE_DIR, ifindex))
+
+
+def _router_from_lease_file(lease_file: str) -> Optional[str]:
+    """Extract the router/gateway address from one DHCP lease file."""
+    try:
+        content = read_file(lease_file)
+        if not content:
+            return None
+        # dhclient format: "option routers 10.0.2.1;"
+        m = re.search(r'option\s+routers\s+([\d.]+)', content)
+        if m:
+            return m.group(1)
+        # systemd-networkd lease format: "ROUTER=10.0.2.1"
+        m = re.search(r'ROUTER=([\d.]+)', content)
+        if m:
+            return m.group(1)
+    except Exception as e:
+        logger.debug("Error reading lease file %s: %s", lease_file, e)
     return None
 
 

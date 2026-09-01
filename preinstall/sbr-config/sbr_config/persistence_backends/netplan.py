@@ -48,7 +48,8 @@ class NetplanBackend(PersistenceBackend):
 
         content = self._generate_yaml(groups, table_num, existing)
         fpath = os.path.join(NETPLAN_DIR, NETPLAN_CONFIG_FILE)
-        write_file_atomic(fpath, content)
+        # 0600: netplan warns (newer versions error) on world-readable config
+        write_file_atomic(fpath, content, mode=0o600)
 
         logger.info("Wrote netplan config: %s", fpath)
 
@@ -91,6 +92,7 @@ class NetplanBackend(PersistenceBackend):
                 "routes": [],
                 "policy": [],
                 "later_conflict": False,
+                "defined": False,
             }
             for name in iface_names
         }
@@ -129,6 +131,7 @@ class NetplanBackend(PersistenceBackend):
                     if name not in result or not isinstance(cfg, dict):
                         continue
                     result[name]["section"] = section
+                    result[name]["defined"] = True
                     for yaml_key, dest in (("routes", "routes"),
                                            ("routing-policy", "policy")):
                         vals = cfg.get(yaml_key)
@@ -185,7 +188,23 @@ class NetplanBackend(PersistenceBackend):
 
             info = existing.get(name) or {
                 "section": "ethernets", "routes": [], "policy": [],
+                "defined": False,
             }
+
+            # Only emit entries for interfaces netplan already defines.
+            # Emitting one for an unmanaged interface (e.g. a manually
+            # created VLAN) makes netplan generate a .network for it, and
+            # networkd then takes over the link with no address config --
+            # stripping its addresses on apply.
+            if not info.get("defined"):
+                logger.warning(
+                    "%s is not defined in any netplan file; skipping SBR "
+                    "persistence for it (adding it would make networkd take "
+                    "over the link and drop its address config). Runtime "
+                    "config is active but will not survive a reboot.",
+                    name,
+                )
+                continue
 
             # Follows the planner's allocation scheme; clamped so
             # pre-existing sbr_ tables numbered below 100 don't produce a

@@ -40,7 +40,11 @@ INTERFACES_D_DIR = "/etc/network/interfaces.d"
 # Marker comment for managed files
 MANAGED_COMMENT = "# Managed by sbr-config -- do not edit manually"
 
-# DHCP lease file search paths
+# DHCP lease file search paths. Every pattern MUST be scoped to {iface} --
+# an unscoped glob makes every interface inherit the first lease's router
+# (a VLAN with no gateway then gets the parent NIC's, and the planned
+# default route fails or misroutes). systemd-networkd leases are keyed by
+# ifindex, not name, and are handled separately in the detector.
 DHCP_LEASE_PATHS = [
     "/var/lib/dhclient/dhclient-{iface}.leases",
     "/var/lib/dhclient/dhclient-{iface}.lease",
@@ -49,8 +53,10 @@ DHCP_LEASE_PATHS = [
     "/var/lib/dhcp/dhclient-{iface}.leases",
     "/var/lib/NetworkManager/dhclient-*-{iface}.lease",
     "/var/lib/NetworkManager/internal-*-{iface}.lease",
-    "/run/systemd/netif/leases/*",
 ]
+
+# systemd-networkd lease files, keyed by interface index
+NETWORKD_LEASE_DIR = "/run/systemd/netif/leases"
 
 # Sysctl settings required for SBR
 SYSCTL_SETTINGS = {
