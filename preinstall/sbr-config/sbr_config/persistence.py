@@ -39,16 +39,10 @@ def write_persistence(
     """
     files_written = []
 
-    # Write sysctl persistence (common to all backends). Uses the full set
-    # of non-default up interfaces, deduplicated -- interfaces with several
-    # addresses appear once per address in state.interfaces.
-    sysctl_iface_names = []
-    for iface in state.interfaces:
-        if iface.is_loopback or iface.is_default_route_interface or not iface.is_up:
-            continue
-        if iface.name not in sysctl_iface_names:
-            sysctl_iface_names.append(iface.name)
-    sysctl_path = write_sysctl_persistence(sysctl_iface_names)
+    # Write sysctl persistence (common to all backends). Globals only --
+    # per-interface keys break at boot for interfaces created by late
+    # driver load (see write_sysctl_persistence).
+    sysctl_path = write_sysctl_persistence()
     if sysctl_path:
         files_written.append(sysctl_path)
 

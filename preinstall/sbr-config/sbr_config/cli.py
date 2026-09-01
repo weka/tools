@@ -278,6 +278,16 @@ def _do_configure(args: argparse.Namespace, out: Output) -> int:
         if failed == 0:
             out.nl()
             out.info("System is correctly configured for source-based routing.")
+            # Self-heal persistence written by <=1.2.0: per-interface sysctl
+            # keys fail at boot for late-created interfaces (e.g. ib*).
+            if not args.no_persist:
+                from .sysctl import refresh_sysctl_persistence_if_stale
+                if refresh_sysctl_persistence_if_stale():
+                    out.info(
+                        "Refreshed /etc/sysctl.d/90-sbr-config.conf: removed "
+                        "per-interface keys that fail at boot for interfaces "
+                        "created by late driver load (e.g. ib*)."
+                    )
             return 0
 
         # Plan changes

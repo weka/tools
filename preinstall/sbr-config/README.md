@@ -131,7 +131,7 @@ For each non-default network interface, `sbr-config` creates:
 | Setting | Value | Purpose |
 |---------|-------|---------|
 | `net.ipv4.conf.all.rp_filter` | `2` | Loose reverse path filtering (required for SBR) |
-| `net.ipv4.conf.<iface>.rp_filter` | `2` | Per-interface loose RP filter |
+| `net.ipv4.conf.<iface>.rp_filter` | `2` | Per-interface loose RP filter (runtime only, see below) |
 | `net.ipv4.conf.all.arp_filter` | `1` | Prevent ARP flux on multi-NIC systems |
 | `net.ipv4.conf.all.arp_announce` | `2` | Use best local address for ARP |
 
@@ -146,7 +146,7 @@ With `--persist`, the tool writes configuration appropriate for the detected net
 | **ifupdown** | `post-up`/`pre-down` in `/etc/network/interfaces` |
 | **Netplan** | YAML in `/etc/netplan/90-sbr-config.yaml` |
 
-Sysctl settings are persisted to `/etc/sysctl.d/90-sbr-config.conf` regardless of network manager.
+Global sysctl settings are persisted to `/etc/sysctl.d/90-sbr-config.conf` regardless of network manager. Per-interface `rp_filter` keys are set at runtime only and deliberately never persisted: sysctl.d is applied early at boot, before late-binding drivers (e.g. Mellanox/IPoIB `ib*`) create their interfaces, so persisted per-interface keys log errors on every boot. They are also unnecessary -- `conf.default.rp_filter=2` is inherited by interfaces created later, and the kernel evaluates `max(all, iface)`, so `conf.all.rp_filter=2` already makes loose mode effective.
 
 ## Gateway Detection
 
