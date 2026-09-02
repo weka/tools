@@ -33,6 +33,7 @@ Short flags:
   -t  --confirm-timeout   -x  --exclude          -i  --include
   -b  --backup-file       -l  --log-file         -C  --no-color
   -v  --verbose           -q  --quiet            -P  --no-persist
+  -R  --rule-priority
 
 Examples:
   sbr-config -V                      Check current SBR state
@@ -54,7 +55,10 @@ Safety:
 """,
     )
 
-    mode = parser.add_mutually_exclusive_group(required=True)
+    # Action group is not strictly required at the argparse level so we can
+    # treat bare `--dry-run` as `--configure --dry-run` (the only mode where
+    # dry-run is meaningful).  Enforced manually after parsing.
+    mode = parser.add_mutually_exclusive_group(required=False)
     mode.add_argument(
         "-V", "--validate",
         action="store_true",
@@ -79,7 +83,11 @@ Safety:
     parser.add_argument(
         "-f", "--force",
         action="store_true",
-        help="Skip interactive confirmation (use with -c/--configure)",
+        help=(
+            "Skip all interactive confirmation -- both the pre-apply 'are you sure?' "
+            "prompt and the post-apply dead man's switch. Use for non-interactive / "
+            "remote runs."
+        ),
     )
     parser.add_argument(
         "-P", "--no-persist",
@@ -89,7 +97,7 @@ Safety:
     parser.add_argument(
         "-n", "--dry-run",
         action="store_true",
-        help="Show proposed changes without applying them",
+        help="Show proposed changes without applying them (implies -c if no mode given)",
     )
     parser.add_argument(
         "-t", "--confirm-timeout",
@@ -114,6 +122,20 @@ Safety:
         default=[],
         metavar="IFACE",
         help="Only configure these interfaces (repeatable)",
+    )
+    parser.add_argument(
+        "-R", "--rule-priority",
+        type=int,
+        default=None,
+        metavar="PRIO",
+        help=(
+            "Base priority for new IP rules (default: 10000, stepping 10 "
+            "per rule). Lower values evaluate first; keep values below "
+            "10000 free for VPN/firewall/admin rules that should take "
+            "precedence. Must be 1-32765 (rules at 32766+ never fire when "
+            "the main table holds a default route). Use the same value on "
+            "every run of a given system."
+        ),
     )
     parser.add_argument(
         "-b", "--backup-file",
@@ -159,6 +181,29 @@ def main(argv: List[str] = None) -> int:
     """
     parser = build_parser()
     args = parser.parse_args(argv)
+
+    # `--dry-run` on its own is shorthand for `--configure --dry-run` since
+    # configure is the only mode where a dry-run preview makes sense.
+    if args.dry_run and not (
+        args.validate or args.configure or args.rollback or args.check_prereqs
+    ):
+        args.configure = True
+
+    # Otherwise an action is required.
+    if not (args.validate or args.configure or args.rollback or args.check_prereqs):
+        parser.error(
+            "one of the arguments -V/--validate -c/--configure -r/--rollback "
+            "-p/--check-prereqs is required"
+        )
+
+    if args.rule_priority is not None:
+        from .constants import RULE_PRIORITY_MAX
+        if not 1 <= args.rule_priority <= RULE_PRIORITY_MAX:
+            parser.error(
+                f"--rule-priority must be between 1 and {RULE_PRIORITY_MAX} "
+                f"(rules at 32766 or above sit after the main table lookup "
+                f"and never fire when main holds a default route)"
+            )
 
     # Setup
     setup_logging(args.log_file, args.verbose)
@@ -257,11 +302,17 @@ def _do_configure(args: argparse.Namespace, out: Output) -> int:
         if failed == 0:
             out.nl()
             out.info("System is correctly configured for source-based routing.")
+            # Gated on dry-run: a dry run must never write to disk, and
+            # errors here must not fail a run that needed nothing.
+            if not args.dry_run and not args.no_persist:
+                _heal_persistence(state, out)
             return 0
 
         # Plan changes
         out.header("Proposed Changes")
-        changes = plan_changes(state, results)
+        changes = plan_changes(
+            state, results, rule_priority_start=args.rule_priority
+        )
 
         if not changes:
             out.info("No actionable changes could be planned.")
@@ -299,8 +350,13 @@ def _do_configure(args: argparse.Namespace, out: Output) -> int:
         # have connectivity before finalising.  If no response within
         # the timeout, auto-rollback to the backup we just saved.
         # Ctrl+C during the countdown also triggers rollback.
+        #
+        # --force skips the dead man's switch entirely so the tool can
+        # run non-interactively (e.g. driven from a remote host where no
+        # one is watching for the prompt).  Caller takes responsibility
+        # for the connectivity check.
         confirm_timeout = getattr(args, "confirm_timeout", 30)
-        if confirm_timeout > 0:
+        if confirm_timeout > 0 and not args.force:
             try:
                 confirmed = out.prompt_timed_confirm(confirm_timeout)
             except KeyboardInterrupt:
@@ -365,15 +421,59 @@ def _do_rollback(args: argparse.Namespace, out: Output) -> int:
         out.header("Rolling Back")
         rollback(backup_path=args.backup_file)
         out.nl()
-        out.info("Rollback complete. Previous SBR configuration has been removed.")
+        out.info("Rollback complete. The configuration that was running "
+                 "when the backup was taken has been restored.")
         out.info("Run 'sbr-config --validate' to verify the current state.")
 
         return 0
 
 
 # ---------------------------------------------------------------------------
-# Persistence helper
+# Persistence helpers
 # ---------------------------------------------------------------------------
+
+def _heal_persistence(state, out: Output) -> None:
+    """Repair persistence drift on an already-correct system.
+
+    Rewrites the managed sysctl.d file when it differs from the desired
+    content (e.g. per-interface keys from <=1.2.0 that fail at boot for
+    late-created interfaces), creates it if SBR is active but the file is
+    missing, and warns when no interface-level persistence exists at all.
+    Failures downgrade to warnings -- this run needed no changes and must
+    not fail because /etc is read-only or full.
+    """
+    from .constants import TABLE_NAME_PREFIX
+    from .persistence import interface_persistence_exists
+    from .sysctl import refresh_sysctl_persistence
+
+    has_sbr = any(
+        rt.name.startswith(TABLE_NAME_PREFIX) for rt in state.routing_tables
+    )
+    try:
+        action = refresh_sysctl_persistence(ensure=has_sbr)
+    except (SbrConfigError, OSError) as e:
+        out.warning(f"Could not refresh sysctl persistence: {e}")
+        return
+    if action == "rewritten":
+        out.info(
+            "Refreshed /etc/sysctl.d/90-sbr-config.conf: replaced stale "
+            "content (e.g. per-interface keys that fail at boot for "
+            "late-created interfaces such as ib*)."
+        )
+    elif action == "created":
+        out.info(
+            "Wrote /etc/sysctl.d/90-sbr-config.conf: SBR is active but "
+            "sysctl persistence was missing."
+        )
+
+    if has_sbr and not interface_persistence_exists():
+        out.warning(
+            "SBR runtime configuration is correct but no managed interface "
+            "persistence files were found -- routes and rules may not "
+            "survive a reboot. To re-create persistence, run "
+            "'sbr-config --rollback' followed by 'sbr-config --configure'."
+        )
+
 
 def _write_persistence(
     state,
