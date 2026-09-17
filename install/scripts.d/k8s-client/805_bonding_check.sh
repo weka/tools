@@ -24,10 +24,12 @@ RETURN_CODE=0
 #  -Legacy mode hardware LAG is broken, the bond is treated as a single port
 #  -Changing lag_port_select_mode to queue_affinity breaks LACP for those nics, and the bond is treated as a single port.
 
+# Discover bonds via their sysfs bonding directory
 BONDS=""
-if [[ -r /sys/class/net/bonding_masters ]]; then
-    BONDS=$(cat /sys/class/net/bonding_masters)
-fi
+for BONDING_DIR in /sys/class/net/*/bonding; do
+    [[ -d "$BONDING_DIR" ]] || continue
+    BONDS+=" $(basename "$(dirname "$BONDING_DIR")")"
+done
 
 if [[ -z "${BONDS}" ]]; then
     echo "No bond interfaces found."
@@ -44,36 +46,50 @@ for BOND_INTERFACE in ${BONDS}; do
         RETURN_CODE=254
     fi
 
-    # Xmit hash policy check
-    HASH_POLICY=$(<"/sys/class/net/${BOND_INTERFACE}/bonding/xmit_hash_policy")
-    if [[ "$HASH_POLICY" =~ layer2 ]]; then
-        echo "WARN: xmit hash policy for ${BOND_INTERFACE} set to layer2."
-        RETURN_CODE=254
+    # Xmit hash policy check -- only meaningful for LACP; active-backup uses a
+    # single member at a time and defaults to layer2.
+    if [[ "$BOND_MODE" == "4" ]]; then
+        read -r HASH_POLICY _ < "/sys/class/net/${BOND_INTERFACE}/bonding/xmit_hash_policy"
+        if [[ "$HASH_POLICY" == "layer2" ]]; then
+            echo "WARN: xmit hash policy for ${BOND_INTERFACE} is ${HASH_POLICY} -- traffic will not spread across bond members."
+            RETURN_CODE=254
+        fi
     fi
 
-    # Iterate over slave links
-    read -ra SLAVE_LINKS < "/sys/class/net/${BOND_INTERFACE}/bonding/slaves"
-    for SLAVE_LINK in "${SLAVE_LINKS[@]}"; do
-        # Check for virtual bond device
-        IB_PATH=$(readlink -f "/sys/class/net/${SLAVE_LINK}/device/infiniband/" || true)
-        if [[ "$IB_PATH" =~ bond ]]; then
-            VIRTUAL_BOND_FOUND=1
-        fi
+    # Iterate over bond members ("slaves" is the kernel's sysfs name)
+    MEMBER_LINKS=()
+    read -ra MEMBER_LINKS < "/sys/class/net/${BOND_INTERFACE}/bonding/slaves" || true
+    if [[ ${#MEMBER_LINKS[@]} -eq 0 ]]; then
+        echo "WARN: ${BOND_INTERFACE} has no member interfaces."
+        RETURN_CODE=254
+        continue
+    fi
+
+    for MEMBER_LINK in "${MEMBER_LINKS[@]}"; do
+        # Check for virtual bond device. The hardware LAG device is an entry
+        # (mlx5_bond_N) inside the member's infiniband directory, not part of
+        # the directory's own path.
+        for IB_DEV in "/sys/class/net/${MEMBER_LINK}/device/infiniband/"*; do
+            [[ -e "$IB_DEV" ]] || continue
+            if [[ "${IB_DEV##*/}" =~ bond ]]; then
+                VIRTUAL_BOND_FOUND=1
+            fi
+        done
 
         # NIC model detection (Only CX-6 DX and CX-7 are supported per docs)
-        PCI_DEV=$(basename "$(readlink -f "/sys/class/net/${SLAVE_LINK}/device")")
+        PCI_DEV=$(basename "$(readlink -f "/sys/class/net/${MEMBER_LINK}/device")")
         PRODUCT_NAME=$(lspci -s "$PCI_DEV" -vv 2>/dev/null | grep "Product Name" || true)
         if [[ "$PRODUCT_NAME" =~ "Socket Direct" ]]; then
-            echo "WARN: Socket Direct NICs (${SLAVE_LINK}) are unlikely to support bonding."
+            echo "WARN: Socket Direct NICs (${MEMBER_LINK}) are unlikely to support bonding."
             RETURN_CODE=254
-        elif [[ ! "$PRODUCT_NAME" =~ "ConnectX-6 Dx|ConnectX-7" ]]; then
-            echo "WARN: ${SLAVE_LINK} in ${BOND_INTERFACE}: only ConnectX-6 Dx and ConnectX-7 are officially supported for bonding."
+        elif [[ ! "$PRODUCT_NAME" =~ (ConnectX-6\ Dx|ConnectX-7) ]]; then
+            echo "WARN: ${MEMBER_LINK} in ${BOND_INTERFACE}: only ConnectX-6 Dx and ConnectX-7 are officially supported for bonding."
             RETURN_CODE=254
         fi
     done
 
     if [[ $VIRTUAL_BOND_FOUND -eq 0 ]]; then # WEKAPP-571692
-        echo "WARN: virtual bond device for ${BOND_INTERFACE} not located under /sys/class/infiniband/"
+        echo "WARN: no virtual bond device (mlx5_bond_*) found for any member of ${BOND_INTERFACE}"
         echo " Check that MOFED is properly installed and the adapter is supported."
         RETURN_CODE=254
     fi
