@@ -1,0 +1,61 @@
+PARAMS=""
+VERBOSE=""
+JSON=""
+FIX="False"
+while (( "$#" )); do
+  case "$1" in
+    -v|--verbose)
+      VERBOSE="true"
+      shift
+      ;;
+    -j|--json)
+      JSON="-j"
+      shift
+      ;;
+    -f|--fix)
+      FIX="True"
+      shift
+      ;;
+    --) # end argument parsing
+      shift
+      break
+      ;;
+    -*|--*=) # unsupported flags
+      echo "Error: Unsupported flag $1" >&2
+      usage
+      exit 1
+      ;;
+    *) # preserve positional arguments
+      PARAMS="$PARAMS $1"
+      shift
+      ;;
+  esac
+done
+
+# Set OS information in environment
+source /etc/os-release
+
+# CentOS doesn't include subversion (e.g. 7.x) information in /etc/os-release,
+# so we set it from /etc/redhat-release
+# Format: CentOS Linux release 7.9.2009 (Core)
+if [ "$ID" = 'centos' ]; then
+	VERSION_ID=$(cat /etc/redhat-release)
+
+	# Remove everything before the number, leaving "7.9.2009 (Core)"
+	VERSION_ID=${VERSION_ID##*release }
+
+	# Remove everything from the date to the end, leaving "7.9"
+	VERSION_ID=${VERSION_ID%.*}
+
+# Ubuntu doesn't include subversion (e.g. 20.04.x) information in VERSION_ID in
+# /etc/os-release, so we set it from VERSION in /etc/os-release
+elif [ "$ID" = 'ubuntu' ]; then
+	# Remove everything after the number, leaving "20.04.3"
+	VERSION_ID=${VERSION%% *}
+fi
+
+# set positional arguments in their proper place
+eval set -- "$PARAMS"
+PATH=$PATH:/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/sbin
+
+# vim: set filetype=bash:
