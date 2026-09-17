@@ -81,20 +81,20 @@ if [[ -n "$BOND_INTERFACE" ]]; then
         RETURN_CODE=254
     fi
 
-    # Iterate over slave links
-    read -ra SLAVE_LINKS < "/sys/class/net/${BOND_INTERFACE}/bonding/slaves"
-    for SLAVE_LINK in "${SLAVE_LINKS[@]}"; do
+    # Iterate over bond members ("slaves" is the kernel's sysfs name)
+    read -ra MEMBER_LINKS < "/sys/class/net/${BOND_INTERFACE}/bonding/slaves"
+    for MEMBER_LINK in "${MEMBER_LINKS[@]}"; do
         # Check for virtual bond device
-        IB_PATH=$(readlink -f "/sys/class/net/${SLAVE_LINK}/device/infiniband/" || true)
+        IB_PATH=$(readlink -f "/sys/class/net/${MEMBER_LINK}/device/infiniband/" || true)
         if [[ "$IB_PATH" =~ bond ]]; then
             VIRTUAL_BOND_FOUND=1
         fi
 
         # NIC model detection (Only CX-6 DX and CX-7 are supported per docs)
-        PCI_DEV=$(basename "$(readlink -f "/sys/class/net/${SLAVE_LINK}/device")")
+        PCI_DEV=$(basename "$(readlink -f "/sys/class/net/${MEMBER_LINK}/device")")
         PRODUCT_NAME=$(lspci -s "$PCI_DEV" -vv 2>/dev/null | grep "Product Name" || true)
         if [[ "$PRODUCT_NAME" =~ "Socket Direct" ]]; then
-            echo "WARN: Socket Direct NICs (${SLAVE_LINK}) are unlikely to support bonding."
+            echo "WARN: Socket Direct NICs (${MEMBER_LINK}) are unlikely to support bonding."
             RETURN_CODE=254
         elif [[ ! "$PRODUCT_NAME" =~ "ConnectX-6 Dx|ConnectX-7" ]]; then
             echo "WARN: Only ConnectX-6 Dx and ConnectX-7 are officially supported for bonding."

@@ -1,19 +1,21 @@
 #!/bin/bash
 
-DESCRIPTION="Verify master and slave MTUs match for any bonds"
+DESCRIPTION="Verify bond and member MTUs match for any bonds"
 SCRIPT_TYPE="parallel"
 
 rc=0
-masters=$(cat /sys/class/net/bonding_masters)
 
-for master in $masters; do
-	master_mtu=$(cat /sys/class/net/"$master"/mtu)
-	slaves=$(cat /sys/class/net/"$master"/bonding/slaves)
+for bonding_dir in /sys/class/net/*/bonding; do
+	[ -d "$bonding_dir" ] || continue
+	bond=$(basename "$(dirname "$bonding_dir")")
+	bond_mtu=$(cat /sys/class/net/"$bond"/mtu)
+	# "slaves" is the kernel's sysfs name for the bond member list
+	members=$(cat "$bonding_dir"/slaves)
 
-	for slave in $slaves; do
-		slave_mtu=$(cat /sys/class/net/"$slave"/mtu)
-		if [ "$slave_mtu" -ne "$master_mtu" ]; then
-			echo "FAIL: $slave MTU ($slave_mtu) does not match master $master's MTU ($master_mtu)"
+	for member in $members; do
+		member_mtu=$(cat /sys/class/net/"$member"/mtu)
+		if [ "$member_mtu" -ne "$bond_mtu" ]; then
+			echo "FAIL: $member MTU ($member_mtu) does not match bond $bond's MTU ($bond_mtu)"
 			rc=1
 		fi
 	done
