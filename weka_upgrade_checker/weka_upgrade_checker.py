@@ -2664,6 +2664,15 @@ def parallel_execution(
 # be the first to hit. The constants mirror ensureMaxMapCount() in
 # weka/cluster/resources/hugepages.d so the checker demands exactly what the product will.
 HUGEPAGE_MAPPING_ISSUE = "WEKAPP-665811"
+# Not in known_issues.json: this check reports the issue itself, per host and with the
+# host's own numbers, so a second generic line in the per-hop report adds nothing. Update
+# the ranges here as the 4.4 and 6.0 fixes ship; 5.1 is fixed in 5.1.41.
+HUGEPAGE_AFFECTED_VERSIONS = [
+    {"min": "4.4.37", "max": "4.5.0"},
+    {"min": "5.1.33", "max": "5.1.41"},
+    {"min": "6.0.1", "max": "6.1.0"},
+    {"min": "6.1.0", "max": ""},
+]
 HUGEPAGE_SPARE_MAPPINGS = 10000
 HUGEPAGE_2M_BYTES = 2 * 1024 * 1024
 HUGEPAGES_2M_PER_1G = 512
@@ -2689,15 +2698,6 @@ for dir in {HUGEPAGE_STATE_DIR}/*; do
     done
 done
 """
-
-
-def _known_issue_affected_versions(issue_key):
-    try:
-        with open(known_issues_file, "r") as file:
-            return json.load(file).get(issue_key, {}).get("affected_versions", [])
-    except (FileNotFoundError, json.JSONDecodeError, AttributeError):
-        WARN(f"Unable to read {issue_key} from {known_issues_file}")
-        return []
 
 
 def _version_in_affected_ranges(version, ranges):
@@ -2810,7 +2810,7 @@ def hugepage_mapping_check(host_name, result, target_version):
 
 def check_hugepage_max_map_count(hosts, ssh_identity, target_version, host_type):
     if not target_version or not _version_in_affected_ranges(
-        target_version, _known_issue_affected_versions(HUGEPAGE_MAPPING_ISSUE)
+        target_version, HUGEPAGE_AFFECTED_VERSIONS
     ):
         return
 
