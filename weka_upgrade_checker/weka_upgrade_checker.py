@@ -134,7 +134,7 @@ def _ssh_targets(host):
     return targets
 
 
-pg_version = "1.12.21"
+pg_version = "1.12.22"
 known_issues_file = "known_issues.json"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
@@ -2654,6 +2654,180 @@ def parallel_execution(
     return results
 
 
+# WEKAPP-665811: from 4.4.37 / 5.1.33 / 6.0.1 / 6.1 every 2MiB pool page is mapped a
+# second time as its RDMA alias, so an IO process needs twice the kernel mappings it used
+# to. The releases that introduced the alias did not raise vm.max_map_count to match: mmap
+# returns ENOMEM part-way through the pool, the process exits with a HugeAllocationException
+# and the container restarts roughly every 30 seconds. A 1GiB-backed pool has 512x fewer
+# pages and stays well inside the limit, but a pool falls back to 2MiB whenever the host
+# cannot reserve enough 1GiB pages at container start - which the upgrade's own restart can
+# be the first to hit. The constants mirror ensureMaxMapCount() in
+# weka/cluster/resources/hugepages.d so the checker demands exactly what the product will.
+HUGEPAGE_MAPPING_ISSUE = "WEKAPP-665811"
+HUGEPAGE_SPARE_MAPPINGS = 10000
+HUGEPAGE_2M_BYTES = 2 * 1024 * 1024
+HUGEPAGES_2M_PER_1G = 512
+HUGEPAGE_STATE_DIR = "/opt/weka/data/agent/containers/state"
+
+# Every allocated page is one hugetlbfs file named weka_<container><identity>_slot<N>_<role>_map_<i>,
+# under the container's huge (2MiB) or huge1G directory, so counting files is what sizes a
+# pool per IO process and tells us which page size is actually backing it. Weka Home carries
+# neither, and the [anon:hugeVMARdmaAlias] mapping name needs kernel 5.17 or later. The
+# counting is done on the host: a large pool is tens of thousands of files.
+HUGEPAGE_MAPPING_COMMAND = rf"""
+echo "MAX_MAP_COUNT=$(cat /proc/sys/vm/max_map_count 2>/dev/null || echo 0)"
+for dir in {HUGEPAGE_STATE_DIR}/*; do
+    [ -d "$dir" ] || continue
+    container=$(basename "$dir")
+    for pagedir in huge huge1G; do
+        [ -d "$dir/$pagedir" ] || continue
+        sudo find "$dir/$pagedir" -maxdepth 1 -type f -printf '%f\n' 2>/dev/null |
+            sed -n 's/^.*_slot\([0-9][0-9]*\)_\([a-z][a-z]*\)_map_[0-9][0-9]*$/\1 \2/p' |
+            sort | uniq -c | while read -r count slot role; do
+                echo "PAGES=$container $pagedir $slot $role $count"
+            done
+    done
+done
+"""
+
+
+def _known_issue_affected_versions(issue_key):
+    try:
+        with open(known_issues_file, "r") as file:
+            return json.load(file).get(issue_key, {}).get("affected_versions", [])
+    except (FileNotFoundError, json.JSONDecodeError, AttributeError):
+        WARN(f"Unable to read {issue_key} from {known_issues_file}")
+        return []
+
+
+def _version_in_affected_ranges(version, ranges):
+    """True if version falls in any [min, max) range. An empty max means open-ended."""
+    try:
+        v = V(_clean_version(str(version)))
+    except InvalidVersion:
+        return False
+    for vrange in ranges:
+        vmin = vrange.get("min")
+        vmax = vrange.get("max")
+        try:
+            if vmin and v < V(_clean_version(vmin)):
+                continue
+            if vmax and v >= V(_clean_version(vmax)):
+                continue
+        except InvalidVersion:
+            continue
+        return True
+    return False
+
+
+def parse_hugepage_mappings(result):
+    """Reduce the remote report to (max_map_count, {(container, slot): page counts})."""
+    max_map_count = 0
+    slots = defaultdict(lambda: {"pool2m": 0, "pool1g": 0, "dpdk": 0})
+
+    for line in result.splitlines():
+        line = line.strip()
+        if line.startswith("MAX_MAP_COUNT="):
+            try:
+                max_map_count = int(line.split("=", 1)[1])
+            except ValueError:
+                max_map_count = 0
+        elif line.startswith("PAGES="):
+            fields = line.split("=", 1)[1].split()
+            if len(fields) != 5:
+                continue
+            container, pagedir, slot, role, count = fields
+            try:
+                key = (container, int(slot))
+                count = int(count)
+            except ValueError:
+                continue
+            if role == "dpdk":
+                slots[key]["dpdk"] += count
+            elif role == "pool":
+                slots[key]["pool1g" if pagedir == "huge1G" else "pool2m"] += count
+
+    return max_map_count, slots
+
+
+def hugepage_mapping_check(host_name, result, target_version):
+    max_map_count, slots = parse_hugepage_mappings(result)
+
+    if not max_map_count:
+        WARN(f"Host {host_name}: unable to read /proc/sys/vm/max_map_count")
+        return
+
+    if not slots:
+        WARN(
+            f"Host {host_name}: found no allocated WEKA hugepage files under {HUGEPAGE_STATE_DIR}, "
+            f"so the pool per IO process cannot be sized. Re-run once the containers are running, or "
+            f"check {HUGEPAGE_MAPPING_ISSUE} by hand."
+        )
+        return
+
+    # The product provisions for the single hungriest slot on the host, so report that one.
+    worst = None
+    for (container, slot), pages in slots.items():
+        pool_2m_pages = pages["pool2m"] + pages["pool1g"] * HUGEPAGES_2M_PER_1G
+        required = HUGEPAGE_SPARE_MAPPINGS + pages["dpdk"] + 2 * pool_2m_pages
+        if worst is None or required > worst[0]:
+            worst = (required, container, slot, pages, pool_2m_pages)
+
+    required, container, slot, pages, pool_2m_pages = worst
+    pool_gib = pool_2m_pages * HUGEPAGE_2M_BYTES / (1024 ** 3)
+
+    if required <= max_map_count:
+        GOOD(
+            f"Host {host_name}: largest hugepage pool is {pool_gib:.1f}GiB ({container} slot {slot}), "
+            f"needing {required} mappings of the {max_map_count} vm.max_map_count allows"
+        )
+        return
+
+    remedy = (
+        f"Before upgrading to {target_version}, raise vm.max_map_count to at least {required} and make "
+        f"it persistent (sysctl -w vm.max_map_count={required} plus an /etc/sysctl.d entry), then "
+        f"restart the container."
+    )
+
+    if pages["pool2m"]:
+        BAD(
+            f"Host {host_name}: {container} slot {slot} holds a {pool_gib:.1f}GiB 2MiB-backed hugepage "
+            f"pool. {target_version} maps every pool page twice and so needs {required} kernel mappings, "
+            f"but vm.max_map_count on this host is {max_map_count}. The IO process will fail to start "
+            f"(HugeAllocationException, 'failed to alias-map huge' errno 12) and the container will "
+            f"restart roughly every 30 seconds.\n{remedy} Restoring a 1GiB-backed pool on the host "
+            f"removes the exposure as well. See {HUGEPAGE_MAPPING_ISSUE}."
+        )
+    else:
+        WARN(
+            f"Host {host_name}: {container} slot {slot} holds a {pool_gib:.1f}GiB pool that is 1GiB-backed "
+            f"today and therefore safe, but the same pool backed by 2MiB pages would need {required} kernel "
+            f"mappings against a vm.max_map_count of {max_map_count}. That fallback happens whenever the host "
+            f"cannot reserve enough 1GiB pages at container start, which the upgrade restart can be the first "
+            f"to hit. {remedy} See {HUGEPAGE_MAPPING_ISSUE}."
+        )
+
+
+def check_hugepage_max_map_count(hosts, ssh_identity, target_version, host_type):
+    if not target_version or not _version_in_affected_ranges(
+        target_version, _known_issue_affected_versions(HUGEPAGE_MAPPING_ISSUE)
+    ):
+        return
+
+    INFO(f"CHECKING HUGEPAGE MAPPINGS AGAINST vm.max_map_count ON {host_type}")
+    results = parallel_execution(
+        hosts,
+        [HUGEPAGE_MAPPING_COMMAND],
+        use_check_output=True,
+        ssh_identity=ssh_identity,
+    )
+    for host_name, result in results:
+        if result is None:
+            WARN(f"Unable to determine hugepage mappings on Host: {host_name}")
+        else:
+            hugepage_mapping_check(host_name, result, target_version)
+
+
 # backend checks
 def backend_host_checks(
     backend_hosts,
@@ -3122,6 +3296,8 @@ def backend_host_checks(
         else:
             WARN(f"Unable to determine available memory on Host: {host_name}")
 
+    check_hugepage_max_map_count(ssh_bk_hosts, ssh_identity, target_version, "BACKENDS")
+
     INFO("VERIFYING CPU FREQUENCY FOR ASSIGNED WEKA CORES")
     
     # Map hostnames to their assigned core IDs from the existing backend_hosts list
@@ -3434,6 +3610,8 @@ def client_hosts_checks(weka_version, ssh_cl_hosts, ssh_identity, target_version
             GOOD(f"IOMMU is not enabled on host: {host_name}")
         else:
             WARN(f"IOMMU is enabled on host: {host_name}")
+
+    check_hugepage_max_map_count(ssh_cl_hosts, ssh_identity, target_version, "CLIENTS")
 
 
 def cluster_summary():
