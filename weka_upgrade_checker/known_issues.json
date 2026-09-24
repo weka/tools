@@ -1,4 +1,32 @@
 {
+    "WEKAPP-665811":
+    {
+        "description": "IO processes fail to start where a 2MiB-backed hugepage pool needs more kernel mappings than vm.max_map_count allows - HugeAllocationException 'failed to alias-map huge' errno 12, container restarts every ~30s. Introduced by the RDMA alias mapping in WEKAPP-661811",
+        "related_protocols": [],
+        "link_types": [],
+        "problematic_kernel_arguments": [ ],
+        "internal_reference": "WEKAPP-665811",
+        "affected_versions": [
+            {
+                "min": "4.4.37",
+                "max": "4.5.0"
+            },
+            {
+                "min": "5.1.33",
+                "max": "5.1.41"
+            },
+            {
+                "min": "6.0.1",
+                "max": "6.1.0"
+            },
+            {
+                "min": "6.1.0",
+                "max": ""
+            }
+        ],
+        "multi_org": false,
+        "obj_store": false
+    },
     "WEKAPP-642541":
     {
         "description": "LDAP GUI users logged out shortly after login",
