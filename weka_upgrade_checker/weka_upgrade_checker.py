@@ -2664,11 +2664,9 @@ def parallel_execution(
 # be the first to hit. The constants mirror ensureMaxMapCount() in
 # weka/cluster/resources/hugepages.d so the checker demands exactly what the product will.
 HUGEPAGE_MAPPING_ISSUE = "WEKAPP-665811"
-# Not in known_issues.json: this check reports the issue itself, per host and with the
-# host's own numbers, so a second generic line in the per-hop report adds nothing. Update
-# the ranges here as the 4.4 and 6.0 fixes ship; 5.1 is fixed in 5.1.41.
+# Update the ranges here as the 4.4 and 6.0 fixes ship; 5.1 is fixed in 5.1.41.
 HUGEPAGE_AFFECTED_VERSIONS = [
-    {"min": "4.4.37", "max": "4.5.0"},
+    {"min": "4.4.37", "max": ""},
     {"min": "5.1.33", "max": "5.1.41"},
     {"min": "6.0.1", "max": "6.1.0"},
     {"min": "6.1.0", "max": ""},
@@ -2680,9 +2678,8 @@ HUGEPAGE_STATE_DIR = "/opt/weka/data/agent/containers/state"
 
 # Every allocated page is one hugetlbfs file named weka_<container><identity>_slot<N>_<role>_map_<i>,
 # under the container's huge (2MiB) or huge1G directory, so counting files is what sizes a
-# pool per IO process and tells us which page size is actually backing it. Weka Home carries
-# neither, and the [anon:hugeVMARdmaAlias] mapping name needs kernel 5.17 or later. The
-# counting is done on the host: a large pool is tens of thousands of files.
+# pool per IO process and tells us which page size is actually backing it. 
+# The counting is done on the host: a large pool is tens of thousands of files.
 HUGEPAGE_MAPPING_COMMAND = rf"""
 echo "MAX_MAP_COUNT=$(cat /proc/sys/vm/max_map_count 2>/dev/null || echo 0)"
 for dir in {HUGEPAGE_STATE_DIR}/*; do
