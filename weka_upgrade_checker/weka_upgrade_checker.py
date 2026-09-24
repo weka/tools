@@ -2666,7 +2666,7 @@ def parallel_execution(
 HUGEPAGE_MAPPING_ISSUE = "WEKAPP-665811"
 # Update the ranges here as the 4.4 and 6.0 fixes ship; 5.1 is fixed in 5.1.41.
 HUGEPAGE_AFFECTED_VERSIONS = [
-    {"min": "4.4.37", "max": ""},
+    {"min": "4.4.37", "max": "4.5.0"},
     {"min": "5.1.33", "max": "5.1.41"},
     {"min": "6.0.1", "max": "6.1.0"},
     {"min": "6.1.0", "max": ""},
