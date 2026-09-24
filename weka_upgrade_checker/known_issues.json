@@ -30,8 +30,8 @@
     "WEKAPP-642541":
     {
         "description": "LDAP GUI users logged out shortly after login",
-        "related_protocols": [""],
-        "link_types": [""],
+        "related_protocols": [],
+        "link_types": [],
         "problematic_kernel_arguments": [ ],
         "internal_reference": "WEKAPP-642541",
         "affected_versions": [
@@ -46,8 +46,8 @@
     "WEKAPP-640222":
     {
         "description": "Filesystem I/O hangs when default user or group quotas are used with snapshots",
-        "related_protocols": [""],
-        "link_types": [""],
+        "related_protocols": [],
+        "link_types": [],
         "problematic_kernel_arguments": [ ],
         "internal_reference": "WEKAPP-640222",
         "affected_versions": [
@@ -62,8 +62,8 @@
     "WEKAPP-639535":
     {
         "description": "ensureRDMADevices() resolves net_devices by kernel name (affects cloud)",
-        "related_protocols": [""],
-        "link_types": [""],
+        "related_protocols": [],
+        "link_types": [],
         "problematic_kernel_arguments": [ ],
         "internal_reference": "WEKAPP-639535",
         "affected_versions": [
@@ -78,7 +78,7 @@
     "WEKAPP-626440":
     {
         "description": "Gateway MAC of bonded interfaces' not properly resolved",
-        "related_protocols": [""],
+        "related_protocols": [],
         "link_types": ["ETH"],
         "problematic_kernel_arguments": [ ],
         "internal_reference": "WEKAPP-626440",
