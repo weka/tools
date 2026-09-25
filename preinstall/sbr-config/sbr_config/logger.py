@@ -33,7 +33,9 @@ def setup_logging(
     if log_file is not None:
         path = log_file if log_file else LOG_FILE_DEFAULT
         try:
-            os.makedirs(os.path.dirname(path), exist_ok=True)
+            log_dir = os.path.dirname(path)
+            if log_dir:
+                os.makedirs(log_dir, exist_ok=True)
             fh = logging.FileHandler(path)
             fh.setLevel(logging.DEBUG)
             fh.setFormatter(logging.Formatter(
@@ -41,7 +43,7 @@ def setup_logging(
                 datefmt="%Y-%m-%d %H:%M:%S",
             ))
             root_logger.addHandler(fh)
-        except PermissionError:
+        except OSError:
             # Non-fatal: can't write log file but tool should still work
             pass
 

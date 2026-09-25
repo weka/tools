@@ -225,6 +225,7 @@ class SystemState(object):
         sysctl_values,      # type: Dict[str, str]
         network_manager,    # type: NetworkManagerType
         timestamp,          # type: str
+        active_table_numbers=None,  # type: Optional[List[int]]
     ):
         self.interfaces = interfaces
         self.routing_tables = routing_tables
@@ -235,6 +236,11 @@ class SystemState(object):
         self.sysctl_values = sysctl_values
         self.network_manager = network_manager
         self.timestamp = timestamp
+        # Table numbers the kernel is actively using (routes or rules),
+        # including numeric-only tables that never appear in rt_tables --
+        # e.g. cloud-init's per-ENI policy routing. The planner must not
+        # allocate these.
+        self.active_table_numbers = active_table_numbers or []
 
     def to_dict(self):
         # type: () -> dict
@@ -249,6 +255,7 @@ class SystemState(object):
         }
         d["rules"] = [r._asdict() for r in self.rules]
         d["rt_tables_file_content"] = self.rt_tables_file_content
+        d["active_table_numbers"] = self.active_table_numbers
         d["sysctl_values"] = self.sysctl_values
         d["network_manager"] = self.network_manager.value
         d["timestamp"] = self.timestamp

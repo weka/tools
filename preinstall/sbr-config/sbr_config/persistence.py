@@ -1,9 +1,23 @@
 """Persistence dispatch: select and invoke the correct backend."""
 
+import glob
 import logging
-from typing import List
+import os
+import re
+from typing import Dict, List
 
-from .constants import TABLE_NAME_PREFIX
+from .constants import (
+    INTERFACES_D_DIR,
+    INTERFACES_FILE,
+    MANAGED_COMMENT,
+    NETPLAN_CONFIG_FILE,
+    NETPLAN_DIR,
+    NETWORKD_DROPIN_NAME,
+    NM_DISPATCHER_DIR,
+    NM_DISPATCHER_SCRIPT,
+    SYSTEMD_NETWORK_DIR,
+    TABLE_NAME_PREFIX,
+)
 from .exceptions import PersistenceError
 from .models import (
     ChangeType,
@@ -39,8 +53,10 @@ def write_persistence(
     """
     files_written = []
 
-    # Write sysctl persistence (common to all backends)
-    sysctl_path = write_sysctl_persistence(changes)
+    # Write sysctl persistence (common to all backends). Globals only --
+    # per-interface keys break at boot for interfaces created by late
+    # driver load (see write_sysctl_persistence).
+    sysctl_path = write_sysctl_persistence()
     if sysctl_path:
         files_written.append(sysctl_path)
 
@@ -88,10 +104,66 @@ def write_persistence(
         )
 
     logger.info("Using persistence backend: %s", backend.describe())
-    backend_files = backend.write_config(sbr_interfaces, tables, changes)
+    rule_priorities = _collect_rule_priorities(state, changes)
+    backend_files = backend.write_config(
+        sbr_interfaces, tables, changes, rule_priorities
+    )
     files_written.extend(backend_files)
 
     return files_written
+
+
+def _collect_rule_priorities(state, changes: List[PlannedChange]) -> Dict[str, int]:
+    """Map source IP -> the rule priority actually in effect for it.
+
+    Persistence follows the real priorities (existing kernel rules for
+    sbr_ tables, overridden by this run's planned rules) rather than
+    recomputing from the default base -- so a later run without the
+    --rule-priority flag can't renumber persisted files out from under a
+    configured system. Backends fall back to the derived formula only
+    for IPs absent from this map.
+    """
+    priorities: Dict[str, int] = {}
+
+    for rule in state.rules:
+        if (rule.selector_from and rule.table
+                and str(rule.table).startswith(TABLE_NAME_PREFIX)):
+            ip = rule.selector_from.split("/")[0]
+            priorities[ip] = rule.priority
+
+    for change in changes:
+        if change.change_type != ChangeType.ADD_RULE:
+            continue
+        m = re.search(r"from\s+(\S+)\s+table\s+\S+\s+priority\s+(\d+)",
+                      change.command)
+        if m:
+            priorities[m.group(1).split("/")[0]] = int(m.group(2))
+
+    return priorities
+
+
+def interface_persistence_exists() -> bool:
+    """Check whether any managed interface-level persistence is present.
+
+    Used on clean --configure runs to warn when runtime SBR is correct
+    but nothing would restore it after a reboot.
+    """
+    from .utils import read_file
+
+    if os.path.exists(os.path.join(NM_DISPATCHER_DIR, NM_DISPATCHER_SCRIPT)):
+        return True
+    if os.path.exists(os.path.join(NETPLAN_DIR, NETPLAN_CONFIG_FILE)):
+        return True
+    if glob.glob(os.path.join(SYSTEMD_NETWORK_DIR, "*.network.d", NETWORKD_DROPIN_NAME)):
+        return True
+    if glob.glob(os.path.join(SYSTEMD_NETWORK_DIR, "50-sbr-*.network")):
+        return True  # legacy networkd layout (<=1.2.x)
+    if glob.glob(os.path.join(INTERFACES_D_DIR, "sbr-*")):
+        return True
+    interfaces_content = read_file(INTERFACES_FILE)
+    if interfaces_content and MANAGED_COMMENT in interfaces_content:
+        return True
+    return False
 
 
 def _select_backend(nm_type: NetworkManagerType):
