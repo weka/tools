@@ -147,8 +147,10 @@ cat > "$SYSCTL_FILE" <<EOF
 kernel.numa_balancing=0
 net.ipv4.conf.all.arp_ignore=1
 net.ipv4.conf.all.arp_announce=2
+net.ipv4.conf.all.arp_filter=1
 net.ipv4.conf.default.arp_ignore=1
 net.ipv4.conf.default.arp_announce=2
+net.ipv4.conf.default.arp_filter=1
 EOF
 
 if [[ "$APPLY_SYSCTL" == true ]]; then
