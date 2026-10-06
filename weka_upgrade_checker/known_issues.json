@@ -1,4 +1,24 @@
 {
+    "WTA20260928":
+    {
+        "description": "Journal recovery after bucket failover can desync parity (FoundCorruptedBlockInStripe)",
+        "related_protocols": [],
+        "link_types": [],
+        "problematic_kernel_arguments": [ ],
+        "internal_reference": "WTA20260928",
+        "affected_versions": [
+            {
+                "min": "4.4.30",
+                "max": ""
+            },
+            {
+                "min": "5.1.30",
+                "max": "5.1.41"
+            }
+        ],
+        "multi_org": false,
+        "obj_store": false
+    },
     "WEKAPP-642541":
     {
         "description": "LDAP GUI users logged out shortly after login",
@@ -9,7 +29,7 @@
         "affected_versions": [
             {
                 "min": "5.0.1",
-                "max": ""
+                "max": "6.1.0"
             }
         ],
         "multi_org": false,
