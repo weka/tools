@@ -134,7 +134,7 @@ def _ssh_targets(host):
     return targets
 
 
-pg_version = "1.12.24"
+pg_version = "1.12.25"
 known_issues_file = "known_issues.json"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
@@ -1167,6 +1167,9 @@ def weka_cluster_checks(target_version):
     if manual_overrides:
         WARN("Manual WEKA overrides found\n")
         for override in manual_overrides:
+            if override["key"]=="net.ping.duration" and V(target_version) >= V("5.1.40"):
+                BAD("Override net.ping.duration is present. The units for the value will change from milliseconds to seconds in the target version.")
+
             override_list += [
                 override["override_id"],
                 override["key"],
@@ -1556,7 +1559,7 @@ def weka_cluster_checks(target_version):
     #  pre-migration cluster's running binary does not emit this field in
     #  `weka org -J`, so its presence is a definitive signal that the migration
     #  has already been applied on this cluster.
-    if V(target_version) >= V("5.1.0"):
+    if multi_org and V(target_version) >= V("5.1.0"):
         INFO("CHECKING ORGANIZATION TO TENANT MIGRATION (MOUNT NETSPACE ACCESS)")
         migration_done = any("enforce_mount_netspace_access" in o for o in orgs)
         if migration_done:
@@ -3327,6 +3330,13 @@ def backend_host_checks(
             else:
                 WARN(f"Unable to retrieve CPU frequency for host: {host_name}")
 
+    # Added 2026-07-01 (WEKAPP-638315)
+    # Upgrades to 5.1.0+ must not proceed while a non-empty MIXED entry
+    # exists in clusterInfo.acceptedVersionsPerType.
+    if V(target_version) >= V("5.1.0"):
+        check_mixed_accepted_versions()
+
+
     #####################
     #    SMBW Checks    #
     #####################
@@ -4103,12 +4113,6 @@ def target_version_check(
                 obj_store_enabled,
                 multi_org,
             )
-
-            # Added 2026-07-01 (WEKAPP-638315)
-            # Upgrades to 5.1.0+ must not proceed while a non-empty MIXED entry
-            # exists in clusterInfo.acceptedVersionsPerType.
-            if V(target_version) >= V("5.1.0"):
-                check_mixed_accepted_versions()
 
             # Added 2026-06-01
             # Paths crossing the 4.4.x -> 5.1.x(<30) boundary (a 4.4.x and a
