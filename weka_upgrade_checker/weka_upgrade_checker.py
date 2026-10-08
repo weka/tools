@@ -134,7 +134,7 @@ def _ssh_targets(host):
     return targets
 
 
-pg_version = "1.12.25"
+pg_version = "1.13"
 known_issues_file = "known_issues.json"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
@@ -544,7 +544,9 @@ def weka_cluster_checks(target_version):
             self.roles = str(machine_json["roles"])
             self.is_up = machine_json["status"]
             self.uid = str(machine_json["uid"])
-            self.versions = machine_json["versions"][0]
+            # A machine aggregates all of its containers, so this is a list and
+            # mid-upgrade it can hold more than one release.
+            self.versions = list(machine_json["versions"])
 
     INFO("CHECKING FOR WEKA ALERTS")
     try:
@@ -702,18 +704,18 @@ def weka_cluster_checks(target_version):
     _seen_cl = set()
     ssh_cl_hosts = []
     for w_cl_server in weka_cl_servers:
-        if w_cl_server.is_up and w_cl_server.name not in _seen_cl:
+        if w_cl_server.is_up == "UP" and w_cl_server.name not in _seen_cl:
             _seen_cl.add(w_cl_server.name)
             ssh_cl_hosts.append({"name": w_cl_server.name, "ip": w_cl_server.ip})
     down_cl_servers = []
     for w_cl_server in weka_cl_servers:
-        if not w_cl_server.is_up:
+        if w_cl_server.is_up != "UP":
             down_cl_servers += [w_cl_server.name, w_cl_server.ip, w_cl_server.is_up]
 
     if not down_cl_servers:
         GOOD("No failed hosts detected")
     else:
-        WARN2(f"Unhealthy backend hosts detected\n")
+        WARN2(f"Unhealthy client hosts detected\n")
         printlist(down_cl_servers, 3)
 
     INFO("Validating all containers are on the same version")
@@ -827,27 +829,49 @@ def weka_cluster_checks(target_version):
             GOOD("Memory to SSD ratio validation ok")
 
     INFO("CHECKING CLIENT COMPATIBLE VERSIONS")
-    try:
-        sw_version = target_version.split(".")
-        check_version = ".".join(sw_version[:2])
-        cl_machine_need_upgrade = []
-        cl_host_need_upgrade = []
-        try:
-            for w_cl_server in weka_cl_servers:
-                clsw_version = w_cl_server.versions.split(".")
-                if ".".join(clsw_version[:2]) != check_version:
-                    cl_machine_need_upgrade += [w_cl_server.name, w_cl_server.ip, w_cl_server.versions]
-        except NameError as e:
-            WARN("Unable to determine client WEKA version")
-    except NameError as e:
-        WARN("Unable to determine client WEKA version")
-    if cl_machine_need_upgrade:
-        WARN(
-            f"The following client hosts are running a release different than the cluster release ({weka_version}), and may needed upgraded prior to the WEKA cluster upgrade\n"
-        )
-        printlist(cl_machine_need_upgrade, 3)
+    target_v = _parse_sw_version(target_version)
+    min_client = _min_client_version(target_version)
+    min_client_v = _parse_sw_version(min_client)
+    client_versions = [(srv, ver) for srv in weka_cl_servers for ver in srv.versions]
+    if not client_versions:
+        GOOD("No clients attached to the cluster")
     else:
-        GOOD("All clients hosts are up to date")
+        cl_too_old = []
+        cl_too_new = []
+        cl_unknown = []
+        for srv, ver in client_versions:
+            client_v = _parse_sw_version(ver)
+            if client_v is None or target_v is None:
+                cl_unknown += [srv.name, srv.ip, str(ver)]
+            elif client_v > target_v:
+                cl_too_new += [srv.name, srv.ip, str(ver)]
+            elif min_client_v is not None and client_v < min_client_v:
+                cl_too_old += [srv.name, srv.ip, str(ver)]
+
+        if cl_too_old:
+            BAD(
+                f"The following clients are older than the minimum client version {min_client} supported by target "
+                f"version {target_version}. They will be rejected from the cluster once the backends are upgraded, "
+                f"and must be upgraded first\n"
+            )
+            printlist(cl_too_old, 3)
+        if cl_too_new:
+            BAD(
+                f"The following clients are newer than target version {target_version}. A client may not run a higher "
+                f"version than the backends and will be rejected on rejoin\n"
+            )
+            printlist(cl_too_new, 3)
+        if cl_unknown:
+            WARN(f"Unable to parse the version of the following clients; verify compatibility manually\n")
+            printlist(cl_unknown, 3)
+        if not (cl_too_old or cl_too_new or cl_unknown):
+            if min_client_v is None:
+                WARN(
+                    f"upgrade_path.json has no min_client_version for target {target_version}; only checked that no "
+                    f"client is newer than the target"
+                )
+            else:
+                GOOD(f"All client versions are within {min_client} - {target_version}")
 
     INFO("VERIFYING WEKA PROCESS STATUS")
     weka_nodes = json.loads(subprocess.check_output(["weka", "cluster", "nodes", "-J"]))
@@ -889,7 +913,7 @@ def weka_cluster_checks(target_version):
             ]
 
     if not snap_upload:
-        GOOD("WWEKA snapshot upload status ok")
+        GOOD("WEKA snapshot upload status ok")
     else:
         WARN(f"The following snapshots are uploading\n")
         printlist(snap_upload, 5)
@@ -1639,6 +1663,64 @@ else:
     _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 SUPPORTED_OS_FILE = os.path.join(_SCRIPT_DIR, "supported_os.json")
 _UPGRADE_PATH_FILE = os.path.join(_SCRIPT_DIR, "upgrade_path.json")
+
+
+def _parse_sw_version(version):
+    """packaging Version for a WEKA version string, or None if unparseable."""
+    if version is None:
+        return None
+    try:
+        return V(str(version).strip().split("-")[0])
+    except (InvalidVersion, TypeError):
+        return None
+
+
+# Provenance of the min_client_version values in upgrade_path.json
+# ----------------------------------------------------------------
+# They are read out of the wekapp repo, not from anything observable on a running
+# cluster: for a given target, the floor is the oldest weka/ver/listing.d VersionDesc
+# that carries a reftypes module. Entries below it are bare (moduleName = null), so
+# they contribute no config-root ABI signature and such a client cannot rejoin.
+#
+# To re-derive for a release line, in a wekapp checkout:
+#
+#     git show origin/trunk/<version>:weka/ver/listing.d \
+#         | grep 'VersionDesc(SWVersion' | grep weka.ver.reftypes | head -1
+#
+# Do NOT grep for Marker.MinSupported instead. It happens to sit on that same entry
+# on every trunk checked, but it is not what the join gate reads, so it can drift
+# above the real floor and turn this check into false failures.
+#
+#     4.4.x targets  -> 4.2.0   (origin/trunk/v4.4.10, v4.4.20, v4.4.30)
+#     5.0.x targets  -> 4.4.6   (origin/trunk/v5.0.3, v5.0.4)
+#     5.1.x targets  -> 4.4.6   (origin/trunk/v5.1.0 .. v5.1.41)
+#     6.0 / 6.1      -> 5.0.1   (origin/trunk/v6.0.0, v6.1.0) - no 6.x targets yet,
+#                                but note the floor rises, so a 4.4 client that is
+#                                fine for a 5.1 target is not fine for a 6.0 one.
+#
+# 4.2.x and 4.3.x targets carry no value: those trunks are no longer in the repo, so
+# the floor is unverified and the check skips it rather than guessing.
+def _min_client_version(target_version):
+    """
+    Oldest client a backend running target_version will let rejoin, or None when
+    upgrade_path.json carries no value for that target.
+
+    The leader accepts a joining FRONTEND only if its config-root ABI signature is
+    one the target still carries (weka/config/leader/rejoiner.d -> isSupportedConfigRoot
+    -> ConfigRoot.OldVersions -> supportedPreviousVersions), so the floor is the oldest
+    weka/ver/listing.d entry in the target release that carries a reftypes module. A
+    client below it is rejected with UNSUPPORTED_CONFIG once the backends reach the
+    target, so it has to be upgraded first.
+    """
+    try:
+        with open(_UPGRADE_PATH_FILE, "r") as f:
+            entry = json.load(f).get(str(target_version))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(entry, dict):
+        return None
+    return entry.get("min_client_version")
+
 
 # Default to an empty mapping so a load failure degrades gracefully (the OS
 # checks report missing data) instead of leaving the name undefined and raising
