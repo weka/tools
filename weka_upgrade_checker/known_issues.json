@@ -19,6 +19,22 @@
         "multi_org": false,
         "obj_store": false
     },
+    "WEKAPP-670511":
+    {
+        "description": "DPDK 18 mlx5 rejects default ETH devarg txq_inline_max=256",
+        "related_protocols": [],
+        "link_types": ["IB+ETH"],
+        "problematic_kernel_arguments": [ ],
+        "internal_reference": "WEKAPP-670511",
+        "affected_versions": [
+            {
+                "min": "5.1.30",
+                "max": ""
+            }
+        ],
+        "multi_org": false,
+        "obj_store": false
+    },
     "WEKAPP-642541":
     {
         "description": "LDAP GUI users logged out shortly after login",
