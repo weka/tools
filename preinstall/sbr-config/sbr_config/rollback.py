@@ -1,18 +1,78 @@
 """Save and restore system state for rollback capability."""
 
+import glob
 import json
 import logging
 import os
 from datetime import datetime, timezone
 from typing import List, Optional
 
-from .constants import BACKUP_DIR, MANAGED_COMMENT, RT_TABLES_PATH, TABLE_NAME_PREFIX
+from .constants import (
+    BACKUP_DIR,
+    INTERFACES_D_DIR,
+    INTERFACES_FILE,
+    MANAGED_COMMENT,
+    NETPLAN_CONFIG_FILE,
+    NETPLAN_DIR,
+    NETWORKD_DROPIN_NAME,
+    NM_DISPATCHER_DIR,
+    NM_DISPATCHER_SCRIPT,
+    RT_TABLES_PATH,
+    SYSCTL_CONF_PATH,
+    SYSTEMD_NETWORK_DIR,
+    TABLE_NAME_PREFIX,
+)
 from .exceptions import RollbackError
-from .models import SystemState
-from .sysctl import remove_sysctl_persistence
-from .utils import read_file, run_command, write_file_atomic
+from .models import Route, Rule, SystemState
+from .sysctl import (
+    refresh_sysctl_persistence,
+    remove_sysctl_persistence,
+    sysctl_key_to_cmd,
+)
+from .utils import read_file, run_command, strip_managed_lines, write_file_atomic
 
 logger = logging.getLogger(__name__)
+
+NM_DISPATCHER_PATH = os.path.join(NM_DISPATCHER_DIR, NM_DISPATCHER_SCRIPT)
+
+
+def _managed_file_paths() -> List[str]:
+    """All persistence file paths sbr-config manages or may append to.
+
+    Fixed paths are always listed; glob-based ones only when present.
+    Includes every file in interfaces.d (not just our sbr-* drop-ins)
+    because sbr-config may append managed lines to a user's drop-in that
+    holds the interface stanza.
+    """
+    paths = [
+        SYSCTL_CONF_PATH,
+        NM_DISPATCHER_PATH,
+        os.path.join(NETPLAN_DIR, NETPLAN_CONFIG_FILE),
+        INTERFACES_FILE,
+    ]
+    # networkd: current drop-in layout plus the legacy standalone files
+    paths += sorted(glob.glob(
+        os.path.join(SYSTEMD_NETWORK_DIR, "*.network.d", NETWORKD_DROPIN_NAME)
+    ))
+    paths += sorted(glob.glob(os.path.join(SYSTEMD_NETWORK_DIR, "50-sbr-*.network")))
+    paths += sorted(
+        p for p in glob.glob(os.path.join(INTERFACES_D_DIR, "*"))
+        if os.path.isfile(p)
+    )
+    return paths
+
+
+def _is_append_style(path: str) -> bool:
+    """Files sbr-config appends to but does not own outright.
+
+    These are never deleted during restore -- managed lines are stripped
+    instead -- and are only rewritten when our marker shows we modified
+    them.
+    """
+    if path == INTERFACES_FILE:
+        return True
+    dirname, basename = os.path.split(path)
+    return dirname == INTERFACES_D_DIR and not basename.startswith("sbr-")
 
 
 def save_state(state: SystemState, backup_dir: str = BACKUP_DIR) -> str:
@@ -30,11 +90,25 @@ def save_state(state: SystemState, backup_dir: str = BACKUP_DIR) -> str:
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     filepath = os.path.join(backup_dir, f"state_{timestamp}.json")
 
+    # Never overwrite an existing backup -- add a counter suffix if two
+    # saves land in the same second, so every backup stays referenceable.
+    suffix = 1
+    while os.path.exists(filepath):
+        suffix += 1
+        filepath = os.path.join(backup_dir, f"state_{timestamp}_{suffix}.json")
+
     data = state.to_dict()
 
     # Add raw file contents for exact restoration
     data["_raw_files"] = {
         RT_TABLES_PATH: state.rt_tables_file_content,
+    }
+
+    # Snapshot every managed persistence file (content, or None if absent)
+    # so rollback can restore the box to this exact configuration instead
+    # of stripping all SBR persistence.
+    data["_persistence_files"] = {
+        path: read_file(path) for path in _managed_file_paths()
     }
 
     with open(filepath, "w") as f:
@@ -48,6 +122,8 @@ def save_state(state: SystemState, backup_dir: str = BACKUP_DIR) -> str:
         os.unlink(latest)
     os.symlink(filepath, latest)
 
+    prune_backups(backup_dir)
+
     logger.info("Saved state backup to %s", filepath)
     return filepath
 
@@ -56,7 +132,11 @@ def rollback(
     backup_path: Optional[str] = None,
     backup_dir: str = BACKUP_DIR,
 ) -> None:
-    """Restore system to a previously saved state.
+    """Restore the system to a previously saved state.
+
+    The target is the running configuration captured in the backup: SBR
+    rules, routes, rt_tables entries, and persistence files that existed
+    at backup time are put back exactly; anything added since is removed.
 
     Args:
         backup_path: Specific backup file to restore from.
@@ -83,20 +163,23 @@ def rollback(
     except (json.JSONDecodeError, IOError) as e:
         raise RollbackError(f"Failed to read backup file: {e}") from e
 
-    # Step 1: Remove IP rules that were added by sbr-config
+    # Step 1: Remove current SBR rules and flush SBR tables so the restore
+    # starts from a clean slate (uses the CURRENT rt_tables to find them)
     _remove_sbr_rules()
-
-    # Step 2: Flush custom SBR routing tables
     _flush_sbr_tables()
 
-    # Step 3: Restore /etc/iproute2/rt_tables
+    # Step 2: Restore /etc/iproute2/rt_tables
     _restore_rt_tables(saved)
+
+    # Step 3: Re-add the SBR routes and rules that were running at backup time
+    _restore_sbr_routes(saved)
+    _restore_sbr_rules(saved)
 
     # Step 4: Restore sysctl settings
     _restore_sysctl(saved)
 
-    # Step 5: Remove persistence configs
-    _remove_persistence_files()
+    # Step 5: Restore persistence configs to their backed-up contents
+    _restore_persistence_files(saved)
 
     logger.info("Rollback complete")
 
@@ -239,53 +322,185 @@ def _restore_rt_tables(saved: dict) -> None:
         logger.info("Removed sbr_ entries from %s", RT_TABLES_PATH)
 
 
+def _restore_sbr_routes(saved: dict) -> None:
+    """Re-add routes the backup recorded in sbr_ tables.
+
+    Restores the previous running config: routes that existed in custom
+    SBR tables at backup time come back, whether sbr-config created them
+    or not. Subnet/link routes go first so default routes can resolve
+    their gateway.
+    """
+    routes_by_table = saved.get("routes_by_table") or {}
+    for table_name, route_dicts in routes_by_table.items():
+        if not table_name.startswith(TABLE_NAME_PREFIX):
+            continue
+        ordered = sorted(
+            route_dicts, key=lambda rd: rd.get("destination") == "default"
+        )
+        for rd in ordered:
+            route = Route(
+                destination=rd.get("destination", ""),
+                gateway=rd.get("gateway"),
+                device=rd.get("device", ""),
+                source=rd.get("source"),
+                table=table_name,
+                metric=rd.get("metric"),
+                scope=rd.get("scope"),
+            )
+            if not route.destination or not route.device:
+                continue
+            try:
+                run_command(f"ip route replace {route.to_args()}", check=False)
+                logger.info("Restored route: %s", route.to_args())
+            except Exception as e:
+                logger.warning("Failed to restore route '%s': %s", route.to_args(), e)
+
+
+def _restore_sbr_rules(saved: dict) -> None:
+    """Re-add IP rules the backup recorded pointing at sbr_ tables."""
+    for rd in saved.get("rules") or []:
+        table = rd.get("table")
+        if not table or not str(table).startswith(TABLE_NAME_PREFIX):
+            continue
+        rule = Rule(
+            priority=rd.get("priority", 0),
+            selector_from=rd.get("selector_from"),
+            selector_to=rd.get("selector_to"),
+            table=table,
+            iif=rd.get("iif"),
+            fwmark=rd.get("fwmark"),
+        )
+        try:
+            run_command(f"ip rule add {rule.to_args()}", check=False)
+            logger.info("Restored rule: %s", rule.to_args())
+        except Exception as e:
+            logger.warning("Failed to restore rule '%s': %s", rule.to_args(), e)
+
+
 def _restore_sysctl(saved: dict) -> None:
-    """Restore sysctl values from backup."""
+    """Restore sysctl values from backup.
+
+    The sysctl persistence file is handled by the persistence snapshot
+    restore, not here.
+    """
     saved_values = saved.get("sysctl_values", {})
     for key, value in saved_values.items():
         if value and value != "unknown":
+            # Slash notation for per-interface keys so dotted interface
+            # names (VLANs) aren't mangled by the sysctl binary.
+            cmd_key = sysctl_key_to_cmd(key)
             try:
-                run_command(f"sysctl -w {key}={value}", check=False)
+                run_command(f"sysctl -w {cmd_key}={value}", check=False)
                 logger.info("Restored sysctl %s = %s", key, value)
             except Exception as e:
                 logger.warning("Failed to restore sysctl %s: %s", key, e)
 
-    # Remove persistence file
-    remove_sysctl_persistence()
+
+def _restore_persistence_files(saved: dict) -> None:
+    """Restore persistence files to their backed-up contents.
+
+    Files that existed at backup time get their saved content back; managed
+    files created since are removed. Backups from before this snapshot was
+    recorded fall back to removing all managed persistence files.
+    """
+    snapshot = saved.get("_persistence_files")
+    if snapshot is None:
+        _remove_persistence_files()
+        return
+
+    # Remove managed files that didn't exist at backup time. Append-style
+    # files (the main interfaces file and user drop-ins we may have
+    # appended to) are never deleted -- managed lines are stripped instead.
+    for path in _managed_file_paths():
+        if snapshot.get(path) is not None:
+            continue
+        if _is_append_style(path):
+            current = read_file(path)
+            if current and MANAGED_COMMENT in current:
+                write_file_atomic(path, strip_managed_lines(current))
+                logger.info("Stripped sbr-config lines from %s", path)
+        else:
+            _remove_managed_file(path)
+            _cleanup_empty_dropin_dir(path)
+
+    # Restore recorded contents
+    for path, content in snapshot.items():
+        if content is None:
+            continue
+        current = read_file(path)
+        if current == content:
+            continue
+        if _is_append_style(path) and (current is None or MANAGED_COMMENT not in current):
+            # Only rewrite user-owned files if our own lines are in them;
+            # otherwise the difference is someone else's edit.
+            continue
+        mode = 0o755 if path == NM_DISPATCHER_PATH else None
+        write_file_atomic(path, content, mode=mode)
+        logger.info("Restored %s from backup", path)
+
+    # A backup taken under <=1.2.0 restores a sysctl.d file with
+    # per-interface keys, reintroducing boot errors for late-created
+    # interfaces. Heal it to the current format right away.
+    try:
+        if refresh_sysctl_persistence():
+            logger.info(
+                "Healed restored %s to the current format", SYSCTL_CONF_PATH
+            )
+    except Exception as e:
+        logger.warning("Could not heal restored sysctl persistence: %s", e)
+
+
+def _cleanup_empty_dropin_dir(path: str) -> None:
+    """Remove a now-empty *.network.d drop-in directory."""
+    parent = os.path.dirname(path)
+    if parent.endswith(".network.d") and os.path.isdir(parent):
+        try:
+            os.rmdir(parent)
+        except OSError:
+            pass  # not empty or already gone
 
 
 def _remove_persistence_files() -> None:
-    """Remove all persistence files created by sbr-config."""
-    from .constants import (
-        NM_DISPATCHER_DIR,
-        NM_DISPATCHER_SCRIPT,
-        NETPLAN_CONFIG_FILE,
-        NETPLAN_DIR,
-        SYSTEMD_NETWORK_DIR,
-    )
+    """Remove all persistence files created by sbr-config.
 
+    Fallback for backups saved before persistence snapshots existed.
+    """
     # NetworkManager dispatcher script
-    nm_path = os.path.join(NM_DISPATCHER_DIR, NM_DISPATCHER_SCRIPT)
-    _remove_managed_file(nm_path)
+    _remove_managed_file(NM_DISPATCHER_PATH)
 
     # Netplan config
-    netplan_path = os.path.join(NETPLAN_DIR, NETPLAN_CONFIG_FILE)
-    _remove_managed_file(netplan_path)
+    _remove_managed_file(os.path.join(NETPLAN_DIR, NETPLAN_CONFIG_FILE))
 
-    # systemd-networkd drop-in files
+    # systemd-networkd: drop-ins plus legacy standalone files (<=1.2.x)
+    for path in glob.glob(
+        os.path.join(SYSTEMD_NETWORK_DIR, "*.network.d", NETWORKD_DROPIN_NAME)
+    ):
+        _remove_managed_file(path)
+        _cleanup_empty_dropin_dir(path)
     if os.path.isdir(SYSTEMD_NETWORK_DIR):
         for fname in os.listdir(SYSTEMD_NETWORK_DIR):
-            if fname.startswith("50-sbr-"):
-                fpath = os.path.join(SYSTEMD_NETWORK_DIR, fname)
-                _remove_managed_file(fpath)
+            if fname.startswith("50-sbr-") and fname.endswith(".network"):
+                _remove_managed_file(os.path.join(SYSTEMD_NETWORK_DIR, fname))
 
-    # ifupdown files in interfaces.d
-    from .constants import INTERFACES_D_DIR
+    # ifupdown: strip managed lines from the main interfaces file
+    main_content = read_file(INTERFACES_FILE)
+    if main_content and MANAGED_COMMENT in main_content:
+        write_file_atomic(INTERFACES_FILE, strip_managed_lines(main_content))
+        logger.info("Stripped sbr-config lines from %s", INTERFACES_FILE)
+
+    # ifupdown: our drop-ins removed, managed lines stripped from user files
     if os.path.isdir(INTERFACES_D_DIR):
         for fname in os.listdir(INTERFACES_D_DIR):
+            fpath = os.path.join(INTERFACES_D_DIR, fname)
+            if not os.path.isfile(fpath):
+                continue
             if fname.startswith("sbr-"):
-                fpath = os.path.join(INTERFACES_D_DIR, fname)
                 _remove_managed_file(fpath)
+            else:
+                content = read_file(fpath)
+                if content and MANAGED_COMMENT in content:
+                    write_file_atomic(fpath, strip_managed_lines(content))
+                    logger.info("Stripped sbr-config lines from %s", fpath)
 
     # Sysctl persistence
     remove_sysctl_persistence()
