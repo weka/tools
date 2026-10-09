@@ -2037,8 +2037,10 @@ def free_space_check_data(results):
     # Mirror the product's per-container upgrade preflight (agent
     # ensure_available_space): a host passes only if EVERY container data
     # directory has at least 1.5x its own size available on its partition.
-    # Evaluated per container, never summed across containers. Each host's result
-    # holds one "<container>:<avail_mb>:<used_mb>" line per container data dir.
+    # Evaluated per container, never summed across containers -- the product does
+    # the same, so containers sharing a partition can each pass here while their
+    # combined need exceeds the free space. Each host's result holds one
+    # "<container>:<avail_mb>:<used_mb>" line per running container.
     containers_by_host = {}
 
     for host_name, result in results:
@@ -3033,34 +3035,39 @@ def backend_host_checks(
             WARN(f"Unable to determine time on Host: {host_name}")
 
     INFO("CHECKING WEKA DATA DIRECTORY SPACE USAGE ON BACKENDS")
-    # Match the product's upgrade preflight (agent ensure_available_space), which
-    # checks EACH container individually: available space on the container data
-    # dir's partition must exceed 1.5x that container's size. Enumeration runs on
-    # each backend itself (data dirs differ per host) and considers only
-    # directories under /opt/weka/data -- stray files are skipped. Apparent size
-    # (du --apparent-size) matches the product's getDirectorySize, and df is taken
-    # on each dir's own partition like getAvailableDiskSpace. One
-    # "<container>:<avail_mb>:<used_mb>" line is emitted per container dir and
-    # checked per container in free_space_check_data (never summed).
+    # Match the product's upgrade preflight (agent ensure_available_space, in
+    # build/packages/agent/src/agent/api/upgrade.d):
+    #
+    #     getAvailableDiskSpace(container.dataDirectory) > getDirectorySize(...) * 1.5
+    #
+    # It takes ONE container name, so the product checks each container on its own and
+    # never sums containers sharing a partition. free_space_check_data deliberately
+    # reproduces that, so this check predicts what the product's preflight will do
+    # rather than what will actually fit. Apparent size (du --apparent-size) matches
+    # getDirectorySize; df on the dir's own partition matches getAvailableDiskSpace.
+    #
+    # The container list comes from `weka local ps` rather than from walking
+    # /opt/weka/data. That directory also holds runtime, dependency and staged-upgrade
+    # dirs, and which ones exist changes per release -- 6.x added audit-sink and
+    # telemetry, so a hardcoded exclusion list both space-checked non-containers and
+    # skipped real ones (envoy, ganesha, telemetry).
+    #
+    # df -P forces the POSIX single-line-per-mount format. Plain df wraps a long device
+    # name onto its own line, which moves Available out of $4; the resulting empty
+    # value fails the -n guard and drops that container from the check entirely.
     if V(weka_version) >= V("4.2.7"):
-        # Live container dirs have no version suffix; skip staged "<id>_<version>"
-        # dirs and runtime/dependency dirs.
-        excluded = "envoy|smbw|ganesha|agent|dependencies|ofed|igb_uio|logs.loop|mpin_user|pkg_tools|uio_generic|weka_driver"
-        name_filter = (
-            'case "$name" in *_*) continue;; esac; '
-            f'case "$name" in {excluded}) continue;; esac; '
-        )
+        container_dir = '/opt/weka/data/${name}'
     else:
         # Pre-4.2.7 the live data dir carries the running version suffix.
-        name_filter = f'case "$name" in *_{weka_version}) : ;; *) continue;; esac; '
+        container_dir = '/opt/weka/data/${name}_' + weka_version
 
     data_check_cmd = (
-        "for d in /opt/weka/data/*/; do "
+        "weka local ps --no-header 2>/dev/null | awk '{print $1}' | while read -r name; do "
+        '[ -n "$name" ] || continue; '
+        f'd="{container_dir}"; '
         '[ -d "$d" ] || continue; '
-        'name=$(basename "$d"); '
-        f"{name_filter}"
         "used=$(sudo du -sm --apparent-size \"$d\" 2>/dev/null | awk '{print $1}'); "
-        "avail=$(df -m \"$d\" 2>/dev/null | awk 'NR==2 {print $4}'); "
+        "avail=$(df -Pm \"$d\" 2>/dev/null | awk 'NR==2 {print $4}'); "
         '[ -n "$avail" ] && [ -n "$used" ] && echo "$name:$avail:$used"; '
         "done"
     )
