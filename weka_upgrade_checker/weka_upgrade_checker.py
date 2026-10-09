@@ -2521,48 +2521,46 @@ def host_port_connectivity(results):
                 )
 
 def parse_available_memory(mem_output):
+    """
+    MemAvailable in bytes from /proc/meminfo content, or 0 when absent.
+
+    Read from the same place the product does (agent getMemoryInfo reads
+    /proc/meminfo MemAvailable) rather than from `free -h`: that output is
+    rounded to one decimal and carries 1024-based unit suffixes, which an
+    earlier version converted with GB->GiB multipliers and so over-reported
+    available memory by 7.4%.
+    """
     for line in mem_output.splitlines():
-        if line.strip().startswith("Mem:"):
-            parts = line.split()
-            available = parts[-1]
+        m = re.match(r"^MemAvailable:\s+(\d+)\s*kB", line.strip())
+        if m:
+            return int(m.group(1)) * 1024
+    return 0
 
-            m = re.match(r"([\d\.]+)([KMGTP]i?)$", available)
-            if not m:
-                return 0.0
-
-            num, unit = m.groups()
-            num = float(num)
-
-            multipliers = {
-                "K": 1 / 1024 / 1024,
-                "Ki": 1 / 1024 / 1024,
-                "M": 1 / 1024,
-                "Mi": 1 / 1024,
-                "G": 1.0,
-                "Gi": 1.073741824,
-                "T": 1024.0,
-                "Ti": 1099.511627776,
-            }
-
-            return num * multipliers[unit]
-
-    return 0.0
-
-def available_memory_check(host_name, result):
+def available_memory_check(host_name, result, num_containers=None):
+    # Mirror verifyAvailableMemory in the Go upgrade verifier: it requires
+    # max(5, one GiB per BACKEND-MODE container on the machine) and asks the agent,
+    # whose getAvailableMemoryGiB floors to whole GiB (`available >> 30`). Compare on
+    # the same floored value -- comparing the unfloored float lets a host with, say,
+    # 4.74 GiB pass here and then be refused by the upgrade.
     try:
         lines = result.strip().splitlines()
-        num_containers = int(lines[0].strip())
-        mem_output = "\n".join(lines[1:])
-        available_gib = parse_available_memory(mem_output)
-
+        if num_containers is None:
+            # Host named with -b and absent from the cluster container list; fall back
+            # to its own `weka local ps` count, which also counts protocol containers.
+            num_containers = int(lines[0].strip())
+        available_bytes = parse_available_memory("\n".join(lines[1:]))
+        available_gib = available_bytes >> 30
         min_required = max(5, num_containers * 1)
 
-        if available_gib < min_required:
-            WARN(f"{host_name} has only {available_gib:.2f}GiB available for {num_containers} containers — below {min_required}GiB minimum")
-        elif available_gib < num_containers:
-            WARN(f"{host_name} has only {available_gib:.2f}GiB available for {num_containers} containers")
+        if available_bytes == 0:
+            WARN(f"Could not read MemAvailable from /proc/meminfo on {host_name}")
+        elif available_gib < min_required:
+            WARN(
+                f"{host_name} has only {available_bytes / 2 ** 30:.2f}GiB available for {num_containers} containers "
+                f"(counted as {available_gib}GiB); the upgrade requires {min_required}GiB and will refuse to start"
+            )
         else:
-            GOOD(f"{host_name} has {available_gib:.2f}GiB available for {num_containers} containers — OK")
+            GOOD(f"{host_name} has {available_bytes / 2 ** 30:.2f}GiB available for {num_containers} containers — OK")
     except Exception as e:
         WARN(f"Failed to parse memory info on {host_name}: {e}")
 
@@ -3373,15 +3371,21 @@ def backend_host_checks(
             check_kernel_arguments(host_name, result, target_version)
 
     INFO("CHECKING ENOUGH AVAILABLE MEMORY ON BACKENDS")
+    # The upgrade sizes this from backend-mode containers only (verifyAvailableMemory
+    # counts initialFilteredHosts, which is filtered by IsBackendMode), so take the
+    # count from the cluster container list. `weka local ps` also returns protocol
+    # containers and would demand more memory than the upgrade does once a machine
+    # runs more than five of them.
+    backend_container_count = Counter(host.hostname for host in backend_hosts)
     results = parallel_execution(
         ssh_bk_hosts,
-        ['weka local ps --no-header | wc -l; free -h'],
+        ['weka local ps --no-header | wc -l; grep -m1 MemAvailable /proc/meminfo'],
         use_check_output=True,
         ssh_identity=ssh_identity,
     )
     for host_name, result in results:
         if result is not None:
-            available_memory_check(host_name, result)
+            available_memory_check(host_name, result, backend_container_count.get(host_name))
         else:
             WARN(f"Unable to determine available memory on Host: {host_name}")
 
