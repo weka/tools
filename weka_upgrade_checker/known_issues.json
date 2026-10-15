@@ -26,10 +26,11 @@
         "link_types": ["IB+ETH"],
         "problematic_kernel_arguments": [ ],
         "internal_reference": "WEKAPP-670511",
+        "recommendation": "weka debug override add --key net.dpdk.mlx5.init_string --value txq_mpw_en=0",
         "affected_versions": [
             {
                 "min": "5.1.30",
-                "max": ""
+                "max": "5.1.43"
             }
         ],
         "multi_org": false,
