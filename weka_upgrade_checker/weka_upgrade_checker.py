@@ -134,7 +134,7 @@ def _ssh_targets(host):
     return targets
 
 
-pg_version = "1.13.1"
+pg_version = "1.13.2"
 known_issues_file = "known_issues.json"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
@@ -3759,24 +3759,20 @@ def check_known_issues(
                     description = issue.get("description", "No description available.")
                     if issue.get("version_from"):
                         if V(version) <= V(issue['version_from']) and V(upgrade_hops[-1]) > V(issue['version_from']):
-                            found_issues += [
-                                key, 
-                                description,
-                            ]
+                            found_issues.append((key, description, issue.get("recommendation")))
                     else:
                          for vrange in issue.get("affected_versions", []):
                              vmin = vrange.get("min")
                              vmax = vrange.get("max")
 
-                             # min_ok logic
                              if vmax:
-                                 # Normal range: version >= min AND version < max
                                  min_ok = (not vmin) or V(version) >= V(vmin)
                                  max_ok = V(version) < V(vmax)
-                             # No max:                                 
                              else:
+                                 # An open-ended range covers the rest of min's release line
+                                 # (e.g. 4.4.30+ means 4.4.x only), not every later major.
                                  min_ok = V(version) >= V(vmin)
-                                 max_ok = True
+                                 max_ok = V(version).release[:2] == V(vmin).release[:2]
 
                              if min_ok and max_ok:
                                 related_protocols = set(issue.get("related_protocols", []))
@@ -3800,21 +3796,24 @@ def check_known_issues(
                                 if requires_multi_org and not multi_org:
                                     continue
 
-                                found_issues += [
-                                    key,
-                                    description,
-                                ]
+                                found_issues.append((key, description, issue.get("recommendation")))
                                 # Stop at the first matching range so an issue with
                                 # multiple affected_versions entries isn't reported twice.
                                 break
 
+                hop_kind = "target" if index == len(upgrade_hops) - 1 else "intermediate"
                 if found_issues:
-                    header = f"Known issues for version {version}:"
+                    header = f"Known issues for {hop_kind} version {version}:"
                     print(f"\n{colors.WARNING}{header}{colors.ENDC}")
                     logging.warning(header)
-                    printlist(found_issues, 2)
+                    for key, description, recommendation in found_issues:
+                        ECHO(f"{key} {description}")
+                        if recommendation:
+                            rec_msg = f"Recommendation: {recommendation}"
+                            print(f"{colors.OKPURPLE}{' ' * 12}{rec_msg}{colors.ENDC}")
+                            logging.info(rec_msg)
                 else:
-                    no_issues_msg = f"No known issues for version {version}."
+                    no_issues_msg = f"No known issues for {hop_kind} version {version}."
                     print(f"{colors.OKCYAN}{no_issues_msg}{colors.ENDC}")
                     logging.info(no_issues_msg)
 
