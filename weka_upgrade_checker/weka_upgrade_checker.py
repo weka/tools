@@ -134,7 +134,7 @@ def _ssh_targets(host):
     return targets
 
 
-pg_version = "1.13.4"
+pg_version = "1.13.5"
 known_issues_file = "known_issues.json"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
@@ -2026,6 +2026,48 @@ def time_check(host_name, result):
         GOOD(f"Time check passed on host: {host_name}")
 
 
+def mtu_mismatch_check(results):
+    # All backend dataplane NICs should share one MTU; a mismatch can cause
+    # cluster communication problems. Each host's `result` holds one
+    # "<container>:<nic>:<mtu>" line per dataplane NIC read from sysfs. Only the
+    # SET of distinct MTU values matters for the verdict.
+    nics_by_mtu = {}
+
+    for host_name, result in results:
+        if result is None:
+            WARN(f"Unable to determine dataplane NIC MTUs on Host: {host_name}")
+            continue
+        for line in str(result).splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                # A PCI address NIC contains colons itself
+                container, rest = line.split(":", 1)
+                nic, mtu = rest.rsplit(":", 1)
+                mtu = int(mtu)
+            except ValueError:
+                WARN(f"Could not parse MTU data for host: {host_name}")
+                continue
+            nics_by_mtu.setdefault(mtu, []).append(f"{host_name} {container} {nic}")
+
+    if not nics_by_mtu:
+        WARN(
+            "Unable to determine dataplane NIC MTUs on any backend. The dataplane NICs "
+            "may be bound to a userspace driver (e.g. DPDK igb_uio/vfio) that exposes no "
+            "kernel MTU; MTU uniformity could not be verified."
+        )
+    elif len(nics_by_mtu) == 1:
+        GOOD(f"All backend dataplane NICs use MTU {next(iter(nics_by_mtu))}")
+    else:
+        BAD(
+            "Mismatched MTUs found on backend dataplane NICs. This can lead to cluster "
+            "communication problems; set all dataplane NICs to the same MTU:"
+        )
+        for mtu, nics in sorted(nics_by_mtu.items()):
+            WARN(f"MTU {mtu}: {', '.join(nics)}")
+
+
 def client_mount_check(host_name, result):
     if int(result) > 0:
         BAD(f"Found wekafs mounted on /weka for host: {host_name}")
@@ -3031,6 +3073,47 @@ def backend_host_checks(
             time_check(host_name, result)
         else:
             WARN(f"Unable to determine time on Host: {host_name}")
+
+    # Added 2026-10-22
+    #  Compare dataplane NIC MTUs across all backends. NICs
+    #  come from each non-protocol container's `weka local resources net`; the
+    #  Identifier column (col 2) is either a PCI address or an interface name.
+    #  The header row is skipped with `tail -n +2` rather than by matching its
+    #  text, since 6.x renames it from "NET DEVICE" to "Net Device". A NIC whose
+    #  MTU is not kernel-readable (e.g. a DPDK-bound device with no netdev)
+    #  reports 0 and is skipped; only NICs with a real MTU are compared.
+    INFO("CHECKING FOR MISMATCHED DATAPLANE NIC MTUS ON BACKENDS")
+    # The MTU is read only from each backend's sysfs: the check ssh's to
+    # ssh_bk_hosts (backends only) and excludes protocol containers below, so
+    # the compared set is strictly backend dataplane NICs. `weka cluster
+    # container net -J` was deliberately NOT used as a second source: it is
+    # cluster-wide and carries no backend/client/protocol marker, so client or
+    # protocol NIC MTUs would merge in and could raise a spurious backend
+    # mismatch. (It also reports mtu 0 for DPDK-bound NICs, so it added nothing.)
+    mtu_cmd = (
+        "weka local ps --no-header 2>/dev/null | awk '{print $1}' "
+        "| grep -vw -e envoy -e ganesha -e samba -e smbw -e s3 -e dataserv | while read -r c; do "
+        '[ -n "$c" ] || continue; '
+        # `weka local resources net` requires root; other backend checks here
+        # ssh as a non-root sudo user, so this must be sudo or it prints nothing.
+        "sudo weka local resources net --container \"$c\" --stable 2>/dev/null | tail -n +2 | awk '{print $2}' "
+        "| while read -r nic; do "
+        '[ -n "$nic" ] || continue; mtu=""; '
+        'if [ -r "/sys/class/net/$nic/mtu" ]; then mtu=$(cat "/sys/class/net/$nic/mtu"); '
+        'else mtu=$(cat /sys/bus/pci/devices/"$nic"/net/*/mtu 2>/dev/null | head -1); fi; '
+        # An `if` (false -> exit 0) keeps the loop's exit status zero; an `&&`
+        # chain would make the whole pipeline exit non-zero whenever the last
+        # NIC has no readable MTU, which check_output treats as host failure.
+        'if [ -n "$mtu" ] && [ "$mtu" -gt 0 ] 2>/dev/null; then echo "$c:$nic:$mtu"; fi; '
+        "done; done"
+    )
+    results = parallel_execution(
+        ssh_bk_hosts,
+        [mtu_cmd],
+        use_check_output=True,
+        ssh_identity=ssh_identity,
+    )
+    mtu_mismatch_check(results)
 
     INFO("CHECKING WEKA DATA DIRECTORY SPACE USAGE ON BACKENDS")
     # Match the product's upgrade preflight (agent ensure_available_space, in
