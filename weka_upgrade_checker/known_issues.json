@@ -1,4 +1,25 @@
 {
+    "WTA20261022":
+    {
+        "description": "S3 containers restart loop on upgrade",
+        "related_protocols": ["s3"],
+        "link_types": [],
+        "problematic_kernel_arguments": [ ],
+        "internal_reference": "WTA20261022",
+        "recommendation": "Do not upgrade until 5.1.43 or remove S3",
+        "affected_versions": [
+            {
+                "min": "5.1.30",
+                "max": "5.1.43"
+            },
+            {
+                "min": "6.0.0",
+                "max": ""
+            }
+        ],
+        "multi_org": false,
+        "obj_store": false
+    },
     "WTA20260928":
     {
         "description": "Journal recovery after bucket failover can desync parity (FoundCorruptedBlockInStripe)",
