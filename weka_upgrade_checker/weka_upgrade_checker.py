@@ -1060,7 +1060,7 @@ def weka_cluster_checks(target_version):
                 drive["hostname"],
                 drive["writable"]
             ]
-            
+
     if not active_unwritable_drives:
         GOOD(f"All drives are in active and writable status")
     else:
@@ -1521,7 +1521,7 @@ def weka_cluster_checks(target_version):
                         WARN(
                             f'Host: {host_info["id"]} {host_info["hostname"]} {host_info["ip"]} {host_info["version"]} {host_info["mode"]}'
                         )
-            
+
     # Added 2025-11-22
     #  There may be CX-4 compatibility issues (see WEKAPP-540128)
     if V(target_version) >= V("5.0"):
@@ -2481,9 +2481,9 @@ def check_kernel_arguments(host_name, result, target_weka_version):
     except json.JSONDecodeError:
         WARN(f"Error: {known_issues_file} contains invalid JSON.")
         return
-   
+
     current_kernel_arguments = result.split()
- 
+
     for key, issue in known_issues.items():
         if issue.get("problematic_kernel_arguments"):
             problematic_kernel_arguments = issue['problematic_kernel_arguments']
@@ -2627,7 +2627,7 @@ def check_cpu_frequency(host_name, cpu_info_output, core_ids):
                     current_processor = int(parts[1].strip())
                 except ValueError:
                     continue
-        
+
         # Handle "cpu MHz : 2500.000"
         elif "cpu MHz" in line and ":" in line and current_processor is not None:
             try:
@@ -2644,10 +2644,10 @@ def check_cpu_frequency(host_name, cpu_info_output, core_ids):
         # Skip 'AUTO' (4294967295) or cores not found in map
         if core_id == 4294967295 or core_id not in cpu_mhz_map:
             continue
-            
+
         mhz = cpu_mhz_map[core_id]
         checked_count += 1
-        
+
         if mhz < 1500:
             BAD(f"CPU Frequency Low - Host: {host_name}, CPU: {core_id}, Current: {mhz} MHz (Minimum: 1500 MHz)")
             issues_found = True
@@ -2805,7 +2805,7 @@ HUGEPAGE_STATE_DIR = "/opt/weka/data/agent/containers/state"
 
 # Every allocated page is one hugetlbfs file named weka_<container><identity>_slot<N>_<role>_map_<i>,
 # under the container's huge (2MiB) or huge1G directory, so counting files is what sizes a
-# pool per IO process and tells us which page size is actually backing it. 
+# pool per IO process and tells us which page size is actually backing it.
 # The counting is done on the host: a large pool is tens of thousands of files.
 HUGEPAGE_MAPPING_COMMAND = rf"""
 echo "MAX_MAP_COUNT=$(cat /proc/sys/vm/max_map_count 2>/dev/null || echo 0)"
@@ -3475,7 +3475,7 @@ def backend_host_checks(
     check_hugepage_max_map_count(ssh_bk_hosts, ssh_identity, target_version, "BACKENDS")
 
     INFO("VERIFYING CPU FREQUENCY FOR ASSIGNED WEKA CORES")
-    
+
     # Map hostnames to their assigned core IDs from the existing backend_hosts list
     host_to_cores = defaultdict(set)
     for bk in backend_hosts:
@@ -3497,7 +3497,7 @@ def backend_host_checks(
             if result:
                 # Look up the cores for this specific host
                 assigned_cores = host_to_cores.get(host_name)
-                
+
                 if assigned_cores:
                     check_cpu_frequency(host_name, result, assigned_cores)
                 else:
