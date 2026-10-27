@@ -810,7 +810,7 @@ def weka_cluster_checks(target_version):
     )
 
     if pre_1eib and post_1eib:
-        INFO("Validating whether overrides needed for upgrade")
+        INFO("Validating whether overrides are needed for upgrade")
         WARN("Before upgrading drives and compute containers, run: weka debug override add --key rpc.exception.version --value 1 --force. Remove the override once the upgrade has completed.")
 
     INFO("Validating memory to SSD capacity ratio for upgrade")
@@ -1127,7 +1127,7 @@ def weka_cluster_checks(target_version):
                 if host_id is None:
                     host_id = container["cores_ids"][0]
                 elif container["cores_ids"][0] != host_id:
-                    WARN(f'Container {container["container"]} core ids set to AUTO while other containers manually set to core_id. Containers should have manually assigned core ids')
+                    WARN(f'Container {container["container"]} core ids are set to AUTO while other containers set core ids manually. Containers should have manually assigned core ids')
                     has_error = True
 
         return has_error
@@ -1275,7 +1275,7 @@ def weka_cluster_checks(target_version):
             GOOD("WEKA stats retention settings are set correctly")
         else:
             WARN(
-                'Set stats retention to 1 day, execute "weka stats retention set --days 1". Following '
+                'Set stats retention to 1 day by running "weka stats retention set --days 1". Following '
                 + 'the upgrade revert using "weka stats retention set --days '
                 + '{int(stats_retention["retention_secs"] / 86400)}'
             )
@@ -2275,7 +2275,7 @@ def protocol_host(backend_hosts, s3_enabled, weka_version):
         protos = multiprotocols[host_name]["lists"]
         if num_proto > 1:
             WARN(
-                f"Host: {host_name} is running {num_proto} protocols {protos} recommended is 1"
+                f"Host: {host_name} is running {num_proto} protocols {protos}; recommended is 1"
             )
         elif num_proto == 1:
             GOOD(f"Host: {host_name} is running {num_proto} protocols {protos}")
@@ -2438,7 +2438,7 @@ def weka_traces_size(host_name, result):
     INFO2(f'{" " * 2}Checking free space for WEKA traces on Host: {host_name}:')
     if weka_trace_ensure_free > int(result) * 1024:
         WARN(
-            f"WEKA trace ensure free size of {weka_trace_ensure_free} is greater than WEKA trace directory size of {int(result)*1024}"
+            f"WEKA trace ensure-free size of {weka_trace_ensure_free} exceeds total WEKA trace directory size ({int(result)*1024})"
         )
     else:
         GOOD(f"WEKA trace size OK")
@@ -2447,7 +2447,7 @@ def weka_traces_size(host_name, result):
 def cpu_instruction_set(host_name, result):
     INFO2(f'{" " * 2}Validating cpu instruction set on Host: {host_name}:')
     if result is None or result == "":
-        BAD(f"Cannot update to WEKA version 4.3 CPU instruction set avx2 missing")
+        BAD(f"Cannot upgrade to WEKA version 4.3+: CPU instruction set AVX2 missing")
     else:
         GOOD(f"CPU instruction set validation successful")
 
@@ -2559,7 +2559,7 @@ def host_port_connectivity(results):
                 GOOD(f"Connectivity to port {port} OK")
             else:
                 BAD(
-                    f"Host Connectivity to port {port} not ok, error {status} need to restart protocol container on Host: {host}"
+                    f"Host Connectivity to port {port} not OK (error {status}); restart protocol container on host: {host}"
                 )
 
 def parse_available_memory(mem_output):
@@ -3347,7 +3347,7 @@ def backend_host_checks(
             if result == 0:
                 GOOD(f"IPv6 is enabled")
             else:
-                BAD(f"Cannot update WEKA - IPv6 is disabled")
+                BAD(f"Cannot upgrade WEKA - IPv6 is disabled")
 
     if V("4.2.6") <= V(weka_version) <= V("4.2.10"):
         INFO("VALIDATING OS KERNEL UPGRADE ELIGIBILITY")
