@@ -3719,7 +3719,7 @@ def client_hosts_checks(weka_version, ssh_cl_hosts, ssh_identity, target_version
         if result is not None:
             time_check(host_name, result)
         else:
-            WARN(f"Unable to determine Host: {host_name} weka-agent status")
+            WARN(f"Unable to determine time on Host: {host_name}")
 
     INFO("CHECKING WEKA MOUNT POINTS ON CLIENTS")
     results = parallel_execution(
