@@ -500,7 +500,7 @@ def weka_cluster_checks(target_version):
     INFO("WEKA USER LOGIN TEST")
     p = run(["weka", "status"], stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
     if p.returncode != 0:
-        BAD("Please login using weka user login first, cannot continue")
+        BAD("Please log in using weka user login first, cannot continue")
         sys.exit(1)
     else:
         GOOD("WEKA user login successful")
@@ -810,7 +810,7 @@ def weka_cluster_checks(target_version):
     )
 
     if pre_1eib and post_1eib:
-        INFO("Validating if overrides needed for upgrade")
+        INFO("Validating whether overrides needed for upgrade")
         WARN("Before upgrading drives and compute containers, run: weka debug override add --key rpc.exception.version --value 1 --force. Remove the override once the upgrade has completed.")
 
     INFO("Validating memory to SSD capacity ratio for upgrade")
@@ -1062,7 +1062,7 @@ def weka_cluster_checks(target_version):
             ]
 
     if not active_unwritable_drives:
-        GOOD(f"All drives are in active and writable status")
+        GOOD(f"All drives are active and writable")
     else:
         WARN(f"The following drives are active but not writable\n")
         printlist(active_unwritable_drives, 5)
@@ -1275,8 +1275,8 @@ def weka_cluster_checks(target_version):
             GOOD("WEKA stats retention settings are set correctly")
         else:
             WARN(
-                'Set stats retention to 1 days, execute "weka stats retention set --days 1". Following '
-                + 'the upgrade revert back using "weka stats retention set --days '
+                'Set stats retention to 1 day, execute "weka stats retention set --days 1". Following '
+                + 'the upgrade revert using "weka stats retention set --days '
                 + '{int(stats_retention["retention_secs"] / 86400)}'
             )
 
@@ -1545,8 +1545,8 @@ def weka_cluster_checks(target_version):
             print(f"Error checking for CX-4 NICs: {e}")
 
         if cx4_found:
-            BAD("CX4 detected. (The ConnectX-4 ethernet NICs from NVIDIA Mellanox were officially announced " \
-                "as End of Life (EOL) on November 2020). This model NIC is officially deprecated in WEKA 5.x.")
+            BAD("CX-4 detected. (The ConnectX-4 Ethernet NICs from NVIDIA Mellanox were officially announced " \
+                "as End of Life (EOL) in November 2020). This NIC model is officially deprecated in WEKA 5.x.")
         else:
             GOOD(f"No CX-4 NICs located")
 
@@ -3165,7 +3165,7 @@ def backend_host_checks(
 
     free_space_check_data(results)
 
-    # WEKA 4.4.10+ and 5.1.0+ requires the filesystem backing /opt/weka to support fallocate.
+    # WEKA 4.4.10+ and 5.1.0+ require the filesystem backing /opt/weka to support fallocate.
     # Probe each backend with a benign 4 KiB allocation on a temp file under
     # /opt/weka, then immediately remove it (nothing is left behind regardless of
     # outcome). A non-zero fallocate exit (e.g. EOPNOTSUPP on ext2/ext3, FAT, some
@@ -3453,7 +3453,7 @@ def backend_host_checks(
         else:
             check_kernel_arguments(host_name, result, target_version)
 
-    INFO("CHECKING ENOUGH AVAILABLE MEMORY ON BACKENDS")
+    INFO("CHECKING FOR SUFFICIENT AVAILABLE MEMORY ON BACKENDS")
     # The upgrade sizes this from backend-mode containers only (verifyAvailableMemory
     # counts initialFilteredHosts, which is filtered by IsBackendMode), so take the
     # count from the cluster container list. `weka local ps` also returns protocol
@@ -3692,7 +3692,7 @@ def client_hosts_checks(weka_version, ssh_cl_hosts, ssh_identity, target_version
             else:
                 check_os_kernel(host_name, result)
 
-    INFO("CHECKING WEB CONNECTIVITY TEST ON CLIENTS")
+    INFO("RUNNING WEB CONNECTIVITY TEST ON CLIENTS")
     if len(ssh_cl_hosts) != 0:
         results = parallel_execution(
             ssh_cl_hosts,
@@ -3706,7 +3706,7 @@ def client_hosts_checks(weka_version, ssh_cl_hosts, ssh_identity, target_version
 
         client_web_test(results)
     else:
-        GOOD(f"Skipping clients check, no online clients found")
+        GOOD(f"Skipping client checks, no online clients found")
 
     INFO("CHECKING TIME DIFFERENCE ON CLIENTS")
     results = parallel_execution(
