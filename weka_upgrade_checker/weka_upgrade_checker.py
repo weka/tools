@@ -604,7 +604,7 @@ def weka_cluster_checks(target_version):
         with open(file_path, "r") as file:
             content = file.read()
             if "SSL_CERT_FILE" in content:
-                BAD(f"SSL_CERT_FILE defined in {weka_versions}.spec. Please contact WEKA Support before upgrading")
+                BAD(f"SSL_CERT_FILE defined in {weka_versions}.spec. Please contact WEKA Customer Success before upgrading")
             else:
                 GOOD("SSL_CERT_FILE not defined")
     except FileNotFoundError:
@@ -1097,7 +1097,7 @@ def weka_cluster_checks(target_version):
         if not fake_drives:
             GOOD(f"All drives' configurations are valid")
         else:
-            WARN(f"The following Drives have an invalid configuration, please contact WEKA Customer Success prior to upgrading to V4.2\n")
+            WARN(f"The following drives have an invalid configuration, please contact WEKA Customer Success prior to upgrading to V4.2\n")
             for fake_drive in fake_drives:
                 WARN(
                     "{disk_id} {committed_state}=>{target_state} lastPhaseOutSizeB={lastPhaseOutSizeB} sizeB={sizeB}".format(
@@ -1398,7 +1398,7 @@ def weka_cluster_checks(target_version):
                     global_rule_count += rule_count
 
                     if rule_count > 10:
-                        BAD(f"Bucket '{bucket_name}' exceeds max life-cycle rules: has {rule_count}, max is 10.")
+                        BAD(f"Bucket '{bucket_name}' exceeds max lifecycle rules: has {rule_count}, max is 10.")
                         continue
 
                     rule_issue_found = False
@@ -1476,7 +1476,7 @@ def weka_cluster_checks(target_version):
             elif nfs_server_hosts[0]["status"] == "Inactive":
                 WARN(f'NFS Server {nfs_server_hosts[0]["name"]} is {nfs_server_hosts[0]["status"]}')
             else:
-                WARN(f'NFS Server {nfs_server_hosts[0]["name"]} Not OK')
+                WARN(f'NFS Server {nfs_server_hosts[0]["name"]} not OK')
 
             if nfs_server_hosts[0]["status"] != "Inactive":
                 INFO("CHECKING WEKA NFS SERVER HOST HEALTH")
@@ -3433,7 +3433,7 @@ def backend_host_checks(
         )
         for host_name, result in results:
             if result is None:
-                WARN(f"Unable to Determine Host: {host_name} port connectivity")
+                WARN(f"Unable to determine Host: {host_name} port connectivity")
 
         host_port_connectivity(results)
 
