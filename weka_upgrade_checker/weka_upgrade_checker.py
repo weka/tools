@@ -1164,7 +1164,7 @@ def weka_cluster_checks(target_version):
             WARN(f"Duplicate core IDs found in different containers on host {hostname}.")
 
         if validate_core_ids(containers):
-            WARN(f"Core IDs set to AUTO in one container on host {hostname} while other containers have manually assigned core_IDs.")
+            WARN(f"Core IDs set to AUTO in one container on host {hostname} while other containers have manually assigned core IDs.")
 
     if not any(
         check_duplicate_core_ids(containers) or validate_core_ids(containers)
@@ -2042,7 +2042,7 @@ def mtu_mismatch_check(results):
             if not line:
                 continue
             try:
-                # A PCI address NIC contains colons itself
+                # A NIC's PCI address contains colons
                 container, rest = line.split(":", 1)
                 nic, mtu = rest.rsplit(":", 1)
                 mtu = int(mtu)
@@ -3083,7 +3083,7 @@ def backend_host_checks(
     #  MTU is not kernel-readable (e.g. a DPDK-bound device with no netdev)
     #  reports 0 and is skipped; only NICs with a real MTU are compared.
     INFO("CHECKING FOR MISMATCHED DATAPLANE NIC MTUS ON BACKENDS")
-    # The MTU is read only from each backend's sysfs: the check ssh's to
+    # The MTU is read only from each backend's sysfs: the check SSHes to
     # ssh_bk_hosts (backends only) and excludes protocol containers below, so
     # the compared set is strictly backend dataplane NICs. `weka cluster
     # container net -J` was deliberately NOT used as a second source: it is
@@ -3329,7 +3329,7 @@ def backend_host_checks(
     )
     for host_name, result in results:
         if result is None:
-            WARN(f"Unable to determine host: {host_name} CPU instruction set")
+            WARN(f"Unable to determine Host: {host_name} CPU instruction set")
         else:
             cpu_instruction_set(host_name, result)
 
