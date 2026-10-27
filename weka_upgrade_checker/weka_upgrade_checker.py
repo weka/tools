@@ -1625,7 +1625,7 @@ def ssh_check(host_name, result, ssh_bk_hosts):
     if passwordless_ssh != 0:
         BAD(
             f"Passwordless SSH not configured on host: {host_name}"
-            f"{_ssh_tried(host)}, will exclude from checks"
+            f"{_ssh_tried(host)}, excluding from checks"
         )
         ssh_bk_hosts = [x for x in ssh_bk_hosts if _host_id(x) != host_name]
     else:
@@ -3816,7 +3816,7 @@ def check_known_issues(
     Checks each version in the upgrade hops list against known issues,
     considering configured protocols, link type, version_from, and object store status.
     The upgrade map requires upgrade_path.json and the code traverses from bottom to top in the list or oldest to newest from that list.
-    Once the upgrade path is determined then we check for any known issues outlined in known_issues.json.
+    Once the upgrade path is determined, we check for any known issues outlined in known_issues.json.
     """
     try:
         with open(known_issues_file, "r") as file:
