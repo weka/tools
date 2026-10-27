@@ -1280,7 +1280,7 @@ def weka_cluster_checks(target_version):
                 + '{int(stats_retention["retention_secs"] / 86400)}'
             )
 
-    INFO("VERIFING HOSTS MACHINE IDENTIFIERS")
+    INFO("VERIFYING HOSTS MACHINE IDENTIFIERS")
     spinner = Spinner("  Retrieving Data  ", color=colors.OKCYAN)
     spinner.start()
 
@@ -2200,7 +2200,7 @@ def weka_mounts(results):
             GOOD(f"No mounted WEKA filesystems found")
         else:
             for mount in mounts:
-                WARN(f"Found WEKA filesytems mounted {mount}")
+                WARN(f"Found WEKA filesystems mounted {mount}")
 
 
 def get_host_name(host_id, backend_hosts):
@@ -3816,7 +3816,7 @@ def check_known_issues(
     Checks each version in the upgrade hops list against known issues,
     considering configured protocols, link type, version_from, and object store status.
     The upgrade map requires upgrade_path.json and the code traverses from bottom to top in the list or oldest to newest from that list.
-    Once the upgrade path is determined then we check for any know issues outlined in known_issues.json.
+    Once the upgrade path is determined then we check for any known issues outlined in known_issues.json.
     """
     try:
         with open(known_issues_file, "r") as file:
