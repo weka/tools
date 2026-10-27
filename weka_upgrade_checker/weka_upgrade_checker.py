@@ -1275,8 +1275,8 @@ def weka_cluster_checks(target_version):
             GOOD("WEKA stats retention settings are set correctly")
         else:
             WARN(
-                'Set stats retention to 1 day by running "weka stats retention set --days 1". Following '
-                + 'the upgrade revert using "weka stats retention set --days '
+                'Set stats retention to 1 day by running "weka stats retention set --days 1". After '
+                + 'the upgrade, revert using "weka stats retention set --days '
                 + '{int(stats_retention["retention_secs"] / 86400)}'
             )
 
@@ -2559,7 +2559,7 @@ def host_port_connectivity(results):
                 GOOD(f"Connectivity to port {port} OK")
             else:
                 BAD(
-                    f"Host Connectivity to port {port} not OK (error {status}); restart protocol container on host: {host}"
+                    f"Connectivity to port {port} not OK (error {status}); restart protocol container on host: {host}"
                 )
 
 def parse_available_memory(mem_output):
