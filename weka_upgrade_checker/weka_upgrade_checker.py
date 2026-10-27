@@ -483,7 +483,7 @@ def weka_cluster_checks(target_version):
 
     if con_status is None:
         WARN(
-            f"Unable to verify Weka local container status after retry ({last_error});"
+            f"Unable to verify WEKA local container status after retry ({last_error});"
         )
     else:
         for container in con_status:
@@ -589,8 +589,8 @@ def weka_cluster_checks(target_version):
 
     except subprocess.CalledProcessError as e:
         error_output = e.output.decode("utf-8", errors="replace")
-        logging.error(f"Error checking Weka alerts: {error_output}")
-        WARN(f"Weka alerts check failed with exit code {e.returncode}")
+        logging.error(f"Error checking WEKA alerts: {error_output}")
+        WARN(f"WEKA alerts check failed with exit code {e.returncode}")
 
     except json.JSONDecodeError as e:
         logging.error(f"Failed to parse JSON: {e}")
@@ -1180,7 +1180,7 @@ def weka_cluster_checks(target_version):
         GOOD(f"WEKA traces are enabled")
     else:
         WARN(
-            'WEKA traces are NOT enabled, enable Weka traces using "weka debug traces start"'
+            'WEKA traces are NOT enabled, enable WEKA traces using "weka debug traces start"'
         )
 
     INFO("CHECKING FOR MANUAL WEKA OVERRIDES")
@@ -1952,7 +1952,7 @@ def weka_agent_unit_type(host_name, result):
         GOOD(f"Host {host_name}: weka-agent.service running as init.d service")
     elif SRV == "systemd":
         BAD(
-            f"Host {host_name} weka-agent.service running as systemd service, please contact weka support prior to upgrade"
+            f"Host {host_name} weka-agent.service running as systemd service, please contact WEKA Customer Success prior to upgrade"
         )
     else:
         WARN(f"Host {host_name}: Unable to determine weka-agent service type")
@@ -2214,7 +2214,7 @@ def frontend_check(host_name, result):
     frontend_mounts = result
     if frontend_mounts != "0":
         WARN(
-            f"WEKA frontend process in use on host: {host_name}, contact Weka Customer Success prior to upgrading"
+            f"WEKA frontend process in use on host: {host_name}, contact WEKA Customer Success prior to upgrading"
         )
     else:
         GOOD(f"WEKA frontend process OK on host: {host_name}")
@@ -3583,7 +3583,7 @@ def backend_host_checks(
         spinner.stop()
 
     # Added 2026-01-21
-    # WEKAPP-538765 (Weka processes in UDP mode in 4.4.9 cannot sync with DPDK processes on a localhost running 4.4.8.76)
+    # WEKAPP-538765 (WEKA processes in UDP mode in 4.4.9 cannot sync with DPDK processes on a localhost running 4.4.8.76)
     if V(weka_version) == V("4.4.8.76"):
         data = None
         try:
