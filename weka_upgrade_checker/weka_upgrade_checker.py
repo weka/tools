@@ -1277,7 +1277,7 @@ def weka_cluster_checks(target_version):
             WARN(
                 'Set stats retention to 1 day by running "weka stats retention set --days 1". After '
                 + 'the upgrade, revert using "weka stats retention set --days '
-                + '{int(stats_retention["retention_secs"] / 86400)}'
+                + f'{int(stats_retention["retention_secs"] / 86400)}"'
             )
 
     INFO("VERIFYING HOSTS MACHINE IDENTIFIERS")
