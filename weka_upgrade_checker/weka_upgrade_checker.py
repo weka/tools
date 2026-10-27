@@ -639,7 +639,7 @@ def weka_cluster_checks(target_version):
                     else:
                         WARN("Could not find key size in the certificate.")
                 else:
-                    GOOD(f"TLS cert using non-rsa algorithm")
+                    GOOD(f"TLS cert using non-RSA algorithm")
             except subprocess.CalledProcessError:
                 WARN("Failed to read the certificate. Ensure the file path is correct and openssl is installed.")
 
@@ -772,7 +772,7 @@ def weka_cluster_checks(target_version):
         if percentage >= 60:
             WARN(f"Compute processes CPU utilization too high at {percentage}%, upgrade may cause performance impact")
         else:
-            GOOD("Compute processes CPU utilization ok")
+            GOOD("Compute processes CPU utilization OK")
     except subprocess.CalledProcessError as e:
         WARN(f"Error executing command: {e.output.decode('utf-8').strip()}")
     except ValueError as ve:
@@ -913,7 +913,7 @@ def weka_cluster_checks(target_version):
             ]
 
     if not snap_upload:
-        GOOD("WEKA snapshot upload status ok")
+        GOOD("WEKA snapshot upload status OK")
     else:
         WARN(f"The following snapshots are uploading\n")
         printlist(snap_upload, 5)
@@ -1127,7 +1127,7 @@ def weka_cluster_checks(target_version):
                 if host_id is None:
                     host_id = container["cores_ids"][0]
                 elif container["cores_ids"][0] != host_id:
-                    WARN(f'Container {container["container"]} core ids are set to AUTO while other containers set core ids manually. Containers should have manually assigned core ids')
+                    WARN(f'Container {container["container"]} core IDs are set to AUTO while other containers set core IDs manually. Containers should have manually assigned core IDs')
                     has_error = True
 
         return has_error
@@ -1161,16 +1161,16 @@ def weka_cluster_checks(target_version):
 
     for hostname, containers in combined_data.items():
         if check_duplicate_core_ids(containers):
-            WARN(f"Duplicate core ids found in different containers on host {hostname}.")
+            WARN(f"Duplicate core IDs found in different containers on host {hostname}.")
 
         if validate_core_ids(containers):
-            WARN(f"Core ids set to AUTO in one container on host {hostname} while other containers have manually assigned core_ids.")
+            WARN(f"Core IDs set to AUTO in one container on host {hostname} while other containers have manually assigned core_IDs.")
 
     if not any(
         check_duplicate_core_ids(containers) or validate_core_ids(containers)
         for containers in combined_data.values()
     ):
-        GOOD(f"No misconfigured core ids found.")
+        GOOD(f"No misconfigured core IDs found.")
 
     INFO("VERIFYING WEKA TRACES STATUS")
     weka_traces = json.loads(
@@ -1340,9 +1340,9 @@ def weka_cluster_checks(target_version):
                     bad_s3_hosts.append(f"HostId<{host['host_id']}>")
 
         if not bad_s3_hosts:
-            GOOD(f"No failed s3 hosts found")
+            GOOD(f"No failed S3 hosts found")
         else:
-            WARN2(f"Found s3 cluster hosts in not ready status:\n")
+            WARN2(f"Found S3 cluster hosts in not ready status:\n")
             for s3host in bad_s3_hosts:
                 for bkhost in backend_hosts:
                     if s3host == bkhost.typed_id:
@@ -2327,12 +2327,12 @@ def ip_by_containers(host_name, result_lines, backend_ips_set):
                 ]
                 if not bad_backend_ip:
                     GOOD(
-                        f"No invalid endpoint ips found on host: {host_name} container: {container}"
+                        f"No invalid endpoint IPs found on host: {host_name} container: {container}"
                     )
                 else:
                     WARN(
-                        f"Invalid endpoint ips found on host: {host_name} container: "
-                        + f"{container} invalid ips: {bad_backend_ip}"
+                        f"Invalid endpoint IPs found on host: {host_name} container: "
+                        + f"{container} invalid IPs: {bad_backend_ip}"
                     )
         except json.JSONDecodeError:
             WARN(f"  Failed to decode JSON line: {line}")
@@ -2445,7 +2445,7 @@ def weka_traces_size(host_name, result):
 
 
 def cpu_instruction_set(host_name, result):
-    INFO2(f'{" " * 2}Validating cpu instruction set on Host: {host_name}:')
+    INFO2(f'{" " * 2}Validating CPU instruction set on Host: {host_name}:')
     if result is None or result == "":
         BAD(f"Cannot upgrade to WEKA version 4.3+: CPU instruction set AVX2 missing")
     else:
@@ -3329,7 +3329,7 @@ def backend_host_checks(
     )
     for host_name, result in results:
         if result is None:
-            WARN(f"Unable to determine Host: {host_name} cpu instruction set")
+            WARN(f"Unable to determine host: {host_name} CPU instruction set")
         else:
             cpu_instruction_set(host_name, result)
 
