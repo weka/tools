@@ -134,7 +134,7 @@ def _ssh_targets(host):
     return targets
 
 
-pg_version = "1.13.7"
+pg_version = "1.13.8"
 known_issues_file = "known_issues.json"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
@@ -1599,6 +1599,38 @@ def weka_cluster_checks(target_version):
                 "completes and BEFORE upgrading the clients, either assign a network space to each "
                 "tenant, or disable enforcement per tenant with: "
                 "weka tenant update <tenant name> --enforce-mount-netspace-access false"
+            )
+
+    # Added 2026-10-29
+    #  Leader can assert in a loop creating an already-extant key (WTA20261026).
+    #  Affected versions require an assert_ignore override for a specific changeset.
+    #  Upper bound is exclusive so hotfixes of the last affected release are included.
+    wta20261026_ranges = [
+        ("4.4.20", "4.4.27", "weka.config.internal.changeset:598"),
+        ("4.4.30", "4.4.38", "weka.config.internal.changeset:599"),
+        ("5.1.0",  "5.1.20", "weka.config.internal.changeset:579"),
+        ("5.1.20", "5.1.29", "weka.config.internal.changeset:609"),
+        ("5.1.30", "5.1.42", "weka.config.internal.changeset:605"),
+        ("5.1.42", "5.1.43", "weka.config.internal.changeset:620"),
+    ]
+    wta20261026_override_value = next(
+        (override_value for min_version, max_version, override_value in wta20261026_ranges
+         if V(min_version) <= V(weka_version) < V(max_version)),
+        None,
+    )
+    if wta20261026_override_value:
+        INFO("CHECKING FOR WTA20261026 MITIGATION OVERRIDE")
+        # The CLI stores CodeLocation values quoted, e.g. "\"weka.config.internal.changeset:609\""
+        enabled_assert_ignores = {
+            override["value"].strip('"') for override in manual_overrides
+            if override["key"] == "assert_ignore" and override["enabled"]
+        }
+        if wta20261026_override_value in enabled_assert_ignores:
+            GOOD("Required cluster override present to mitigate WTA20261026")
+        else:
+            WARN(
+                f"Required cluster override assert_ignore={wta20261026_override_value} not set. "
+                "Please contact WEKA Customer Success for details of WTA20261026"
             )
 
     return ClusterCheckResults(
