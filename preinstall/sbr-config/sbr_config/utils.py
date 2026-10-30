@@ -7,7 +7,7 @@ import platform
 import subprocess
 from typing import Optional
 
-from .constants import LOCK_FILE
+from .constants import LOCK_FILE, MANAGED_COMMENT
 from .exceptions import ConfigurationError, LockError, PrivilegeError
 
 logger = logging.getLogger(__name__)
@@ -69,6 +69,14 @@ def write_file_atomic(path: str, content: str, mode: Optional[int] = None) -> No
     """
     tmp_path = path + ".sbr-config.tmp"
     try:
+        parent = os.path.dirname(path)
+        if parent and not os.path.isdir(parent):
+            os.makedirs(parent, 0o755)
+            # makedirs honors the umask; pin the mode so non-root tools
+            # (e.g. `ip` resolving rt_tables names) can still read the dir
+            os.chmod(parent, 0o755)
+            logger.info("Created directory %s", parent)
+
         # Determine permissions to use
         if mode is not None:
             file_mode = mode
@@ -99,6 +107,30 @@ def read_file(path: str) -> Optional[str]:
     except PermissionError:
         logger.warning("Permission denied reading %s", path)
         return None
+
+
+def strip_managed_lines(content: str) -> str:
+    """Remove managed blocks sbr-config inserted into a shared config file.
+
+    A block is a MANAGED_COMMENT marker line followed by indented
+    post-up/pre-down lines (the ifupdown insertion format). Everything
+    else is preserved verbatim.
+    """
+    lines = content.splitlines()
+    new_lines = []
+    in_managed_block = False
+
+    for line in lines:
+        if MANAGED_COMMENT in line:
+            in_managed_block = True
+            continue
+        if in_managed_block:
+            if line.strip().startswith(("post-up", "pre-down")):
+                continue
+            in_managed_block = False
+        new_lines.append(line)
+
+    return "\n".join(new_lines)
 
 
 def check_root() -> None:
@@ -159,18 +191,18 @@ class FileLock:
         except OSError:
             self._fd.close()
             raise LockError(
-                "Another sbr-config instance is running. "
-                f"If this is wrong, remove {self.path}"
+                "Another sbr-config instance is running "
+                f"(lock file: {self.path})"
             )
         self._fd.write(str(os.getpid()))
         self._fd.flush()
         return self
 
     def __exit__(self, *args):
+        # The lock file is deliberately left in place: unlinking it opens
+        # a race where two later instances can each flock a different
+        # inode at this path and both "hold" the lock. A stale file never
+        # blocks anything -- flock is released when the process exits.
         if self._fd:
             fcntl.flock(self._fd, fcntl.LOCK_UN)
             self._fd.close()
-            try:
-                os.unlink(self.path)
-            except FileNotFoundError:
-                pass
