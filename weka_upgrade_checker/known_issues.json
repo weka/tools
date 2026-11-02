@@ -10,7 +10,7 @@
         "affected_versions": [
             {
                 "min": "5.1.30",
-                "max": "5.1.43"
+                "max": "5.1.43.31"
             },
             {
                 "min": "6.0.0",
@@ -51,7 +51,7 @@
         "affected_versions": [
             {
                 "min": "5.1.30",
-                "max": "5.1.43"
+                "max": "5.1.43.31"
             }
         ],
         "multi_org": false,
