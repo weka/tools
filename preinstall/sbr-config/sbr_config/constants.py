@@ -12,9 +12,18 @@ TABLE_NAME_PREFIX = "sbr_"
 TABLE_NUMBER_START = 100
 TABLE_NUMBER_MAX = 250  # Stay below 253 (default), 254 (main), 255 (local)
 
-# IP rule priority allocation
-RULE_PRIORITY_START = 100
+# IP rule priority allocation. Base 10000 leaves priorities below free
+# for rules that should take precedence (VPNs, firewall marks, admin
+# rules) and sits in the same neighborhood as cloud tooling conventions
+# (amazon-ec2-net-utils uses 10000+ifindex), while still well before the
+# main table lookup at 32766. Rules created by versions <=1.3.1 used
+# base 100; they keep working and are renumbered on the next
+# rollback + configure cycle.
+RULE_PRIORITY_START = 10000
 RULE_PRIORITY_INCREMENT = 10
+# Rules at or above the main table lookup (32766) never fire when main
+# holds a default route, so they are dead configuration. Hard ceiling.
+RULE_PRIORITY_MAX = 32765
 
 # Reserved routing table numbers (never allocate these)
 RESERVED_TABLE_NUMBERS = {0, 253, 254, 255}
@@ -26,6 +35,8 @@ NM_DISPATCHER_SCRIPT = "50-sbr-config"
 
 # systemd-networkd
 SYSTEMD_NETWORK_DIR = "/etc/systemd/network"
+NETWORKD_DROPIN_NAME = "50-sbr.conf"  # inside <applied-file>.network.d/
+NETWORKD_LINKS_STATE_DIR = "/run/systemd/netif/links"
 
 # Netplan
 NETPLAN_DIR = "/etc/netplan"
@@ -38,7 +49,11 @@ INTERFACES_D_DIR = "/etc/network/interfaces.d"
 # Marker comment for managed files
 MANAGED_COMMENT = "# Managed by sbr-config -- do not edit manually"
 
-# DHCP lease file search paths
+# DHCP lease file search paths. Every pattern MUST be scoped to {iface} --
+# an unscoped glob makes every interface inherit the first lease's router
+# (a VLAN with no gateway then gets the parent NIC's, and the planned
+# default route fails or misroutes). systemd-networkd leases are keyed by
+# ifindex, not name, and are handled separately in the detector.
 DHCP_LEASE_PATHS = [
     "/var/lib/dhclient/dhclient-{iface}.leases",
     "/var/lib/dhclient/dhclient-{iface}.lease",
@@ -47,8 +62,10 @@ DHCP_LEASE_PATHS = [
     "/var/lib/dhcp/dhclient-{iface}.leases",
     "/var/lib/NetworkManager/dhclient-*-{iface}.lease",
     "/var/lib/NetworkManager/internal-*-{iface}.lease",
-    "/run/systemd/netif/leases/*",
 ]
+
+# systemd-networkd lease files, keyed by interface index
+NETWORKD_LEASE_DIR = "/run/systemd/netif/leases"
 
 # Sysctl settings required for SBR
 SYSCTL_SETTINGS = {
