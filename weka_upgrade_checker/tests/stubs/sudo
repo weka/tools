@@ -1,0 +1,9 @@
+#!/bin/sh
+# Stub sudo: records its argv. WUC_STUB_SUDO=deny acts like a host with no
+# sudoers rule for the caller; anything else runs the command unchanged.
+printf 'sudo %s\n' "$*" >> "${WUC_STUB_LOG:?}"
+if [ "${WUC_STUB_SUDO:-allow}" = deny ]; then
+    echo "stub-user is not in the sudoers file." >&2
+    exit 1
+fi
+exec "$@"

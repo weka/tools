@@ -1,0 +1,13 @@
+#!/bin/sh
+# Stub ssh: the last two args are the target and the remote command (as the
+# checker calls it). Records the target, saves the command to a numbered file,
+# and runs it locally under WUC_STUB_SHELL, the "remote login shell".
+# Targets listed in WUC_STUB_SSH_FAIL exit 255, like an unreachable address.
+for a in "$@"; do target=$cmd; cmd=$a; done
+printf 'ssh %s\n' "$target" >> "${WUC_STUB_LOG:?}"
+n=$(grep -c '^ssh ' "$WUC_STUB_LOG")
+printf '%s' "$cmd" > "$WUC_STUB_LOG.ssh_cmd.$n"
+for bad in ${WUC_STUB_SSH_FAIL:-}; do
+    [ "$target" = "$bad" ] && exit 255
+done
+exec "${WUC_STUB_SHELL:-/bin/sh}" -c "$cmd"

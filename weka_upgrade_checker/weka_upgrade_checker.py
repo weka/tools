@@ -57,6 +57,15 @@ def _clean_subprocess_env():
     return env
 
 
+# Root needs no sudo, and a host whose sudoers file has no rule for root would
+# refuse it. Each remote command is prefixed with this function, so a host where
+# the ssh user is uid 0 runs the command directly; everyone else still uses sudo.
+SUDO_SHIM = 'sudo() { if [ "$(id -u)" = 0 ]; then "$@"; else command sudo "$@"; fi; }; '
+
+# The same rule for commands the checker runs on the local host.
+SUDO = [] if os.geteuid() == 0 else ["sudo"]
+
+
 # ssh's own exit code for connect/auth failures, as opposed to a remote command
 # that ran and returned non-zero.
 SSH_EXIT_ERROR = 255
@@ -444,14 +453,14 @@ ClusterCheckResults = namedtuple(
 def weka_cluster_checks(target_version):
     INFO("VERIFYING WEKA AGENT STATUS")
     weka_agent_service = subprocess.call(
-        ["sudo", "service", "weka-agent", "status"],
+        SUDO + ["service", "weka-agent", "status"],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.STDOUT,
     )
 
     if weka_agent_service != 0:
         weka_agent_service = subprocess.call(
-            ["sudo", "systemctl", "status", "weka-agent"],
+            SUDO + ["systemctl", "status", "weka-agent"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.STDOUT,
         )
@@ -2691,6 +2700,8 @@ def parallel_execution(
 
     def run_command(host, command, use_check_output, use_json, use_call, ssh_opts):
         host_name = _host_id(host)
+        # Prefixed once, before the address retries below, so it never doubles.
+        command = SUDO_SHIM + command
 
         ssh_opts_flat = list(itertools.chain(*ssh_opts))
 

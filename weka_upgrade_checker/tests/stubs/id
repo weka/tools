@@ -1,0 +1,8 @@
+#!/bin/sh
+# Stub id: records its argv, prints the uid the test chose in WUC_STUB_UID.
+# WUC_STUB_UID=fail makes `id` exit 1 with no output.
+printf 'id %s\n' "$*" >> "${WUC_STUB_LOG:?}"
+case "${WUC_STUB_UID?}" in
+    fail) exit 1 ;;
+esac
+printf '%s\n' "$WUC_STUB_UID"
