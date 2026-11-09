@@ -134,7 +134,7 @@ def _ssh_targets(host):
     return targets
 
 
-pg_version = "1.13.10"
+pg_version = "1.13.11"
 known_issues_file = "known_issues.json"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
@@ -941,13 +941,7 @@ def weka_cluster_checks(target_version):
         else:
             GOOD("Snapshot bucket count complete")
 
-    spinner = Spinner("  Retrieving cluster data...   ", color=colors.OKCYAN)
-    spinner.start()
     backend_ips = [*{bkhost.ip for bkhost in backend_hosts}]
-    cmd = ["weka", "cluster", "container", "info-hw", "-J"]
-    host_hw_info = json.loads(subprocess.check_output(cmd + backend_ips))
-    spinner.stop()
-
 
     INFO("CHECKING FOR SMALL WEKA FILE SYSTEMS")
     wekafs = json.loads(subprocess.check_output(["weka", "fs", "-J"]))
@@ -967,66 +961,6 @@ def weka_cluster_checks(target_version):
     else:
         WARN2(f"Found small file systems\n")
         printlist(small_wekafs, 5)
-
-    ##########################################
-    # OFED CHECK - START                     #
-    ##########################################
-    if V(target_version) < V("4.4"):
-        INFO("VALIDATING BACKEND SUPPORTED NIC DRIVERS INSTALLED")
-        spinner = Spinner("  Processing Data   ", color=colors.OKCYAN)
-        spinner.start()
-
-        supported_ofed = (
-            "5.1", "5.4", "5.6", "5.7",
-            "5.8", "5.9", "23.04", "23.10"
-        )
-
-        hostname_found_ofed = set()
-        ofed_versions = {}
-
-        for hostname, hw_info in host_hw_info.items():
-            # Validate structure
-            if not isinstance(hw_info, dict):
-                WARN(f"Unexpected hw info format for host {hostname}: {type(hw_info)}")
-                continue
-
-            # Check for Mellanox NICs
-            if "Mellanox Technologies" not in str(hw_info.get("eths", "")):
-                continue
-
-            # Extract OFED version
-            ofed_info = hw_info.get("ofed", {})
-            result = ofed_info.get("host")
-
-            if not result:
-                WARN(f"No OFED version found for host {hostname}")
-                continue
-
-            ofed_versions[hostname] = result
-            hostname_found_ofed.add(hostname)
-
-            # Validate OFED version
-            if result.startswith(supported_ofed):
-                GOOD(
-                    f"Host: {hostname} on WEKA version {weka_version} "
-                    f"is running supported OFED version {result}"
-                )
-            else:
-                BAD(
-                    f"Host: {hostname} on WEKA version {weka_version} "
-                    f"does not support OFED version {result}"
-                )
-
-        # Post-validation checks
-        if not ofed_versions:
-            GOOD("Mellanox NICs not found")
-        elif len(set(ofed_versions.values())) > 1:
-            WARN("\nMismatch OFED versions found on backend hosts\n")
-            unique_versions = sorted(set(ofed_versions.values()))
-            printlist(unique_versions, 1)
-
-        spinner.stop()
-
 
     INFO("VERIFYING WEKA CLUSTER DRIVE STATUS")
     weka_drives = json.loads(
