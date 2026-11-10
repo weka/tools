@@ -134,7 +134,7 @@ def _ssh_targets(host):
     return targets
 
 
-pg_version = "1.13.13"
+pg_version = "1.13.14"
 known_issues_file = "known_issues.json"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
@@ -244,27 +244,57 @@ def _paint(_s):
     )
 
 
+# ---------------------------------------------------------------------------
+# 6.x JSON compatibility
+# ---------------------------------------------------------------------------
+# WEKA 6.x reworked `weka ... -J` output: many keys renamed (mostly camelCase ->
+# snake_case, plus some outright renames such as host_id -> container) and typed
+# IDs ("HostId<3>", "NodeId<121>") became bare ints. These helpers let each call
+# site accept either schema; 4.x/5.x behaviour is unchanged because the legacy
+# key is always tried first.
+_MISSING = object()
+
+
+def _jget(obj, *keys, default=None):
+    """Value of the first of *keys* present in dict *obj*, else *default*."""
+    if isinstance(obj, dict):
+        for k in keys:
+            v = obj.get(k, _MISSING)
+            if v is not _MISSING:
+                return v
+    return default
+
+
+def _typed_id(value, kind):
+    """Normalize a 6.x bare-int id to the legacy "<kind>Id<N>" form; pass legacy ids through."""
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return str(value)
+    if isinstance(value, int) or (isinstance(value, str) and value.isdigit()):
+        return f"{kind}Id<{value}>"
+    return str(value)
+
+
 class Host:
     def __init__(self, host_json):
-        self.typed_id = str(host_json["host_id"])
+        self.typed_id = _typed_id(_jget(host_json, "host_id", "id"), "Host")
         self.id = re.search("HostId<(\\d+)>", self.typed_id)[1]  # type: ignore
-        self.ip = str(host_json["host_ip"])
-        self.port = str(host_json["mgmt_port"])
+        ips = host_json.get("ips") or [None]
+        self.ip = str(_jget(host_json, "host_ip", default=ips[0]))
+        self.port = str(_jget(host_json, "mgmt_port", "port"))
         self.hostname = str(host_json["hostname"])
         self.mode = str(host_json["mode"])
         self.is_up = host_json["status"]
         self.state = host_json["state"]
         self.sw_version = host_json["sw_version"]
-        self.container = host_json["container_name"]
+        self.container = _jget(host_json, "container_name", "name")
         self.cores = host_json["cores"]
-        self.cores_ids = host_json["cores_ids"]
+        self.cores_ids = _jget(host_json, "cores_ids", "core_ids")
         self.memory = host_json["memory"]
-        self.sw_release_string = (
-            str(host_json["sw_release_string"])
-            if "sw_release_string" in host_json
-            else None
-        )
-        self.machine_id = str(host_json["machine_identifier"])
+        _rel = _jget(host_json, "sw_release_string", "sw_release")
+        self.sw_release_string = str(_rel) if _rel is not None else None
+        self.machine_id = str(_jget(host_json, "machine_identifier", "machine_id"))
         self.mlx = (
             str(host_json["os_info"]["drivers"]["mlx5_core"])
             if "mlx5_core" in host_json
@@ -540,7 +570,7 @@ def weka_cluster_checks(target_version):
     class Machine:
         def __init__(self, machine_json):
             self.name = str(machine_json["name"])
-            self.ip = str(machine_json["primary_ip_address"])
+            self.ip = str(_jget(machine_json, "primary_ip_address", "primary_ip"))
             self.port = str(machine_json["primary_port"])
             self.roles = str(machine_json["roles"])
             self.is_up = machine_json["status"]
@@ -554,7 +584,8 @@ def weka_cluster_checks(target_version):
         # Capture output and decode safely
         weka_alerts_json_string = (
             subprocess.check_output(
-                ["weka", "alerts", "--no-header", "-J"], stderr=subprocess.STDOUT
+                # --no-header is meaningless with -J and 6.x rejects the combination
+                ["weka", "alerts", "-J"], stderr=subprocess.STDOUT
             )
             .decode("utf-8", errors="replace")
             .strip()
@@ -648,10 +679,11 @@ def weka_cluster_checks(target_version):
     rebuild_status = json.loads(
         subprocess.check_output(["weka", "status", "rebuild", "-J"])
     )
-    if rebuild_status["progressPercent"] == 0:
+    rebuild_pct = _jget(rebuild_status, "progressPercent", "progress_percent")
+    if rebuild_pct == 0:
         GOOD("No rebuild in progress")
     else:
-        WARN(f'Rebuild in progress - {rebuild_status["progressPercent"]} complete')
+        WARN(f'Rebuild in progress - {rebuild_pct} complete')
 
 
     INFO("VERIFYING WEKA BACKEND MACHINES")
@@ -740,7 +772,7 @@ def weka_cluster_checks(target_version):
                 ["weka", "cluster", "process", "-b", "-F", "role=COMPUTE", "-J"] # 4.0+
             )
         )
-        node_ids = [item["node_id"] for item in compute_process_ids]
+        node_ids = [_jget(item, "node_id", "process") for item in compute_process_ids]
         just_node_ids = ",".join(
             [
                 str(node_id).replace("NodeId<", "").replace(">", "")
@@ -748,27 +780,30 @@ def weka_cluster_checks(target_version):
             ]
         )
 
-        percentage_str = (
-            subprocess.check_output(
-                [
-                    "weka",
-                    "stats",
-                    "--stat",
-                    "CPU_UTILIZATION",
-                    "--interval",
-                    "21600",
-                    "--resolution-secs",
-                    "21600",
-                    "--no-header",
-                    "-o",
-                    "value",
-                    "--process-ids",
-                    just_node_ids,
-                ]
+        stats_cmd = [
+            "weka",
+            "stats",
+            "--stat",
+            "CPU_UTILIZATION",
+            "--interval",
+            "21600",
+            "--resolution-secs",
+            "21600",
+            "--no-header",
+            "-o",
+            "value",
+        ]
+        try:
+            percentage_str = subprocess.check_output(
+                stats_cmd + ["--process-ids", just_node_ids], stderr=subprocess.DEVNULL
             )
-            .decode("utf-8")
-            .strip()
-        )
+        except subprocess.CalledProcessError:
+            # 6.x rejects --process-ids here ("Invalid params"); --role compute
+            # selects the same processes there (it returns nothing on 4.x).
+            percentage_str = subprocess.check_output(
+                stats_cmd + ["--role", "compute"], stderr=subprocess.STDOUT
+            )
+        percentage_str = percentage_str.decode("utf-8").strip()
         percentage = float(percentage_str.replace("%", ""))
         if percentage >= 60:
             WARN(f"Compute processes CPU utilization too high at {percentage}%, upgrade may cause performance impact")
@@ -880,7 +915,7 @@ def weka_cluster_checks(target_version):
     for node in weka_nodes:
         if node["status"] != "UP":
             down_node += [
-                node["node_id"],
+                _jget(node, "node_id", "process"),
                 node["hostname"],
                 node["status"],
                 node["mode"],
@@ -904,13 +939,16 @@ def weka_cluster_checks(target_version):
     )
     snap_upload = []
     for snapshot in weka_snapshot:
-        if snapshot["remoteStowInfo"]["stowStatus"] == "UPLOADING":
+        # 4.x: remoteStowInfo.{stowStatus,stowProgress}; 6.x: remote_stow.{status,progress}
+        stow = _jget(snapshot, "remoteStowInfo", "remote_stow", default={}) or {}
+        stow_status = _jget(stow, "stowStatus", "status")
+        if stow_status == "UPLOADING":
             snap_upload += [
-                snapshot["snap_id"],
-                snapshot["filesystem"],
+                _jget(snapshot, "snap_id", "id"),
+                _jget(snapshot, "filesystem", "fs_name"),
                 snapshot["name"],
-                snapshot["remoteStowInfo"]["stowStatus"],
-                snapshot["remoteStowInfo"]["stowProgress"],
+                stow_status,
+                _jget(stow, "stowProgress", "progress"),
             ]
 
     if not snap_upload:
@@ -950,7 +988,7 @@ def weka_cluster_checks(target_version):
     for fs in wekafs:
         if fs["available_total"] < 1073741824:
             small_wekafs += [
-                fs["fs_id"],
+                _jget(fs, "fs_id", "id"),
                 fs["group_name"],
                 fs["name"],
                 fs["status"],
@@ -971,8 +1009,8 @@ def weka_cluster_checks(target_version):
     for drive in weka_drives:
         if drive["status"] != "ACTIVE":
             bad_drive += [
-                drive["disk_id"],
-                drive["node_id"],
+                _jget(drive, "disk_id", "id"),
+                _jget(drive, "node_id", "process"),
                 drive["status"],
                 drive["firmware"],
                 drive["hostname"],
@@ -989,8 +1027,8 @@ def weka_cluster_checks(target_version):
     for drive in weka_drives:
         if drive["status"] == "ACTIVE" and drive["writable"] == "Unwritable":
             active_unwritable_drives += [
-                drive["disk_id"],
-                drive["node_id"],
+                _jget(drive, "disk_id", "id"),
+                _jget(drive, "node_id", "process"),
                 drive["status"],
                 drive["hostname"],
                 drive["writable"]
@@ -1133,7 +1171,7 @@ def weka_cluster_checks(target_version):
                 override["override_id"],
                 override["key"],
                 override["value"],
-                override["bucket_id"],
+                override.get("bucket_id"),  # absent in 6.x
                 override["enabled"],
             ]
 
@@ -1182,7 +1220,9 @@ def weka_cluster_checks(target_version):
 
     INFO("CHECKING FOR WEKA BLACKLISTED NODES")
     blacklist = []
-    if weka_info["nodes"]["blacklisted"] == 0:
+    # 4.x: nodes.blacklisted; 6.x: processes.banned
+    _bl_src = _jget(weka_info, "nodes", "processes", default={}) or {}
+    if _jget(_bl_src, "blacklisted", "banned", default=0) == 0:
         GOOD(f"No WEKA blacklisted nodes found")
     else:
         WARN(f"WEKA blacklisted nodes found\n")
@@ -1191,11 +1231,11 @@ def weka_cluster_checks(target_version):
         )
         for nodes in blacklist_list:
             blacklist += [
-                nodes["node_id"],
-                nodes["hostname"],
-                nodes["ips"],
-                nodes["status"],
-                nodes["network_mode"],
+                _jget(nodes, "node_id", "process"),
+                nodes.get("hostname"),
+                nodes.get("ips"),
+                nodes.get("status"),
+                _jget(nodes, "network_mode", "effective_network_mode"),
             ]
 
     if blacklist:
@@ -1272,7 +1312,7 @@ def weka_cluster_checks(target_version):
         else:
             for host in s3_cluster_hosts:
                 if host["service_status"] != "Ready":
-                    bad_s3_hosts.append(f"HostId<{host['host_id']}>")
+                    bad_s3_hosts.append(_typed_id(_jget(host, "host_id", "container"), "Host"))
 
         if not bad_s3_hosts:
             GOOD(f"No failed S3 hosts found")
@@ -1418,10 +1458,11 @@ def weka_cluster_checks(target_version):
                 all_nfs_hosts = []
 
                 for host in nfs_server_hosts[0]["ports"]:
+                    nfs_host_id = _typed_id(_jget(host, "host_id", "container"), "Host")
                     if host["status"] == "OK":
-                        all_nfs_hosts.append(host["host_id"])
+                        all_nfs_hosts.append(nfs_host_id)
                     else:
-                        bad_nfs_hosts.append(host["host_id"])
+                        bad_nfs_hosts.append(nfs_host_id)
 
                 for bkhost in backend_hosts:
                     if bkhost.typed_id in all_nfs_hosts:
@@ -1470,7 +1511,7 @@ def weka_cluster_checks(target_version):
                 )
             )
             for entry in net_entries:
-                for dev in entry.get("net_devices") or []:
+                for dev in _jget(entry, "net_devices", "nics") or []:
                     if "connectx-4" in (dev.get("device") or "").lower():
                         cx4_found = True
                         break
@@ -1903,11 +1944,14 @@ def get_rpc_max_connections():
             ["weka", "nfs", "custom-options", "-J"], text=True
         )
         data = json.loads(output)
+        # 6.x returns a one-element list of {client_options, export_options, global_options}
+        if isinstance(data, list):
+            data = data[0] if data else None
         # If JSON is null, empty, or not a dict → return default
         if not isinstance(data, dict):
             return 1024
 
-        nfs_options = data.get("customNfsOptions", "")
+        nfs_options = _jget(data, "customNfsOptions", "global_options", default="")
 
         if nfs_options:
             match = re.search(r"RPC_Max_Connections\s*=\s*(\d+)", nfs_options)
@@ -2168,17 +2212,21 @@ def protocol_host(backend_hosts, s3_enabled, weka_version):
             subprocess.check_output(["weka", "s3", "cluster", "-J"])
         )
         if weka_s3:
-            S3 = list(weka_s3["s3_hosts"]) if weka_s3 != [] else []
+            S3 = [_typed_id(h, "Host") for h in (_jget(weka_s3, "s3_hosts", "containers") or [])]
 
     weka_smb = json.loads(subprocess.check_output(["weka", "smb", "cluster", "-J"]))
-    SMB = list(weka_smb["sambaHosts"]) if weka_smb != [] else []
+    SMB = (
+        [_typed_id(h, "Host") for h in (_jget(weka_smb, "sambaHosts", "smb_containers") or [])]
+        if weka_smb != [] else []
+    )
     NFS = []
     weka_nfs = json.loads(
         subprocess.check_output(["weka", "nfs", "interface-group", "-J"])
     )
     if weka_nfs:
         unique_host_ids = {
-            hid["host_id"] for host_id in weka_nfs for hid in host_id["ports"]
+            _typed_id(_jget(hid, "host_id", "container"), "Host")
+            for host_id in weka_nfs for hid in host_id["ports"]
         }
         NFS = list(unique_host_ids)
 
@@ -3347,8 +3395,10 @@ def backend_host_checks(
 
     for container in con_status:
         if con_status[container]["type"] == "weka":
-            api_ports.append(con_status[container]["status"]["APIPort"])
-            ip = con_status[container]["resources"]["ips"]
+            # 4.x nests these under status/resources; 6.x flattens them (managementIps)
+            _c = con_status[container]
+            api_ports.append(_jget(_c.get("status") or {}, "APIPort", default=_c.get("APIPort")))
+            ip = _jget(_c.get("resources") or {}, "ips", default=_c.get("managementIps"))
             if not ip: continue
             first_ip = ip[0]
             if first_ip not in ips:
@@ -3539,7 +3589,10 @@ def backend_host_checks(
         unique_modes = {
             node["network_mode"]
             for node in (data or [])
-            if "MANAGEMENT" not in node.get("nodeInfo", {}).get("roles", [])
+            # 4.x nests roles under nodeInfo; 6.x has them top-level (no nodeInfo)
+            if "MANAGEMENT" not in (
+                (node.get("nodeInfo") or {}).get("roles") or node.get("roles") or []
+            )
         }
 
         if len(unique_modes) == 2:
@@ -3940,8 +3993,11 @@ def check_completed_fsck(current_version):
             stderr=subprocess.STDOUT,
         )
         fsck_info = json.loads(fsck_raw.decode("utf-8").strip())
-        issues_count = fsck_info["issuesCount"]["__unaligned_value"]
-        fsck_start_usecs = fsck_info["startTime"]["__unaligned_value"]["usecs"]
+        # 4.x/5.x wrap each field in {"__unaligned_value": ...}; 6.x does not
+        def _unwrap(v):
+            return v["__unaligned_value"] if isinstance(v, dict) and "__unaligned_value" in v else v
+        issues_count = _unwrap(fsck_info["issuesCount"])
+        fsck_start_usecs = _unwrap(fsck_info["startTime"])["usecs"]
     except (subprocess.CalledProcessError, ValueError, json.JSONDecodeError, KeyError, TypeError) as e:
         WARN(
             f"Unable to retrieve completed FSCK info ({e}); cannot confirm a clean FSCK "
