@@ -173,7 +173,7 @@ num_good = 0
 
 def ECHO(text):
     wrapped_text = textwrap.fill(text, width=150, subsequent_indent="          ")
-    print(f"{colors.OKPURPLE}{' ' * 9}ℹ️ {wrapped_text}{colors.ENDC}")
+    print(f"{colors.OKPURPLE}{' ' * 9}ℹ️  {wrapped_text}{colors.ENDC}")
     logging.info(wrapped_text)
 
 def INFO(text):
@@ -3559,7 +3559,8 @@ def backend_host_checks(
                 )
 
             if (
-                smb_host['tsmb_version'] == "3024.3.22.10"
+                # WEKAPP-691925
+                V(target_version) < V("5.1.60") and smb_host['tsmb_version'] == "3024.3.22.10" 
                 or (
                     V(target_version) < V("4.4.20.116")
                     and smb_host['tsmb_version'] in ("3024.3.22.7", "3024.3.22.9")
