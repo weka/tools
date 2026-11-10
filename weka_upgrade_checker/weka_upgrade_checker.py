@@ -3521,7 +3521,7 @@ def backend_host_checks(
         # Build SMB host list by matching backend host typed_id
         for smbhost, status in smb_cluster_hosts.items():
             for bkhost in backend_hosts:
-                if smbhost == bkhost.typed_id:
+                if _typed_id(smbhost, "Host") == bkhost.typed_id:
                     all_smb_hosts.append(
                         {
                             "id": bkhost.typed_id,
