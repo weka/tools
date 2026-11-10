@@ -134,7 +134,7 @@ def _ssh_targets(host):
     return targets
 
 
-pg_version = "1.13.12"
+pg_version = "1.13.13"
 known_issues_file = "known_issues.json"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
@@ -517,7 +517,8 @@ def weka_cluster_checks(target_version):
     weka_versions = weka_info["release"]
     usable_capacity = weka_info["capacity"]["total_bytes"]
     weka_buckets = weka_info["buckets"]["total"]
-    link_type = weka_info["net"]["link_layer"]
+    # 4.x/5.x report net.link_layer; 6.x moved it to the top level
+    link_type = (weka_info.get("net") or {}).get("link_layer") or weka_info.get("link_layer")
 
     GOOD(f"CLUSTER:{cluster_name} STATUS:{weka_status} VERSION:{weka_versions} UUID:{uuid}\n")
 
@@ -1704,7 +1705,11 @@ def _normalize_api_distro_version(distro_version: str) -> str:
         "oracle8.10"  -> "8.10"
         "amzn2"       -> "2"
         "amzn2023"    -> "2023"
+        "suse15sp6"   -> "15.6"   (SLES VERSION_ID is "15.6" for 15 SP6)
     """
+    m = re.search(r"(\d+)sp(\d+)$", distro_version, re.IGNORECASE)
+    if m:
+        return f"{m.group(1)}.{m.group(2)}"
     m = re.search(r"(\d+(?:\.\d+)+)$", distro_version)
     if m:
         return m.group(1)
