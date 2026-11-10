@@ -56,6 +56,9 @@ Options:
 
   --exclude IFACE         Exclude interface from SBR (repeatable)
   --include IFACE         Only configure these interfaces (repeatable)
+  --rule-priority PRIO    Base priority for new IP rules (default: 10000,
+                          stepping 10 per rule; must be 1-32765). Use the
+                          same value on every run of a given system.
 
   --backup-file PATH      Specific backup file for --rollback
   --log-file PATH         Log file (default: /var/log/sbr-config.log)
@@ -101,7 +104,9 @@ Each proposed change includes:
 
 ### Rollback (`--rollback`)
 
-Restores the system to its state before the last configuration:
+Restores the configuration that was running when the backup was taken:
+SBR rules, routes, rt_tables entries, and persistence files are put back
+exactly as they were, and anything added since is removed.
 
 ```bash
 # Restore from latest backup
@@ -122,14 +127,14 @@ For each non-default network interface, `sbr-config` creates:
 | Routing table | `100 sbr_eth1` in `/etc/iproute2/rt_tables` | Dedicated table for eth1's routes |
 | Subnet route | `ip route add 10.0.2.0/24 dev eth1 table sbr_eth1` | Reach the local network segment |
 | Default route | `ip route add default via 10.0.2.1 dev eth1 table sbr_eth1` | Reach remote networks via eth1's gateway |
-| Policy rule | `ip rule add from 10.0.2.50 table sbr_eth1` | Direct eth1's traffic to its table |
+| Policy rule | `ip rule add from 10.0.2.50 table sbr_eth1 priority 10000` | Direct eth1's traffic to its table (priorities start at 10000, leaving lower values free for VPN/firewall/admin rules that should take precedence) |
 
 ### Sysctl Settings
 
 | Setting | Value | Purpose |
 |---------|-------|---------|
 | `net.ipv4.conf.all.rp_filter` | `2` | Loose reverse path filtering (required for SBR) |
-| `net.ipv4.conf.<iface>.rp_filter` | `2` | Per-interface loose RP filter |
+| `net.ipv4.conf.<iface>.rp_filter` | `2` | Per-interface loose RP filter (runtime only, and only when `conf.all` is not already loose -- the kernel uses `max(all, iface)`) |
 | `net.ipv4.conf.all.arp_filter` | `1` | Prevent ARP flux on multi-NIC systems |
 | `net.ipv4.conf.all.arp_announce` | `2` | Use best local address for ARP |
 
@@ -139,12 +144,12 @@ With `--persist`, the tool writes configuration appropriate for the detected net
 
 | Network Manager | Persistence Method |
 |----------------|--------------------|
-| **NetworkManager** | Dispatcher script in `/etc/NetworkManager/dispatcher.d/` |
-| **systemd-networkd** | `.network` files in `/etc/systemd/network/` |
-| **ifupdown** | `post-up`/`pre-down` in `/etc/network/interfaces` |
-| **Netplan** | YAML in `/etc/netplan/90-sbr-config.yaml` |
+| **NetworkManager** | Dispatcher script in `/etc/NetworkManager/dispatcher.d/` (fires only for NM-managed devices; unmanaged interfaces are warned about) |
+| **systemd-networkd** | Drop-in `<applied-file>.network.d/50-sbr.conf` merged into the `.network` file networkd already applies to each link (networkd applies exactly one `.network` file per link, so a standalone file would shadow or be shadowed by the real config) |
+| **ifupdown** | `post-up`/`pre-down` added to the interface's existing stanza in `/etc/network/interfaces` or a sourced `interfaces.d` file |
+| **Netplan** | YAML in `/etc/netplan/90-sbr-config.yaml`, merged with any routes/routing-policy other netplan files define for the same interfaces (netplan replaces list values wholesale across files) |
 
-Sysctl settings are persisted to `/etc/sysctl.d/90-sbr-config.conf` regardless of network manager.
+Global sysctl settings are persisted to `/etc/sysctl.d/90-sbr-config.conf` regardless of network manager. Per-interface `rp_filter` keys are set at runtime only and deliberately never persisted: sysctl.d is applied early at boot, before late-binding drivers (e.g. Mellanox/IPoIB `ib*`) create their interfaces, so persisted per-interface keys log errors on every boot. They are also unnecessary -- `conf.default.rp_filter=2` is inherited by interfaces created later, and the kernel evaluates `max(all, iface)`, so `conf.all.rp_filter=2` already makes loose mode effective.
 
 ## Gateway Detection
 
@@ -154,9 +159,10 @@ For non-default interfaces, the tool tries multiple strategies to find the gatew
 2. DHCP lease files (`/var/lib/dhclient/`, `/var/lib/dhcp/`, etc.)
 3. NetworkManager (`nmcli`)
 4. systemd-networkd config files
-5. Common `.1` address heuristic
 
-If no gateway can be detected, the interface is skipped with a warning.
+If no gateway can be detected, the interface is configured without a
+default route in its table (subnet-only routing, normal for non-routable
+storage or interconnect networks).
 
 ## Backups
 
@@ -165,9 +171,13 @@ State backups are stored in `/var/lib/sbr-config/backups/` as JSON files contain
 - Routing table entries
 - All routes and rules
 - Sysctl values
-- Raw file contents for exact restoration
+- Raw file contents for exact restoration (rt_tables and every persistence file)
 
-A `latest.json` symlink always points to the most recent backup.
+Backups are named `state_<date>_<time>.json` and never overwritten (a
+counter suffix is added if two are saved in the same second), so any of
+them can be referenced later with `--backup-file`. A `latest.json` symlink
+always points to the most recent backup, and the 10 most recent backups
+are kept.
 
 ## Interface Filtering
 
