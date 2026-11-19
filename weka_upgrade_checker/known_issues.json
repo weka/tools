@@ -1,4 +1,110 @@
 {
+    "WEKAPP-682083":
+    {
+        "description": "Every node asserts on Cannot CREATE an existing key when a container restarts mid-upgrade with a stale config",
+        "related_protocols": [],
+        "link_types": [],
+        "problematic_kernel_arguments": [ ],
+        "internal_reference": "WEKAPP-682083",
+        "recommendation": "Upgrade to 4.4.38 or later first",
+        "source_versions": [
+            {
+                "min": "4.4.30",
+                "max": "4.4.38"
+            }
+        ],
+        "multi_org": false,
+        "obj_store": false
+    },
+    "WEKAPP-596405":
+    {
+        "description": "Raft term and NVKV generation corrupted on 5.0.x leave a bucket unresponsive after the upgrade",
+        "related_protocols": [],
+        "link_types": [],
+        "problematic_kernel_arguments": [ ],
+        "internal_reference": "WEKAPP-596405",
+        "recommendation": "Upgrade to 5.1.30 or later",
+        "source_versions": [
+            {
+                "min": "5.0.0",
+                "max": "5.1.0"
+            }
+        ],
+        "affected_versions": [
+            {
+                "min": "5.1.0",
+                "max": "5.1.30"
+            }
+        ],
+        "multi_org": false,
+        "obj_store": false
+    },
+    "WEKAPP-630999":
+    {
+        "description": "ssdproxy restart during degraded reads leaks buffers; drive nodes time out during the upgrade",
+        "related_protocols": [],
+        "link_types": [],
+        "problematic_kernel_arguments": [ ],
+        "internal_reference": "WEKAPP-630999",
+        "source_versions": [
+            {
+                "min": "5.1.0",
+                "max": "5.1.30"
+            }
+        ],
+        "multi_org": false,
+        "obj_store": false
+    },
+    "WEKAPP-664392":
+    {
+        "description": "Compute drainer stalls on small clusters; buckets become unresponsive in the compute phase",
+        "related_protocols": [],
+        "link_types": [],
+        "problematic_kernel_arguments": [ ],
+        "internal_reference": "WEKAPP-664392",
+        "recommendation": "Upgrade to 5.1.34 or later",
+        "affected_versions": [
+            {
+                "min": "5.1.32",
+                "max": "5.1.34"
+            }
+        ],
+        "multi_org": false,
+        "obj_store": false
+    },
+    "WEKAPP-677802":
+    {
+        "description": "RDMA completions stall on a stale GID after a link flap",
+        "related_protocols": [],
+        "link_types": [],
+        "problematic_kernel_arguments": [ ],
+        "internal_reference": "WEKAPP-677802",
+        "affected_versions": [
+            {
+                "min": "5.1.33",
+                "max": ""
+            }
+        ],
+        "multi_org": false,
+        "obj_store": false
+    },
+    "WEKAPP-552775":
+    {
+        "description": "Gateway driver fails to build on kernel 5.14.0-427.x; agent install fails",
+        "related_protocols": [],
+        "link_types": [],
+        "problematic_kernel_arguments": [ ],
+        "internal_reference": "WEKAPP-552775",
+        "recommendation": "Upgrade to 4.4.10.118 or later",
+        "affected_versions": [
+            {
+                "min": "4.4.10.57",
+                "max": "4.4.10.118"
+            }
+        ],
+        "multi_org": false,
+        "obj_store": false
+    },
     "WTA20261022":
     {
         "description": "S3 containers restart loop on upgrade",

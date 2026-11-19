@@ -29,3 +29,12 @@ The checker exits 1 when any check failed and 0 when there are only warnings, so
 ## JSON output
 
 `--json <file>` also writes the result of every check to `<file>`: the checker, source and target versions, the pass/warn/fail counts, and one record per check with a stable `id` (from the check's section heading), its `verdict` (`pass`, `warn` or `fail`), the per-host sub-heading as `detail` when there is one, and the `message`. The file is written on every exit, including a check that stops the run early.
+
+## Known issues
+
+`known_issues.json` lists defects bound to a WEKA version. Each entry is matched against the upgrade path:
+
+- `affected_versions`: ranges of the versions the upgrade goes to (every hop after the source). A range is `[min, max)`; an empty `max` covers the rest of `min`'s release line.
+- `source_versions`: ranges of the version a hop starts from (the source, then each intermediate version). With `affected_versions` too, both must match for the same hop; on its own, the issue is reported on every hop that leaves a matching version.
+- `version_from`: the issue applies to an upgrade that crosses this version.
+- `related_protocols`, `link_types`, `obj_store` and `multi_org` limit an entry to clusters that use them.
