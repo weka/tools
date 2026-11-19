@@ -21,3 +21,7 @@ To download directly to a host, with internet access, make the script executable
 curl -LO https://github.com/weka/tools/raw/master/weka_upgrade_checker/weka_upgrade_checker.py
 python3.8 ./weka_upgrade_checker.py
 ```
+
+## Exit code
+
+The checker exits 1 when any check failed and 0 when there are only warnings, so a runbook or automation can gate on it. A failed prerequisite (not logged in, no SSH, invalid target version) also exits 1.
