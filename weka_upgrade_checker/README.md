@@ -25,3 +25,7 @@ python3.8 ./weka_upgrade_checker.py
 ## Exit code
 
 The checker exits 1 when any check failed and 0 when there are only warnings, so a runbook or automation can gate on it. A failed prerequisite (not logged in, no SSH, invalid target version) also exits 1.
+
+## JSON output
+
+`--json <file>` also writes the result of every check to `<file>`: the checker, source and target versions, the pass/warn/fail counts, and one record per check with a stable `id` (from the check's section heading), its `verdict` (`pass`, `warn` or `fail`), the per-host sub-heading as `detail` when there is one, and the `message`.

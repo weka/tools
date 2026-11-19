@@ -134,7 +134,7 @@ def _ssh_targets(host):
     return targets
 
 
-pg_version = "1.13.15"
+pg_version = "1.13.16"
 known_issues_file = "known_issues.json"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
@@ -170,6 +170,23 @@ num_warn = 0
 num_bad = 0
 num_good = 0
 
+# One record per verdict, for --json. A check's id is its section heading, so it stays the same across runs.
+check_results = []
+current_section = None
+current_detail = None
+source_version = None
+json_output_path = None
+
+
+def _record(verdict, text):
+    check_results.append({
+        "id": re.sub(r"[^a-z0-9]+", "-", (current_section or "general").lower()).strip("-"),
+        "section": current_section,
+        "detail": current_detail,
+        "verdict": verdict,
+        "message": text,
+    })
+
 
 def ECHO(text):
     wrapped_text = textwrap.fill(text, width=150, subsequent_indent="          ")
@@ -177,6 +194,8 @@ def ECHO(text):
     logging.info(wrapped_text)
 
 def INFO(text):
+    global current_section, current_detail
+    current_section, current_detail = text.strip(), None
     nl = "\n"
     wrapped_text = textwrap.fill(text, width=150, subsequent_indent="          ")
     print(f"{colors.OKPURPLE}{nl}{wrapped_text}{nl}{colors.ENDC}")
@@ -184,6 +203,8 @@ def INFO(text):
 
 
 def INFO2(text):
+    global current_detail
+    current_detail = text.strip()
     nl = "\n"
     wrapped_text = textwrap.fill(text, width=150, subsequent_indent="          ")
     print(f"{colors.OKCYAN}{nl}{wrapped_text}{nl}{colors.ENDC}")
@@ -196,6 +217,7 @@ def GOOD(text):
     print(f"{colors.OKGREEN}{' ' * 5}✅  {wrapped_text}{colors.ENDC}")
     logging.info(wrapped_text)
     num_good += 1
+    _record("pass", text)
 
 
 def WARN(text):
@@ -204,6 +226,7 @@ def WARN(text):
     print(f"{colors.WARNING}{' ' * 5}⚠️  {wrapped_text}{colors.ENDC}")
     logging.warning(wrapped_text)
     num_warn += 1
+    _record("warn", text)
 
 
 def WARN2(text):
@@ -213,6 +236,7 @@ def WARN2(text):
     print(f"{colors.WARNING}{' ' * 5}{wrapped_text}{nl}{colors.ENDC}")
     logging.warning(wrapped_text)
     num_warn += 1
+    _record("warn", text)
 
 
 def BAD(text):
@@ -228,6 +252,7 @@ def BAD(text):
     print(f"{colors.FAIL}{' ' * 5}❌  {wrapped_text}{colors.ENDC}")
     logging.debug("\n".join(wrapped_lines))
     num_bad += 1
+    _record("fail", text)
 
 
 _GLYPHS = "=4yZulGa0BSe0lmdlJnYgUGbvh2dgUGa0Byb05WagQ3buBSZydSdvlHImlGIv5WayVGZ1REIsVEIy9GIsIXZkVHRgwCa1BicvBCLzNXZuVGZ1REIzlGSgwCa1BCLy9GI0FGa0BCL39mbrBSdvlFIuUWbgwGbhNGI19WegQXYodHIzdCdhhGdg82Ug4SZkVHRgUGa0BSbnkEIuk2azd3biVGTg4icNBSZydSdvlFIucSarN3dvJWZMBiLy10JgQ3buBSbhBSS"
@@ -557,6 +582,8 @@ def weka_cluster_checks(target_version):
         WARN(f"The cluster may be running a specialized hotfix version of WEKA {weka_versions}; confirm that required hotfixes are included in upgrade target version.")
 
     weka_version = clean_version_string(weka_versions)
+    global source_version
+    source_version = weka_version
 
     if V(weka_version) < V("4.2.0"):
         BAD(f"This version of the WEKA upgrade checker will not work with clusters running releases older than 4.2.0.\n" \
@@ -3797,15 +3824,30 @@ def client_hosts_checks(weka_version, ssh_cl_hosts, ssh_identity, target_version
 def cluster_summary():
     global num_good, num_warn, num_bad
     counts = (num_good, num_warn, num_bad)
+    recorded = len(check_results)
     INFO("CLUSTER SUMMARY:")
     GOOD(f"Total Checks Passed: {num_good}")
     WARN(f"Total Warnings: {num_warn}")
     BAD(f"Total Checks Failed: {num_bad}")
     # The summary lines are not checks; keep them out of the counts the exit code reads.
     num_good, num_warn, num_bad = counts
+    del check_results[recorded:]
 
 
-def finish():
+def write_json_results(path, target_version):
+    with open(path, "w") as f:
+        json.dump({
+            "checker_version": pg_version,
+            "source_version": source_version,
+            "target_version": target_version,
+            "summary": {"pass": num_good, "warn": num_warn, "fail": num_bad},
+            "checks": check_results,
+        }, f, indent=2)
+
+
+def finish(target_version):
+    if json_output_path:
+        write_json_results(json_output_path, target_version)
     create_tar_file(log_file_path, "./weka_upgrade_checker.tar.gz")
     # Warnings alone still exit 0, so a run can gate on the failures.
     sys.exit(1 if num_bad else 0)
@@ -4373,6 +4415,13 @@ def main():
         type=str,
         help="Specify the target version for upgrade path calculation.",
     )
+    parser.add_argument(
+        "--json",
+        dest="json_output",
+        metavar="FILE",
+        default=None,
+        help="Also write the result of every check to FILE as JSON.",
+    )
     parser.add_argument("--dude", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
     if args.version:
@@ -4383,6 +4432,8 @@ def main():
         parser.error("--target-version is required.")
 
     ssh_identity = args.ssh_identity or None
+    global json_output_path
+    json_output_path = args.json_output
 
     try:
         with open(_UPGRADE_PATH_FILE, "r") as f:
@@ -4423,7 +4474,7 @@ def main():
             )
         cluster_summary()
         INFO(f"Cluster upgrade checks complete!")
-        finish()
+        finish(args.target_version)
 
     elif args.cluster_checks_only:
         weka_cluster_checks(
@@ -4431,7 +4482,7 @@ def main():
         )
         cluster_summary()
         INFO(f"Cluster upgrade checks complete!")
-        finish()
+        finish(args.target_version)
 
     elif args.check_specific_backend_hosts:
         r = weka_cluster_checks(target_version=args.target_version)
@@ -4448,7 +4499,7 @@ def main():
         )
         cluster_summary()
         INFO(f"Cluster upgrade checks complete!")
-        finish()
+        finish(args.target_version)
 
     elif args.skip_client_checks:
         r = weka_cluster_checks(target_version=args.target_version)
@@ -4477,7 +4528,7 @@ def main():
             )
         cluster_summary()
         INFO(f"Cluster upgrade checks complete!")
-        finish()
+        finish(args.target_version)
 
 
 if __name__ == "__main__":
