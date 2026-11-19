@@ -4409,8 +4409,6 @@ def main():
             r.multi_org,
         )
         client_hosts_checks(r.weka_version, r.ssh_cl_hosts, ssh_identity, target_version=args.target_version)
-        cluster_summary()
-        INFO(f"Cluster upgrade checks complete!")
         if args.target_version:
             target_version_check(
                 r.weka_version,
@@ -4423,6 +4421,8 @@ def main():
                 r.obj_store_enabled,
                 r.multi_org
             )
+        cluster_summary()
+        INFO(f"Cluster upgrade checks complete!")
         finish()
 
     elif args.cluster_checks_only:
@@ -4463,8 +4463,6 @@ def main():
             r.good_nfs_hosts,
             r.multi_org,
         )
-        cluster_summary()
-        INFO(f"Cluster upgrade checks complete!")
         if args.target_version:
             target_version_check(
                 r.weka_version,
@@ -4477,6 +4475,8 @@ def main():
                 r.obj_store_enabled,
                 r.multi_org
             )
+        cluster_summary()
+        INFO(f"Cluster upgrade checks complete!")
         finish()
 
 
