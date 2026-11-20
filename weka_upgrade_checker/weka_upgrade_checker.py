@@ -135,7 +135,7 @@ def _ssh_targets(host):
     return targets
 
 
-pg_version = "1.13.16"
+pg_version = "1.13.17"
 known_issues_file = "known_issues.json"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
@@ -3863,6 +3863,26 @@ def finish():
     # Warnings alone still exit 0, so a run can gate on the failures.
     sys.exit(1 if num_bad else 0)
 
+def _in_version_ranges(version, ranges):
+    """True if version falls in any {min, max} range: [min, max), or min's release line when max is empty."""
+    for vrange in ranges:
+        vmin = vrange.get("min")
+        vmax = vrange.get("max")
+
+        if vmax:
+            min_ok = (not vmin) or V(version) >= V(vmin)
+            max_ok = V(version) < V(vmax)
+        else:
+            # An open-ended range covers the rest of min's release line
+            # (e.g. 4.4.30+ means 4.4.x only), not every later major.
+            min_ok = V(version) >= V(vmin)
+            max_ok = V(version).release[:2] == V(vmin).release[:2]
+
+        if min_ok and max_ok:
+            return True
+    return False
+
+
 def check_known_issues(
     upgrade_hops,
     s3_enabled,
@@ -3903,46 +3923,32 @@ def check_known_issues(
                     if issue.get("version_from"):
                         if V(version) <= V(issue['version_from']) and V(upgrade_hops[-1]) > V(issue['version_from']):
                             found_issues.append((key, description, issue.get("recommendation")))
-                    else:
-                         for vrange in issue.get("affected_versions", []):
-                             vmin = vrange.get("min")
-                             vmax = vrange.get("max")
+                        continue
 
-                             if vmax:
-                                 min_ok = (not vmin) or V(version) >= V(vmin)
-                                 max_ok = V(version) < V(vmax)
-                             else:
-                                 # An open-ended range covers the rest of min's release line
-                                 # (e.g. 4.4.30+ means 4.4.x only), not every later major.
-                                 min_ok = V(version) >= V(vmin)
-                                 max_ok = V(version).release[:2] == V(vmin).release[:2]
+                    # source_versions ties an issue to the version a hop starts from. The checker runs once,
+                    # before the first hop, so an intermediate version has to be matched here too.
+                    source_ranges = issue.get("source_versions")
+                    if source_ranges and not _in_version_ranges(upgrade_hops[index - 1], source_ranges):
+                        continue
+                    if "affected_versions" in issue:
+                        if not _in_version_ranges(version, issue["affected_versions"]):
+                            continue
+                    elif not source_ranges:
+                        continue
 
-                             if min_ok and max_ok:
-                                related_protocols = set(issue.get("related_protocols", []))
-                                related_link_types = set(issue.get("link_types", []))
-                                requires_obj_store = issue.get("obj_store", False)
-                                requires_multi_org = issue.get("multi_org", False)
+                    related_protocols = set(issue.get("related_protocols", []))
+                    related_link_types = set(issue.get("link_types", []))
 
-                                # Check protocols
-                                if related_protocols and not (related_protocols & enabled_protocols):
-                                    continue
+                    if related_protocols and not (related_protocols & enabled_protocols):
+                        continue
+                    if related_link_types and link_type not in related_link_types:
+                        continue
+                    if issue.get("obj_store", False) and not obj_store_enabled:
+                        continue
+                    if issue.get("multi_org", False) and not multi_org:
+                        continue
 
-                                # Check link type
-                                if related_link_types and link_type not in related_link_types:
-                                    continue
-
-                                # Check object store
-                                if requires_obj_store and not obj_store_enabled:
-                                    continue
-
-                                # Check if multiple organizations
-                                if requires_multi_org and not multi_org:
-                                    continue
-
-                                found_issues.append((key, description, issue.get("recommendation")))
-                                # Stop at the first matching range so an issue with
-                                # multiple affected_versions entries isn't reported twice.
-                                break
+                    found_issues.append((key, description, issue.get("recommendation")))
 
                 hop_kind = "target" if index == len(upgrade_hops) - 1 else "intermediate"
                 if found_issues:
