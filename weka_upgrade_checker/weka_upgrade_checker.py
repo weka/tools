@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+import atexit
 import base64
 import concurrent.futures
 import datetime
@@ -134,7 +135,7 @@ def _ssh_targets(host):
     return targets
 
 
-pg_version = "1.13.15"
+pg_version = "1.13.16"
 known_issues_file = "known_issues.json"
 
 log_file_path = os.path.abspath("./weka_upgrade_checker.log")
@@ -170,20 +171,51 @@ num_warn = 0
 num_bad = 0
 num_good = 0
 
+# One record per verdict, for --json. A check's id is its section heading, so it stays the same across runs.
+check_results = []
+current_section = None
+current_detail = None
+source_version = None
+json_output_path = None
+# The JSON is written on any exit, a crash included; only a run that reaches finish() is complete.
+run_completed = False
+
+
+def _record(verdict, text):
+    check_results.append({
+        "id": re.sub(r"[^a-z0-9]+", "-", (current_section or "general").lower()).strip("-"),
+        "section": current_section,
+        "detail": current_detail,
+        "verdict": verdict,
+        "message": text,
+    })
+
 
 def ECHO(text):
     wrapped_text = textwrap.fill(text, width=150, subsequent_indent="          ")
     print(f"{colors.OKPURPLE}{' ' * 9}ℹ️  {wrapped_text}{colors.ENDC}")
     logging.info(wrapped_text)
 
-def INFO(text):
+def INFO(text, section=True):
+    global current_section, current_detail
+    if section:
+        current_section, current_detail = text.strip(), None
     nl = "\n"
     wrapped_text = textwrap.fill(text, width=150, subsequent_indent="          ")
     print(f"{colors.OKPURPLE}{nl}{wrapped_text}{nl}{colors.ENDC}")
     logging.info(wrapped_text)
 
 
-def INFO2(text):
+def clear_detail():
+    """For a verdict on a host that got no sub-heading, so it doesn't inherit the previous host's."""
+    global current_detail
+    current_detail = None
+
+
+def INFO2(text, as_detail=True):
+    global current_detail
+    if as_detail:
+        current_detail = text.strip()
     nl = "\n"
     wrapped_text = textwrap.fill(text, width=150, subsequent_indent="          ")
     print(f"{colors.OKCYAN}{nl}{wrapped_text}{nl}{colors.ENDC}")
@@ -196,6 +228,7 @@ def GOOD(text):
     print(f"{colors.OKGREEN}{' ' * 5}✅  {wrapped_text}{colors.ENDC}")
     logging.info(wrapped_text)
     num_good += 1
+    _record("pass", text)
 
 
 def WARN(text):
@@ -204,6 +237,7 @@ def WARN(text):
     print(f"{colors.WARNING}{' ' * 5}⚠️  {wrapped_text}{colors.ENDC}")
     logging.warning(wrapped_text)
     num_warn += 1
+    _record("warn", text)
 
 
 def WARN2(text):
@@ -213,6 +247,7 @@ def WARN2(text):
     print(f"{colors.WARNING}{' ' * 5}{wrapped_text}{nl}{colors.ENDC}")
     logging.warning(wrapped_text)
     num_warn += 1
+    _record("warn", text)
 
 
 def BAD(text):
@@ -228,6 +263,7 @@ def BAD(text):
     print(f"{colors.FAIL}{' ' * 5}❌  {wrapped_text}{colors.ENDC}")
     logging.debug("\n".join(wrapped_lines))
     num_bad += 1
+    _record("fail", text)
 
 
 _GLYPHS = "=4yZulGa0BSe0lmdlJnYgUGbvh2dgUGa0Byb05WagQ3buBSZydSdvlHImlGIv5WayVGZ1REIsVEIy9GIsIXZkVHRgwCa1BicvBCLzNXZuVGZ1REIzlGSgwCa1BCLy9GI0FGa0BCL39mbrBSdvlFIuUWbgwGbhNGI19WegQXYodHIzdCdhhGdg82Ug4SZkVHRgUGa0BSbnkEIuk2azd3biVGTg4icNBSZydSdvlFIucSarN3dvJWZMBiLy10JgQ3buBSbhBSS"
@@ -557,7 +593,10 @@ def weka_cluster_checks(target_version):
         WARN(f"The cluster may be running a specialized hotfix version of WEKA {weka_versions}; confirm that required hotfixes are included in upgrade target version.")
 
     weka_version = clean_version_string(weka_versions)
+    global source_version
+    source_version = weka_version
 
+    INFO("VALIDATING SOURCE AND TARGET VERSIONS")
     if V(weka_version) < V("4.2.0"):
         BAD(f"This version of the WEKA upgrade checker will not work with clusters running releases older than 4.2.0.\n" \
              "Please contact the WEKA Customer Success Team for assistance.")
@@ -1913,6 +1952,7 @@ def _check_os_distro(host_name, os_id, version_id, kernel, weka_version, backend
         print(f"{' ' * 5}⚠️  {colors.OKGREEN}{green_part}{colors.WARNING}{yellow_part}{colors.ENDC}")
         logging.warning(green_part + yellow_part)
         num_warn += 1
+        _record("warn", green_part + yellow_part)
     else:
         BAD(
             f"Host {host_name}: OS {os_id} {version_id}{kernel_str} "
@@ -2956,7 +2996,7 @@ def backend_host_checks(
     multi_org
 ):
     INFO("CHECKING PASSWORDLESS SSH CONNECTIVITY")
-    INFO("Testing passwordless SSH using backend IP addresses, then hostnames")
+    INFO("Testing passwordless SSH using backend IP addresses, then hostnames", section=False)
     results = parallel_execution(
         ssh_bk_hosts,
         ["/bin/true"],
@@ -3242,6 +3282,7 @@ def backend_host_checks(
     )
     for host_name, result in results:
         if result is None:
+            clear_detail()
             WARN(f"Unable to check for invalid endpoint IPs on Host: {host_name}")
         else:
             invalid_endpoints(host_name, result, backend_ips_set)
@@ -3287,7 +3328,8 @@ def backend_host_checks(
     if not key_secret:
         GOOD(f"No secret found across all hosts")
     else:
-        INFO2(f"Global key secret: {key_secret}")
+        # The secret is shown on screen only; --json output is meant to be kept and passed around.
+        INFO2(f"Global key secret: {key_secret}", as_detail=False)
 
         missing_secrets = compare_global_secrets(container_data, key_secret)
 
@@ -3307,6 +3349,7 @@ def backend_host_checks(
     )
     for host_name, result in results:
         if result is None:
+            clear_detail()
             WARN(f"Unable to determine Host: {host_name} available trace space")
         else:
             weka_traces_size(host_name, result)
@@ -3320,6 +3363,7 @@ def backend_host_checks(
     )
     for host_name, result in results:
         if result is None:
+            clear_detail()
             WARN(f"Unable to determine Host: {host_name} CPU instruction set")
         else:
             cpu_instruction_set(host_name, result)
@@ -3797,15 +3841,31 @@ def client_hosts_checks(weka_version, ssh_cl_hosts, ssh_identity, target_version
 def cluster_summary():
     global num_good, num_warn, num_bad
     counts = (num_good, num_warn, num_bad)
+    recorded = len(check_results)
     INFO("CLUSTER SUMMARY:")
     GOOD(f"Total Checks Passed: {num_good}")
     WARN(f"Total Warnings: {num_warn}")
     BAD(f"Total Checks Failed: {num_bad}")
     # The summary lines are not checks; keep them out of the counts the exit code reads.
     num_good, num_warn, num_bad = counts
+    del check_results[recorded:]
+
+
+def write_json_results(path, target_version):
+    with open(path, "w") as f:
+        json.dump({
+            "checker_version": pg_version,
+            "completed": run_completed,
+            "source_version": source_version,
+            "target_version": target_version,
+            "summary": {"pass": num_good, "warn": num_warn, "fail": num_bad},
+            "checks": check_results,
+        }, f, indent=2)
 
 
 def finish():
+    global run_completed
+    run_completed = True
     create_tar_file(log_file_path, "./weka_upgrade_checker.tar.gz")
     # Warnings alone still exit 0, so a run can gate on the failures.
     sys.exit(1 if num_bad else 0)
@@ -4321,8 +4381,6 @@ def main():
         print(_paint(_seq(_GLYPHS)))
         sys.exit(0)
 
-    check_pg_version()
-
     parser = argparse.ArgumentParser(
         description="WEKA Upgrade Checker",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
@@ -4373,8 +4431,24 @@ def main():
         type=str,
         help="Specify the target version for upgrade path calculation.",
     )
+    parser.add_argument(
+        "--json",
+        dest="json_output",
+        metavar="FILE",
+        default=None,
+        help="Also write the result of every check to FILE as JSON.",
+    )
     parser.add_argument("--dude", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
+    global json_output_path
+    json_output_path = args.json_output
+    if json_output_path:
+        # Early failures exit from inside the checks, so the file is written on every exit, not from finish().
+        # Removing an old one first, before anything can exit, keeps an earlier run's pass from being read as this one's.
+        if os.path.exists(json_output_path):
+            os.remove(json_output_path)
+        atexit.register(write_json_results, json_output_path, args.target_version)
+
     if args.version:
         print("WEKA upgrade checker version: %s" % pg_version)
         sys.exit(0)
@@ -4382,8 +4456,11 @@ def main():
     if not args.target_version:
         parser.error("--target-version is required.")
 
+    check_pg_version()
+
     ssh_identity = args.ssh_identity or None
 
+    INFO("VALIDATING TARGET VERSION")
     try:
         with open(_UPGRADE_PATH_FILE, "r") as f:
             upgrade_map = json.load(f)
