@@ -1949,6 +1949,7 @@ def _check_os_distro(host_name, os_id, version_id, kernel, weka_version, backend
         print(f"{' ' * 5}⚠️  {colors.OKGREEN}{green_part}{colors.WARNING}{yellow_part}{colors.ENDC}")
         logging.warning(green_part + yellow_part)
         num_warn += 1
+        _record("warn", green_part + yellow_part)
     else:
         BAD(
             f"Host {host_name}: OS {os_id} {version_id}{kernel_str} "
