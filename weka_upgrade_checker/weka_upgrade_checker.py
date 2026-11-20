@@ -194,13 +194,20 @@ def ECHO(text):
     print(f"{colors.OKPURPLE}{' ' * 9}ℹ️  {wrapped_text}{colors.ENDC}")
     logging.info(wrapped_text)
 
-def INFO(text):
+def INFO(text, section=True):
     global current_section, current_detail
-    current_section, current_detail = text.strip(), None
+    if section:
+        current_section, current_detail = text.strip(), None
     nl = "\n"
     wrapped_text = textwrap.fill(text, width=150, subsequent_indent="          ")
     print(f"{colors.OKPURPLE}{nl}{wrapped_text}{nl}{colors.ENDC}")
     logging.info(wrapped_text)
+
+
+def clear_detail():
+    """For a verdict on a host that got no sub-heading, so it doesn't inherit the previous host's."""
+    global current_detail
+    current_detail = None
 
 
 def INFO2(text, as_detail=True):
@@ -2985,7 +2992,7 @@ def backend_host_checks(
     multi_org
 ):
     INFO("CHECKING PASSWORDLESS SSH CONNECTIVITY")
-    INFO("Testing passwordless SSH using backend IP addresses, then hostnames")
+    INFO("Testing passwordless SSH using backend IP addresses, then hostnames", section=False)
     results = parallel_execution(
         ssh_bk_hosts,
         ["/bin/true"],
@@ -3271,6 +3278,7 @@ def backend_host_checks(
     )
     for host_name, result in results:
         if result is None:
+            clear_detail()
             WARN(f"Unable to check for invalid endpoint IPs on Host: {host_name}")
         else:
             invalid_endpoints(host_name, result, backend_ips_set)
@@ -3337,6 +3345,7 @@ def backend_host_checks(
     )
     for host_name, result in results:
         if result is None:
+            clear_detail()
             WARN(f"Unable to determine Host: {host_name} available trace space")
         else:
             weka_traces_size(host_name, result)
@@ -3350,6 +3359,7 @@ def backend_host_checks(
     )
     for host_name, result in results:
         if result is None:
+            clear_detail()
             WARN(f"Unable to determine Host: {host_name} CPU instruction set")
         else:
             cpu_instruction_set(host_name, result)
@@ -4442,6 +4452,7 @@ def main():
             os.remove(json_output_path)
         atexit.register(write_json_results, json_output_path, args.target_version)
 
+    INFO("VALIDATING TARGET VERSION")
     try:
         with open(_UPGRADE_PATH_FILE, "r") as f:
             upgrade_map = json.load(f)
