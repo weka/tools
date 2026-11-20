@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+import atexit
 import base64
 import concurrent.futures
 import datetime
@@ -202,9 +203,10 @@ def INFO(text):
     logging.info(wrapped_text)
 
 
-def INFO2(text):
+def INFO2(text, as_detail=True):
     global current_detail
-    current_detail = text.strip()
+    if as_detail:
+        current_detail = text.strip()
     nl = "\n"
     wrapped_text = textwrap.fill(text, width=150, subsequent_indent="          ")
     print(f"{colors.OKCYAN}{nl}{wrapped_text}{nl}{colors.ENDC}")
@@ -3314,7 +3316,8 @@ def backend_host_checks(
     if not key_secret:
         GOOD(f"No secret found across all hosts")
     else:
-        INFO2(f"Global key secret: {key_secret}")
+        # The secret is shown on screen only; --json output is meant to be kept and passed around.
+        INFO2(f"Global key secret: {key_secret}", as_detail=False)
 
         missing_secrets = compare_global_secrets(container_data, key_secret)
 
@@ -3845,9 +3848,7 @@ def write_json_results(path, target_version):
         }, f, indent=2)
 
 
-def finish(target_version):
-    if json_output_path:
-        write_json_results(json_output_path, target_version)
+def finish():
     create_tar_file(log_file_path, "./weka_upgrade_checker.tar.gz")
     # Warnings alone still exit 0, so a run can gate on the failures.
     sys.exit(1 if num_bad else 0)
@@ -4434,6 +4435,12 @@ def main():
     ssh_identity = args.ssh_identity or None
     global json_output_path
     json_output_path = args.json_output
+    if json_output_path:
+        # Early failures exit from inside the checks, so the file is written on every exit, not from finish().
+        # Removing an old one first keeps a killed run from leaving a stale pass behind.
+        if os.path.exists(json_output_path):
+            os.remove(json_output_path)
+        atexit.register(write_json_results, json_output_path, args.target_version)
 
     try:
         with open(_UPGRADE_PATH_FILE, "r") as f:
@@ -4474,7 +4481,7 @@ def main():
             )
         cluster_summary()
         INFO(f"Cluster upgrade checks complete!")
-        finish(args.target_version)
+        finish()
 
     elif args.cluster_checks_only:
         weka_cluster_checks(
@@ -4482,7 +4489,7 @@ def main():
         )
         cluster_summary()
         INFO(f"Cluster upgrade checks complete!")
-        finish(args.target_version)
+        finish()
 
     elif args.check_specific_backend_hosts:
         r = weka_cluster_checks(target_version=args.target_version)
@@ -4499,7 +4506,7 @@ def main():
         )
         cluster_summary()
         INFO(f"Cluster upgrade checks complete!")
-        finish(args.target_version)
+        finish()
 
     elif args.skip_client_checks:
         r = weka_cluster_checks(target_version=args.target_version)
@@ -4528,7 +4535,7 @@ def main():
             )
         cluster_summary()
         INFO(f"Cluster upgrade checks complete!")
-        finish(args.target_version)
+        finish()
 
 
 if __name__ == "__main__":
