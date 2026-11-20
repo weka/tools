@@ -596,6 +596,7 @@ def weka_cluster_checks(target_version):
     global source_version
     source_version = weka_version
 
+    INFO("VALIDATING SOURCE AND TARGET VERSIONS")
     if V(weka_version) < V("4.2.0"):
         BAD(f"This version of the WEKA upgrade checker will not work with clusters running releases older than 4.2.0.\n" \
              "Please contact the WEKA Customer Success Team for assistance.")
@@ -4380,8 +4381,6 @@ def main():
         print(_paint(_seq(_GLYPHS)))
         sys.exit(0)
 
-    check_pg_version()
-
     parser = argparse.ArgumentParser(
         description="WEKA Upgrade Checker",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
@@ -4441,6 +4440,15 @@ def main():
     )
     parser.add_argument("--dude", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
+    global json_output_path
+    json_output_path = args.json_output
+    if json_output_path:
+        # Early failures exit from inside the checks, so the file is written on every exit, not from finish().
+        # Removing an old one first, before anything can exit, keeps an earlier run's pass from being read as this one's.
+        if os.path.exists(json_output_path):
+            os.remove(json_output_path)
+        atexit.register(write_json_results, json_output_path, args.target_version)
+
     if args.version:
         print("WEKA upgrade checker version: %s" % pg_version)
         sys.exit(0)
@@ -4448,15 +4456,9 @@ def main():
     if not args.target_version:
         parser.error("--target-version is required.")
 
+    check_pg_version()
+
     ssh_identity = args.ssh_identity or None
-    global json_output_path
-    json_output_path = args.json_output
-    if json_output_path:
-        # Early failures exit from inside the checks, so the file is written on every exit, not from finish().
-        # Removing an old one first keeps a killed run from leaving a stale pass behind.
-        if os.path.exists(json_output_path):
-            os.remove(json_output_path)
-        atexit.register(write_json_results, json_output_path, args.target_version)
 
     INFO("VALIDATING TARGET VERSION")
     try:
