@@ -177,6 +177,8 @@ current_section = None
 current_detail = None
 source_version = None
 json_output_path = None
+# The JSON is written on any exit, a crash included; only a run that reaches finish() is complete.
+run_completed = False
 
 
 def _record(verdict, text):
@@ -3852,6 +3854,7 @@ def write_json_results(path, target_version):
     with open(path, "w") as f:
         json.dump({
             "checker_version": pg_version,
+            "completed": run_completed,
             "source_version": source_version,
             "target_version": target_version,
             "summary": {"pass": num_good, "warn": num_warn, "fail": num_bad},
@@ -3860,6 +3863,8 @@ def write_json_results(path, target_version):
 
 
 def finish():
+    global run_completed
+    run_completed = True
     create_tar_file(log_file_path, "./weka_upgrade_checker.tar.gz")
     # Warnings alone still exit 0, so a run can gate on the failures.
     sys.exit(1 if num_bad else 0)
