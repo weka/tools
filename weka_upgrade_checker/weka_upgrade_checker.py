@@ -683,7 +683,8 @@ def weka_cluster_checks(target_version):
     if rebuild_pct == 0:
         GOOD("No rebuild in progress")
     else:
-        WARN(f'Rebuild in progress - {rebuild_pct} complete')
+        # The NDU refuses to start during a rebuild (verifyNoRebuild).
+        BAD(f'Rebuild in progress - {rebuild_pct} complete')
 
 
     INFO("VERIFYING WEKA BACKEND MACHINES")
@@ -1037,7 +1038,8 @@ def weka_cluster_checks(target_version):
     if not active_unwritable_drives:
         GOOD(f"All drives are active and writable")
     else:
-        WARN(f"The following drives are active but not writable\n")
+        # The NDU refuses to start with an unwritable drive (verifyAllDisksWritable).
+        BAD(f"The following drives are active but not writable\n")
         printlist(active_unwritable_drives, 5)
 
     if V("4.0") <= V(weka_version) < V("4.2.1"):
@@ -2097,7 +2099,8 @@ def free_space_check_data(results):
                 )
 
         if shortfalls:
-            WARN(
+            # The NDU refuses to start on this host (verifyAvailableDiskSpace).
+            BAD(
                 f"Host: {host_name} does not have enough free capacity for upgrade "
                 f"(needs 1.5x each container's data dir size free): {'; '.join(shortfalls)}"
             )
@@ -2584,7 +2587,8 @@ def available_memory_check(host_name, result, num_containers=None):
         if available_bytes == 0:
             WARN(f"Could not read MemAvailable from /proc/meminfo on {host_name}")
         elif available_gib < min_required:
-            WARN(
+            # The NDU refuses to start on this host (verifyAvailableMemory).
+            BAD(
                 f"{host_name} has only {available_bytes / 2 ** 30:.2f}GiB available for {num_containers} containers "
                 f"(counted as {available_gib}GiB); the upgrade requires {min_required}GiB and will refuse to start"
             )
@@ -3791,10 +3795,20 @@ def client_hosts_checks(weka_version, ssh_cl_hosts, ssh_identity, target_version
 
 
 def cluster_summary():
+    global num_good, num_warn, num_bad
+    counts = (num_good, num_warn, num_bad)
     INFO("CLUSTER SUMMARY:")
     GOOD(f"Total Checks Passed: {num_good}")
     WARN(f"Total Warnings: {num_warn}")
     BAD(f"Total Checks Failed: {num_bad}")
+    # The summary lines are not checks; keep them out of the counts the exit code reads.
+    num_good, num_warn, num_bad = counts
+
+
+def finish():
+    create_tar_file(log_file_path, "./weka_upgrade_checker.tar.gz")
+    # Warnings alone still exit 0, so a run can gate on the failures.
+    sys.exit(1 if num_bad else 0)
 
 def check_known_issues(
     upgrade_hops,
@@ -4395,8 +4409,6 @@ def main():
             r.multi_org,
         )
         client_hosts_checks(r.weka_version, r.ssh_cl_hosts, ssh_identity, target_version=args.target_version)
-        cluster_summary()
-        INFO(f"Cluster upgrade checks complete!")
         if args.target_version:
             target_version_check(
                 r.weka_version,
@@ -4409,8 +4421,9 @@ def main():
                 r.obj_store_enabled,
                 r.multi_org
             )
-        create_tar_file(log_file_path, "./weka_upgrade_checker.tar.gz")
-        sys.exit(0)
+        cluster_summary()
+        INFO(f"Cluster upgrade checks complete!")
+        finish()
 
     elif args.cluster_checks_only:
         weka_cluster_checks(
@@ -4418,8 +4431,7 @@ def main():
         )
         cluster_summary()
         INFO(f"Cluster upgrade checks complete!")
-        create_tar_file(log_file_path, "./weka_upgrade_checker.tar.gz")
-        sys.exit(0)
+        finish()
 
     elif args.check_specific_backend_hosts:
         r = weka_cluster_checks(target_version=args.target_version)
@@ -4436,8 +4448,7 @@ def main():
         )
         cluster_summary()
         INFO(f"Cluster upgrade checks complete!")
-        create_tar_file(log_file_path, "./weka_upgrade_checker.tar.gz")
-        sys.exit(0)
+        finish()
 
     elif args.skip_client_checks:
         r = weka_cluster_checks(target_version=args.target_version)
@@ -4452,8 +4463,6 @@ def main():
             r.good_nfs_hosts,
             r.multi_org,
         )
-        cluster_summary()
-        INFO(f"Cluster upgrade checks complete!")
         if args.target_version:
             target_version_check(
                 r.weka_version,
@@ -4466,8 +4475,9 @@ def main():
                 r.obj_store_enabled,
                 r.multi_org
             )
-        create_tar_file(log_file_path, "./weka_upgrade_checker.tar.gz")
-        sys.exit(0)
+        cluster_summary()
+        INFO(f"Cluster upgrade checks complete!")
+        finish()
 
 
 if __name__ == "__main__":
