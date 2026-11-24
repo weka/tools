@@ -763,7 +763,7 @@ class ResourcesGenerator:
         cmd = "cat /sys/devices/system/cpu/cpu*/topology/thread_siblings_list"
         cpu_pairs_ids = set(os.popen(cmd).read().strip().splitlines())
         logger.debug("cpu_pairs_ids before removing siblings: %s", cpu_pairs_ids)
-        cpu_per_core = [int(re.split(',|-', pair)[0]) for pair in cpu_pairs_ids]
+        cpu_per_core = sorted(int(re.split(',|-', pair)[0]) for pair in cpu_pairs_ids)
         return cpu_per_core
 
     def set_numa_nodes_info(self):
